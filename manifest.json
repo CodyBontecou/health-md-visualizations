@@ -1,0 +1,10 @@
+{
+	"id": "health-md",
+	"name": "Health.md Visualizations",
+	"version": "1.0.0",
+	"minAppVersion": "1.4.0",
+	"description": "Render Apple Health data visualizations from daily JSON files.",
+	"author": "Cody Bontecou",
+	"authorUrl": "https://github.com/codybontecou",
+	"isDesktopOnly": false
+}

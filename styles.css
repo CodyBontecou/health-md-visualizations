@@ -1,0 +1,65 @@
+.health-md-container {
+	width: 100%;
+	margin: 8px 0;
+}
+
+.health-md-container canvas {
+	display: block;
+	border-radius: 6px;
+	width: 100%;
+}
+
+.health-md-error {
+	color: var(--text-error);
+	font-style: italic;
+	padding: 8px;
+}
+
+/* Stats row */
+.health-md-stats {
+	display: flex;
+	gap: 16px;
+	justify-content: center;
+	padding: 8px 0 4px;
+}
+
+.health-md-stat-box {
+	text-align: center;
+}
+
+.health-md-stat-value {
+	font-size: 1.3em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-stat-label {
+	font-size: 0.75em;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+/* Intro stats grid */
+.health-md-intro-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+	padding: 16px;
+}
+
+.health-md-intro-stat {
+	text-align: center;
+}
+
+.health-md-intro-value {
+	font-size: 2em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-intro-label {
+	font-size: 0.8em;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
