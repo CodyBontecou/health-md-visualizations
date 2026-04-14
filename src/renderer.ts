@@ -484,7 +484,7 @@ export async function renderCodeBlock(
 			});
 			return;
 		}
-		const theme = resolveTheme(plugin.settings.theme);
+		const theme = resolveTheme(plugin.settings);
 		const container = el.createDiv({ cls: "health-md-container" });
 		renderIntroStats(data, container, config, theme);
 		return;
@@ -516,7 +516,7 @@ export async function renderCodeBlock(
 
 	const defaultWidth = config.width ?? plugin.settings.defaultWidth;
 	const height = (config.height ?? plugin.settings.defaultHeight) as number;
-	const theme = resolveTheme(plugin.settings.theme);
+	const theme = resolveTheme(plugin.settings);
 
 	const container = el.createDiv({ cls: "health-md-container" });
 	const canvas = container.createEl("canvas");

@@ -1,5 +1,5 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
-import { SLEEP_COLORS, SLEEP_GLOW, formatDate, formatDuration } from "../canvas-utils";
+import { formatDate, formatDuration } from "../canvas-utils";
 
 type SleepStage = NonNullable<HealthDay["sleep"]>["sleepStages"][number];
 
@@ -157,10 +157,10 @@ export const renderSleepArchitecture: RenderFn = (
 				((stageEnd - stageStart) / maxSpan) * barWidth
 			);
 
-			ctx.shadowColor = SLEEP_GLOW[stage.stage] || "#000";
+			ctx.shadowColor = theme.colors.sleep[stage.stage as keyof typeof theme.colors.sleep] || "#000";
 			ctx.shadowBlur = 8;
 
-			ctx.fillStyle = SLEEP_COLORS[stage.stage] || "#333";
+			ctx.fillStyle = theme.colors.sleep[stage.stage as keyof typeof theme.colors.sleep] || "#333";
 			ctx.fillRect(x, y + 2, w, stripeHeight - 4);
 
 			ctx.shadowBlur = 0;

@@ -1,5 +1,5 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
-import { SLEEP_COLORS, formatDate, formatDuration } from "../canvas-utils";
+import { formatDate, formatDuration } from "../canvas-utils";
 
 type SleepStage = NonNullable<HealthDay["sleep"]>["sleepStages"][number];
 
@@ -129,7 +129,7 @@ export const renderSleepPolar: RenderFn = (
 			ctx.moveTo(cx, cy);
 			ctx.arc(cx, cy, r - 1, a1, a2);
 			ctx.closePath();
-			ctx.fillStyle = SLEEP_COLORS[stage.stage] || "#333";
+			ctx.fillStyle = theme.colors.sleep[stage.stage as keyof typeof theme.colors.sleep] || "#333";
 			ctx.globalAlpha = 0.85;
 			ctx.fill();
 			ctx.globalAlpha = 1;

@@ -119,7 +119,7 @@ export const renderStepSpiral: RenderFn = (
 
 	const avgSteps = Math.round(totalSteps / days.length);
 	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#2dd4bf">${avgSteps.toLocaleString()}</div><div class="health-md-stat-label">Avg/Day</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#5eead4">${bestDay.activity!.steps.toLocaleString()}</div><div class="health-md-stat-label">Best Day</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avgSteps.toLocaleString()}</div><div class="health-md-stat-label">Avg/Day</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${bestDay.activity!.steps.toLocaleString()}</div><div class="health-md-stat-label">Best Day</div></div>
 	`;
 };

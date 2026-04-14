@@ -1,4 +1,4 @@
-import { ResolvedTheme } from "./types";
+import { HealthMdSettings, ResolvedTheme } from "./types";
 
 export function setupCanvas(
 	canvas: HTMLCanvasElement,
@@ -40,29 +40,45 @@ export function hsl(h: number, s: number, l: number): string {
 	return `hsl(${h},${s}%,${l}%)`;
 }
 
-export const SLEEP_COLORS: Record<string, string> = {
-	deep: "#312e81",
-	rem: "#7c3aed",
-	core: "#2dd4bf",
-	awake: "#f59e0b",
-};
+export function hexToRgba(hex: string, alpha: number): string {
+	const r = parseInt(hex.slice(1, 3), 16);
+	const g = parseInt(hex.slice(3, 5), 16);
+	const b = parseInt(hex.slice(5, 7), 16);
+	return `rgba(${r},${g},${b},${alpha})`;
+}
 
-export const SLEEP_GLOW: Record<string, string> = {
-	deep: "#4338ca",
-	rem: "#a78bfa",
-	core: "#5eead4",
-	awake: "#fbbf24",
-};
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
+	return {
+		r: parseInt(hex.slice(1, 3), 16),
+		g: parseInt(hex.slice(3, 5), 16),
+		b: parseInt(hex.slice(5, 7), 16),
+	};
+}
 
-export function resolveTheme(setting: "dark" | "light" | "auto"): ResolvedTheme {
+export function resolveTheme(settings: HealthMdSettings): ResolvedTheme {
 	let isDark: boolean;
-	if (setting === "auto") {
+	if (settings.theme === "auto") {
 		isDark = document.body.classList.contains("theme-dark");
 	} else {
-		isDark = setting === "dark";
+		isDark = settings.theme === "dark";
 	}
 
-	return isDark
+	const base = isDark
 		? { bg: "#0a0a0f", fg: "#e0e0e0", muted: "#555", isDark: true }
 		: { bg: "#ffffff", fg: "#1a1a1a", muted: "#999", isDark: false };
+
+	return {
+		...base,
+		colors: {
+			accent: settings.colorAccent,
+			secondary: settings.colorSecondary,
+			heart: settings.colorHeart,
+			sleep: {
+				deep: settings.colorSleepDeep,
+				rem: settings.colorSleepRem,
+				core: settings.colorSleepCore,
+				awake: settings.colorSleepAwake,
+			},
+		},
+	};
 }

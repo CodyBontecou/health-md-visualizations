@@ -438,26 +438,41 @@ function formatDuration(seconds) {
 function hsl(h, s, l) {
   return `hsl(${h},${s}%,${l}%)`;
 }
-var SLEEP_COLORS = {
-  deep: "#312e81",
-  rem: "#7c3aed",
-  core: "#2dd4bf",
-  awake: "#f59e0b"
-};
-var SLEEP_GLOW = {
-  deep: "#4338ca",
-  rem: "#a78bfa",
-  core: "#5eead4",
-  awake: "#fbbf24"
-};
-function resolveTheme(setting) {
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function hexToRgb(hex) {
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16)
+  };
+}
+function resolveTheme(settings) {
   let isDark;
-  if (setting === "auto") {
+  if (settings.theme === "auto") {
     isDark = document.body.classList.contains("theme-dark");
   } else {
-    isDark = setting === "dark";
+    isDark = settings.theme === "dark";
   }
-  return isDark ? { bg: "#0a0a0f", fg: "#e0e0e0", muted: "#555", isDark: true } : { bg: "#ffffff", fg: "#1a1a1a", muted: "#999", isDark: false };
+  const base = isDark ? { bg: "#0a0a0f", fg: "#e0e0e0", muted: "#555", isDark: true } : { bg: "#ffffff", fg: "#1a1a1a", muted: "#999", isDark: false };
+  return {
+    ...base,
+    colors: {
+      accent: settings.colorAccent,
+      secondary: settings.colorSecondary,
+      heart: settings.colorHeart,
+      sleep: {
+        deep: settings.colorSleepDeep,
+        rem: settings.colorSleepRem,
+        core: settings.colorSleepCore,
+        awake: settings.colorSleepAwake
+      }
+    }
+  };
 }
 
 // src/visualizations/heart-terrain.ts
@@ -686,7 +701,7 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, r - 1, a1, a2);
       ctx.closePath();
-      ctx.fillStyle = SLEEP_COLORS[stage.stage] || "#333";
+      ctx.fillStyle = theme.colors.sleep[stage.stage] || "#333";
       ctx.globalAlpha = 0.85;
       ctx.fill();
       ctx.globalAlpha = 1;
@@ -828,8 +843,8 @@ var renderStepSpiral = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   });
   const avgSteps = Math.round(totalSteps / days.length);
   statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#2dd4bf">${avgSteps.toLocaleString()}</div><div class="health-md-stat-label">Avg/Day</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#5eead4">${bestDay.activity.steps.toLocaleString()}</div><div class="health-md-stat-label">Best Day</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avgSteps.toLocaleString()}</div><div class="health-md-stat-label">Avg/Day</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${bestDay.activity.steps.toLocaleString()}</div><div class="health-md-stat-label">Best Day</div></div>
 	`;
 };
 
@@ -948,8 +963,8 @@ var renderBreathingWave = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const minR = Math.min(...allVals);
   const maxR = Math.max(...allVals);
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, "rgba(45, 212, 191, 0.35)");
-  grad.addColorStop(1, "rgba(45, 212, 191, 0.0)");
+  grad.addColorStop(0, hexToRgba(theme.colors.accent, 0.35));
+  grad.addColorStop(1, hexToRgba(theme.colors.accent, 0));
   ctx.beginPath();
   ctx.moveTo(0, H);
   allVals.forEach((v, i) => {
@@ -968,7 +983,7 @@ var renderBreathingWave = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     const y = H - 16 - t * (H - 32);
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   });
-  ctx.strokeStyle = "#2dd4bf";
+  ctx.strokeStyle = theme.colors.accent;
   ctx.lineWidth = 1.5;
   ctx.stroke();
   let sampleIdx = 0;
@@ -1001,9 +1016,9 @@ var renderBreathingWave = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     1
   );
   statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#2dd4bf">${avg2}</div><div class="health-md-stat-label">Avg br/min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#1a9a8a">${minR.toFixed(1)}</div><div class="health-md-stat-label">Min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#5eead4">${maxR.toFixed(1)}</div><div class="health-md-stat-label">Max</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avg2}</div><div class="health-md-stat-label">Avg br/min</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.muted}">${minR.toFixed(1)}</div><div class="health-md-stat-label">Min</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${maxR.toFixed(1)}</div><div class="health-md-stat-label">Max</div></div>
 	`;
 };
 
@@ -1045,14 +1060,14 @@ var renderVitalsRings = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
       sx > sy ? 1 : maxRx / maxRy,
       sy > sx ? 1 : maxRy / maxRx
     );
-    ctx.strokeStyle = `rgba(45, 212, 191, ${0.25 + steps / maxSteps * 0.55})`;
+    ctx.strokeStyle = hexToRgba(theme.colors.accent, 0.25 + steps / maxSteps * 0.55);
     ctx.lineWidth = ringGap * 0.4;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.arc(0, 0, baseR, -Math.PI / 2, -Math.PI / 2 + stepsAngle);
     ctx.stroke();
     const calAngle = cal / maxCal * Math.PI * 2;
-    ctx.strokeStyle = `rgba(245, 158, 11, ${0.25 + cal / maxCal * 0.55})`;
+    ctx.strokeStyle = hexToRgba(theme.colors.secondary, 0.25 + cal / maxCal * 0.55);
     ctx.lineWidth = ringGap * 0.22;
     ctx.beginPath();
     ctx.arc(
@@ -1125,19 +1140,21 @@ var renderWalkingSymmetry = (ctx, data, W, H, _config, theme, _statsEl, hits) =>
     const x = leftPad + i * barW;
     const speedH = maxSpeed > 0 ? speed / maxSpeed * (midY - 16) : 0;
     const sg = ctx.createLinearGradient(x, midY, x, midY - speedH);
-    sg.addColorStop(0, "rgba(45, 212, 191, 0.08)");
-    sg.addColorStop(1, "rgba(45, 212, 191, 0.75)");
+    sg.addColorStop(0, hexToRgba(theme.colors.accent, 0.08));
+    sg.addColorStop(1, hexToRgba(theme.colors.accent, 0.75));
     ctx.fillStyle = sg;
     ctx.beginPath();
     ctx.roundRect(x + 1, midY - speedH, barW - 2, speedH, [3, 3, 0, 0]);
     ctx.fill();
     const asymH = maxAsym > 0 ? asym / maxAsym * (midY - 16) : 0;
     const asymT = maxAsym > 0 ? asym / maxAsym : 0;
+    const secRgb = hexToRgb(theme.colors.secondary);
+    const heartRgb = hexToRgb(theme.colors.heart);
     const ag = ctx.createLinearGradient(x, midY, x, midY + asymH);
-    ag.addColorStop(0, "rgba(245, 158, 11, 0.08)");
+    ag.addColorStop(0, hexToRgba(theme.colors.secondary, 0.08));
     ag.addColorStop(
       1,
-      `rgba(${Math.round(lerp(245, 239, asymT))},${Math.round(lerp(158, 68, asymT))},${Math.round(lerp(11, 68, asymT))},0.75)`
+      `rgba(${Math.round(lerp(secRgb.r, heartRgb.r, asymT))},${Math.round(lerp(secRgb.g, heartRgb.g, asymT))},${Math.round(lerp(secRgb.b, heartRgb.b, asymT))},0.75)`
     );
     ctx.fillStyle = ag;
     ctx.beginPath();
@@ -1301,9 +1318,9 @@ var renderSleepArchitecture = (ctx, data, W, H, _config, theme, _statsEl, hits) 
         1,
         (stageEnd - stageStart) / maxSpan * barWidth
       );
-      ctx.shadowColor = SLEEP_GLOW[stage.stage] || "#000";
+      ctx.shadowColor = theme.colors.sleep[stage.stage] || "#000";
       ctx.shadowBlur = 8;
-      ctx.fillStyle = SLEEP_COLORS[stage.stage] || "#333";
+      ctx.fillStyle = theme.colors.sleep[stage.stage] || "#333";
       ctx.fillRect(x, y + 2, w, stripeHeight - 4);
       ctx.shadowBlur = 0;
       const fmtTime = (iso) => new Date(iso).toLocaleTimeString("en-US", {
@@ -1363,21 +1380,21 @@ var renderIntroStats = (data, el, _config, theme) => {
   ).length;
   el.addClass("health-md-intro-grid");
   const stats = [
-    { value: `${Math.round(avgHR)}`, label: "Avg BPM", color: "#ef4444" },
+    { value: `${Math.round(avgHR)}`, label: "Avg BPM", color: theme.colors.heart },
     {
       value: `${(totalSteps / 1e3).toFixed(0)}k`,
       label: "Total Steps",
-      color: "#2dd4bf"
+      color: theme.colors.accent
     },
     {
       value: `${sleepNights}`,
       label: "Nights Tracked",
-      color: "#7c3aed"
+      color: theme.colors.sleep.rem
     },
     {
       value: `${totalDist.toFixed(0)}km`,
       label: "Distance",
-      color: "#f59e0b"
+      color: theme.colors.secondary
     }
   ];
   stats.forEach((stat) => {
@@ -1767,7 +1784,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
       });
       return;
     }
-    const theme2 = resolveTheme(plugin.settings.theme);
+    const theme2 = resolveTheme(plugin.settings);
     const container2 = el.createDiv({ cls: "health-md-container" });
     renderIntroStats(data2, container2, config, theme2);
     return;
@@ -1796,7 +1813,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
   }
   const defaultWidth = (_a = config.width) != null ? _a : plugin.settings.defaultWidth;
   const height = (_b = config.height) != null ? _b : plugin.settings.defaultHeight;
-  const theme = resolveTheme(plugin.settings.theme);
+  const theme = resolveTheme(plugin.settings);
   const container = el.createDiv({ cls: "health-md-container" });
   const canvas = container.createEl("canvas");
   const tooltipEl = container.createDiv({ cls: "health-md-tooltip" });
@@ -1881,7 +1898,14 @@ var DEFAULT_SETTINGS = {
   dataFormat: "auto",
   theme: "auto",
   defaultWidth: 800,
-  defaultHeight: 400
+  defaultHeight: 400,
+  colorAccent: "#2dd4bf",
+  colorSecondary: "#f59e0b",
+  colorHeart: "#ef4444",
+  colorSleepDeep: "#312e81",
+  colorSleepRem: "#7c3aed",
+  colorSleepCore: "#2dd4bf",
+  colorSleepAwake: "#f59e0b"
 };
 var HealthMdPlugin = class extends import_obsidian3.Plugin {
   constructor() {
@@ -2005,5 +2029,26 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         }
       })
     );
+    containerEl.createEl("h3", { text: "Colors" });
+    const colorSettings = [
+      { key: "colorAccent", name: "Accent", desc: "Primary color for activity charts (steps, breathing, rings)" },
+      { key: "colorSecondary", name: "Secondary", desc: "Secondary color for calories, asymmetry, and distance" },
+      { key: "colorHeart", name: "Heart rate", desc: "Color for heart rate stats" },
+      { key: "colorSleepDeep", name: "Deep sleep", desc: "Color for deep sleep stages" },
+      { key: "colorSleepRem", name: "REM sleep", desc: "Color for REM sleep stages" },
+      { key: "colorSleepCore", name: "Core sleep", desc: "Color for core sleep stages" },
+      { key: "colorSleepAwake", name: "Awake", desc: "Color for awake periods in sleep charts" }
+    ];
+    colorSettings.forEach(({ key, name, desc }) => {
+      const setting = new import_obsidian3.Setting(containerEl).setName(name).setDesc(desc);
+      const input = setting.controlEl.createEl("input");
+      input.type = "color";
+      input.value = this.plugin.settings[key];
+      input.addEventListener("change", async () => {
+        this.plugin.settings[key] = input.value;
+        await this.plugin.saveSettings();
+        this.plugin.refreshViews();
+      });
+    });
   }
 };

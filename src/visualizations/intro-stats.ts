@@ -23,21 +23,21 @@ export const renderIntroStats: HtmlRenderFn = (
 	el.addClass("health-md-intro-grid");
 
 	const stats = [
-		{ value: `${Math.round(avgHR)}`, label: "Avg BPM", color: "#ef4444" },
+		{ value: `${Math.round(avgHR)}`, label: "Avg BPM", color: theme.colors.heart },
 		{
 			value: `${(totalSteps / 1000).toFixed(0)}k`,
 			label: "Total Steps",
-			color: "#2dd4bf",
+			color: theme.colors.accent,
 		},
 		{
 			value: `${sleepNights}`,
 			label: "Nights Tracked",
-			color: "#7c3aed",
+			color: theme.colors.sleep.rem,
 		},
 		{
 			value: `${totalDist.toFixed(0)}km`,
 			label: "Distance",
-			color: "#f59e0b",
+			color: theme.colors.secondary,
 		},
 	];
 

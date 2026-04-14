@@ -1,5 +1,5 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
-import { lerp, hsl, formatDate } from "../canvas-utils";
+import { lerp, hsl, hexToRgba, formatDate } from "../canvas-utils";
 
 export const renderVitalsRings: RenderFn = (
 	ctx: CanvasRenderingContext2D,
@@ -60,17 +60,17 @@ export const renderVitalsRings: RenderFn = (
 			sy > sx ? 1 : maxRy / maxRx
 		);
 
-		// Steps arc (teal)
-		ctx.strokeStyle = `rgba(45, 212, 191, ${0.25 + (steps / maxSteps) * 0.55})`;
+		// Steps arc (accent)
+		ctx.strokeStyle = hexToRgba(theme.colors.accent, 0.25 + (steps / maxSteps) * 0.55);
 		ctx.lineWidth = ringGap * 0.4;
 		ctx.lineCap = "round";
 		ctx.beginPath();
 		ctx.arc(0, 0, baseR, -Math.PI / 2, -Math.PI / 2 + stepsAngle);
 		ctx.stroke();
 
-		// Calories arc (orange)
+		// Calories arc (secondary)
 		const calAngle = (cal / maxCal) * Math.PI * 2;
-		ctx.strokeStyle = `rgba(245, 158, 11, ${0.25 + (cal / maxCal) * 0.55})`;
+		ctx.strokeStyle = hexToRgba(theme.colors.secondary, 0.25 + (cal / maxCal) * 0.55);
 		ctx.lineWidth = ringGap * 0.22;
 		ctx.beginPath();
 		ctx.arc(

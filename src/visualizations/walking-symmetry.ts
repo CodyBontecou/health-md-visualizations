@@ -1,5 +1,5 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
-import { lerp, formatDate } from "../canvas-utils";
+import { lerp, hexToRgba, hexToRgb, formatDate } from "../canvas-utils";
 
 export const renderWalkingSymmetry: RenderFn = (
 	ctx: CanvasRenderingContext2D,
@@ -36,21 +36,23 @@ export const renderWalkingSymmetry: RenderFn = (
 		// Speed bars (up)
 		const speedH = maxSpeed > 0 ? (speed / maxSpeed) * (midY - 16) : 0;
 		const sg = ctx.createLinearGradient(x, midY, x, midY - speedH);
-		sg.addColorStop(0, "rgba(45, 212, 191, 0.08)");
-		sg.addColorStop(1, "rgba(45, 212, 191, 0.75)");
+		sg.addColorStop(0, hexToRgba(theme.colors.accent, 0.08));
+		sg.addColorStop(1, hexToRgba(theme.colors.accent, 0.75));
 		ctx.fillStyle = sg;
 		ctx.beginPath();
 		ctx.roundRect(x + 1, midY - speedH, barW - 2, speedH, [3, 3, 0, 0]);
 		ctx.fill();
 
-		// Asymmetry bars (down)
+		// Asymmetry bars (down) — gradient from secondary toward heart color
 		const asymH = maxAsym > 0 ? (asym / maxAsym) * (midY - 16) : 0;
 		const asymT = maxAsym > 0 ? asym / maxAsym : 0;
+		const secRgb = hexToRgb(theme.colors.secondary);
+		const heartRgb = hexToRgb(theme.colors.heart);
 		const ag = ctx.createLinearGradient(x, midY, x, midY + asymH);
-		ag.addColorStop(0, "rgba(245, 158, 11, 0.08)");
+		ag.addColorStop(0, hexToRgba(theme.colors.secondary, 0.08));
 		ag.addColorStop(
 			1,
-			`rgba(${Math.round(lerp(245, 239, asymT))},${Math.round(lerp(158, 68, asymT))},${Math.round(lerp(11, 68, asymT))},0.75)`
+			`rgba(${Math.round(lerp(secRgb.r, heartRgb.r, asymT))},${Math.round(lerp(secRgb.g, heartRgb.g, asymT))},${Math.round(lerp(secRgb.b, heartRgb.b, asymT))},0.75)`
 		);
 		ctx.fillStyle = ag;
 		ctx.beginPath();

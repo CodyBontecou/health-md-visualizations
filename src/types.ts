@@ -86,6 +86,18 @@ export interface VizConfig {
 
 export type DataFormat = "auto" | "json" | "csv" | "markdown" | "bases";
 
+export interface ColorPalette {
+	accent: string;
+	secondary: string;
+	heart: string;
+	sleep: {
+		deep: string;
+		rem: string;
+		core: string;
+		awake: string;
+	};
+}
+
 export interface HealthMdSettings {
 	dataFolder: string;
 	filePattern: string;
@@ -93,6 +105,13 @@ export interface HealthMdSettings {
 	theme: "dark" | "light" | "auto";
 	defaultWidth: number;
 	defaultHeight: number;
+	colorAccent: string;
+	colorSecondary: string;
+	colorHeart: string;
+	colorSleepDeep: string;
+	colorSleepRem: string;
+	colorSleepCore: string;
+	colorSleepAwake: string;
 }
 
 export interface ResolvedTheme {
@@ -100,6 +119,7 @@ export interface ResolvedTheme {
 	fg: string;
 	muted: string;
 	isDark: boolean;
+	colors: ColorPalette;
 }
 
 export interface HitRegionDetail {

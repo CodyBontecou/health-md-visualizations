@@ -1,5 +1,5 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
-import { formatDate } from "../canvas-utils";
+import { formatDate, hexToRgba } from "../canvas-utils";
 
 function getRespiratoryValues(day: HealthDay): number[] {
 	if (day.vitals?.respiratoryRateSamples?.length) {
@@ -46,8 +46,8 @@ export const renderBreathingWave: RenderFn = (
 
 	// Filled area
 	const grad = ctx.createLinearGradient(0, 0, 0, H);
-	grad.addColorStop(0, "rgba(45, 212, 191, 0.35)");
-	grad.addColorStop(1, "rgba(45, 212, 191, 0.0)");
+	grad.addColorStop(0, hexToRgba(theme.colors.accent, 0.35));
+	grad.addColorStop(1, hexToRgba(theme.colors.accent, 0.0));
 	ctx.beginPath();
 	ctx.moveTo(0, H);
 	allVals.forEach((v, i) => {
@@ -68,7 +68,7 @@ export const renderBreathingWave: RenderFn = (
 		const y = H - 16 - t * (H - 32);
 		i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
 	});
-	ctx.strokeStyle = "#2dd4bf";
+	ctx.strokeStyle = theme.colors.accent;
 	ctx.lineWidth = 1.5;
 	ctx.stroke();
 
@@ -103,8 +103,8 @@ export const renderBreathingWave: RenderFn = (
 		1
 	);
 	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#2dd4bf">${avg}</div><div class="health-md-stat-label">Avg br/min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#1a9a8a">${minR.toFixed(1)}</div><div class="health-md-stat-label">Min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#5eead4">${maxR.toFixed(1)}</div><div class="health-md-stat-label">Max</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avg}</div><div class="health-md-stat-label">Avg br/min</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.muted}">${minR.toFixed(1)}</div><div class="health-md-stat-label">Min</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${maxR.toFixed(1)}</div><div class="health-md-stat-label">Max</div></div>
 	`;
 };

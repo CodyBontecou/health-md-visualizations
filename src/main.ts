@@ -10,6 +10,13 @@ const DEFAULT_SETTINGS: HealthMdSettings = {
 	theme: "auto",
 	defaultWidth: 800,
 	defaultHeight: 400,
+	colorAccent: "#2dd4bf",
+	colorSecondary: "#f59e0b",
+	colorHeart: "#ef4444",
+	colorSleepDeep: "#312e81",
+	colorSleepRem: "#7c3aed",
+	colorSleepCore: "#2dd4bf",
+	colorSleepAwake: "#f59e0b",
 };
 
 export default class HealthMdPlugin extends Plugin {
@@ -191,5 +198,33 @@ class HealthMdSettingTab extends PluginSettingTab {
 						}
 					})
 			);
+
+		containerEl.createEl("h3", { text: "Colors" });
+
+		const colorSettings: Array<{
+			key: keyof HealthMdSettings;
+			name: string;
+			desc: string;
+		}> = [
+			{ key: "colorAccent", name: "Accent", desc: "Primary color for activity charts (steps, breathing, rings)" },
+			{ key: "colorSecondary", name: "Secondary", desc: "Secondary color for calories, asymmetry, and distance" },
+			{ key: "colorHeart", name: "Heart rate", desc: "Color for heart rate stats" },
+			{ key: "colorSleepDeep", name: "Deep sleep", desc: "Color for deep sleep stages" },
+			{ key: "colorSleepRem", name: "REM sleep", desc: "Color for REM sleep stages" },
+			{ key: "colorSleepCore", name: "Core sleep", desc: "Color for core sleep stages" },
+			{ key: "colorSleepAwake", name: "Awake", desc: "Color for awake periods in sleep charts" },
+		];
+
+		colorSettings.forEach(({ key, name, desc }) => {
+			const setting = new Setting(containerEl).setName(name).setDesc(desc);
+			const input = setting.controlEl.createEl("input");
+			input.type = "color";
+			input.value = this.plugin.settings[key] as string;
+			input.addEventListener("change", async () => {
+				(this.plugin.settings[key] as string) = input.value;
+				await this.plugin.saveSettings();
+				this.plugin.refreshViews();
+			});
+		});
 	}
 }
