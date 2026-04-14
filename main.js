@@ -1801,6 +1801,13 @@ var HealthMdPlugin = class extends import_obsidian3.Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
   }
+  refreshViews() {
+    this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
+      if (leaf.view instanceof import_obsidian3.MarkdownView) {
+        leaf.view.previewMode.rerender(true);
+      }
+    });
+  }
 };
 var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
@@ -1812,18 +1819,20 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
     containerEl.empty();
     new import_obsidian3.Setting(containerEl).setName("Data folder").setDesc("Path to the folder containing health data files").addText(
       (text) => text.setPlaceholder("Health").setValue(this.plugin.settings.dataFolder).onChange(async (value) => {
-        this.plugin.settings.dataFolder = value;
+        this.plugin.settings.dataFolder = value.trim();
         this.plugin.dataLoader.invalidate();
         await this.plugin.saveSettings();
+        this.plugin.refreshViews();
       })
     );
     new import_obsidian3.Setting(containerEl).setName("File pattern").setDesc(
       "Glob pattern to match files (e.g. *.json, 2026-*.md, health-*.csv). Use * for all supported files."
     ).addText(
       (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
-        this.plugin.settings.filePattern = value;
+        this.plugin.settings.filePattern = value.trim();
         this.plugin.dataLoader.invalidate();
         await this.plugin.saveSettings();
+        this.plugin.refreshViews();
       })
     );
     new import_obsidian3.Setting(containerEl).setName("Data format").setDesc(
@@ -1833,6 +1842,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         this.plugin.settings.dataFormat = value;
         this.plugin.dataLoader.invalidate();
         await this.plugin.saveSettings();
+        this.plugin.refreshViews();
       })
     );
     new import_obsidian3.Setting(containerEl).setName("Theme").setDesc("Color theme for visualizations").addDropdown(

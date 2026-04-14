@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
+import { App, MarkdownView, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { HealthMdSettings } from "./types";
 import { DataLoader } from "./data-loader";
 import { renderCodeBlock } from "./renderer";
@@ -72,6 +72,14 @@ export default class HealthMdPlugin extends Plugin {
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 	}
+
+	refreshViews(): void {
+		this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
+			if (leaf.view instanceof MarkdownView) {
+				leaf.view.previewMode.rerender(true);
+			}
+		});
+	}
 }
 
 class HealthMdSettingTab extends PluginSettingTab {
@@ -94,9 +102,10 @@ class HealthMdSettingTab extends PluginSettingTab {
 					.setPlaceholder("Health")
 					.setValue(this.plugin.settings.dataFolder)
 					.onChange(async (value) => {
-						this.plugin.settings.dataFolder = value;
+						this.plugin.settings.dataFolder = value.trim();
 						this.plugin.dataLoader.invalidate();
 						await this.plugin.saveSettings();
+						this.plugin.refreshViews();
 					})
 			);
 
@@ -110,9 +119,10 @@ class HealthMdSettingTab extends PluginSettingTab {
 					.setPlaceholder("*")
 					.setValue(this.plugin.settings.filePattern)
 					.onChange(async (value) => {
-						this.plugin.settings.filePattern = value;
+						this.plugin.settings.filePattern = value.trim();
 						this.plugin.dataLoader.invalidate();
 						await this.plugin.saveSettings();
+						this.plugin.refreshViews();
 					})
 			);
 
@@ -133,6 +143,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 						this.plugin.settings.dataFormat = value as HealthMdSettings["dataFormat"];
 						this.plugin.dataLoader.invalidate();
 						await this.plugin.saveSettings();
+						this.plugin.refreshViews();
 					})
 			);
 
