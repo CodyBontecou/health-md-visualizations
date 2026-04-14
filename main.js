@@ -1346,6 +1346,451 @@ var renderSleepArchitecture = (ctx, data, W, H, _config, theme, _statsEl, hits) 
   });
 };
 
+// src/visualizations/hrv-trend.ts
+var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const days = data.filter(
+    (d) => d.heart && (d.heart.hrv != null || d.heart.hrvSamples && d.heart.hrvSamples.length > 0)
+  );
+  if (!days.length) return;
+  const padL = 36, padR = 16, padT = 16, padB = 28;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const values = days.map((d) => {
+    if (d.heart.hrv != null) return d.heart.hrv;
+    const samples = d.heart.hrvSamples;
+    return samples.reduce((s, x) => s + x.value, 0) / samples.length;
+  });
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  const range = maxVal - minVal || 1;
+  const xFor = (i) => padL + i / (days.length - 1 || 1) * plotW;
+  const yFor = (v) => padT + plotH - (v - minVal) / range * plotH;
+  const gridCount = 4;
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= gridCount; g++) {
+    const y = padT + g / gridCount * plotH;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W - padR, y);
+    ctx.stroke();
+    const label = Math.round(maxVal - g / gridCount * range);
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(String(label), padL - 4, y + 3);
+  }
+  const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+  grad.addColorStop(0, hexToRgba(theme.colors.secondary, 0.35));
+  grad.addColorStop(1, hexToRgba(theme.colors.secondary, 0.02));
+  ctx.beginPath();
+  ctx.moveTo(xFor(0), padT + plotH);
+  ctx.lineTo(xFor(0), yFor(values[0]));
+  for (let i = 1; i < days.length; i++) {
+    const x0 = xFor(i - 1), y0 = yFor(values[i - 1]);
+    const x1 = xFor(i), y1 = yFor(values[i]);
+    const mx = (x0 + x1) / 2;
+    ctx.bezierCurveTo(mx, y0, mx, y1, x1, y1);
+  }
+  ctx.lineTo(xFor(days.length - 1), padT + plotH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(xFor(0), yFor(values[0]));
+  for (let i = 1; i < days.length; i++) {
+    const x0 = xFor(i - 1), y0 = yFor(values[i - 1]);
+    const x1 = xFor(i), y1 = yFor(values[i]);
+    const mx = (x0 + x1) / 2;
+    ctx.bezierCurveTo(mx, y0, mx, y1, x1, y1);
+  }
+  ctx.strokeStyle = hexToRgba(theme.colors.secondary, 0.9);
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = "round";
+  ctx.stroke();
+  days.forEach((day, i) => {
+    var _a, _b;
+    const x = xFor(i);
+    const y = yFor(values[i]);
+    ctx.beginPath();
+    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = theme.colors.secondary;
+    ctx.fill();
+    hits.add({
+      shape: "circle",
+      cx: x,
+      cy: y,
+      r: 10,
+      title: formatDate(day.date),
+      details: [
+        { label: "HRV", value: `${values[i].toFixed(1)} ms` },
+        ...((_a = day.heart) == null ? void 0 : _a.restingHeartRate) ? [{ label: "Resting HR", value: `${day.heart.restingHeartRate} bpm` }] : [],
+        ...((_b = day.heart) == null ? void 0 : _b.averageHeartRate) ? [{ label: "Avg HR", value: `${Math.round(day.heart.averageHeartRate)} bpm` }] : []
+      ],
+      payload: day
+    });
+  });
+  const labelStep = Math.max(1, Math.floor(days.length / 5));
+  ctx.fillStyle = theme.muted;
+  ctx.font = "8px sans-serif";
+  ctx.textAlign = "center";
+  days.forEach((day, i) => {
+    if (i % labelStep !== 0 && i !== days.length - 1) return;
+    const d = /* @__PURE__ */ new Date(day.date + "T00:00:00");
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    ctx.fillText(label, xFor(i), H - 6);
+  });
+  const avg2 = values.reduce((s, v) => s + v, 0) / values.length;
+  statsEl.innerHTML = `<span>Avg HRV <strong>${avg2.toFixed(1)} ms</strong></span><span>Min <strong>${minVal.toFixed(1)}</strong></span><span>Max <strong>${maxVal.toFixed(1)}</strong></span>`;
+};
+
+// src/visualizations/activity-heatmap.ts
+var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a, _b, _c, _d;
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const days = data.filter((d) => d.activity);
+  if (!days.length) return;
+  const metric = (_a = config.metric) != null ? _a : "steps";
+  const getValue = (d) => {
+    if (!d.activity) return 0;
+    if (metric === "calories") return d.activity.activeCalories || 0;
+    if (metric === "distance") return d.activity.walkingRunningDistanceKm || 0;
+    return d.activity.steps || 0;
+  };
+  const byDate = {};
+  let firstDate = days[0].date;
+  let lastDate = days[days.length - 1].date;
+  for (const d of days) {
+    byDate[d.date] = getValue(d);
+    if (d.date < firstDate) firstDate = d.date;
+    if (d.date > lastDate) lastDate = d.date;
+  }
+  const startDay = /* @__PURE__ */ new Date(firstDate + "T00:00:00");
+  startDay.setDate(startDay.getDate() - startDay.getDay());
+  const endDay = /* @__PURE__ */ new Date(lastDate + "T00:00:00");
+  endDay.setDate(endDay.getDate() + (6 - endDay.getDay()));
+  const totalDays = Math.round((endDay.getTime() - startDay.getTime()) / 864e5) + 1;
+  const totalWeeks = Math.ceil(totalDays / 7);
+  const padL = 28, padR = 8, padT = 20, padB = 8;
+  const cellW = (W - padL - padR) / totalWeeks;
+  const cellH = (H - padT - padB) / 7;
+  const gap = Math.max(1.5, Math.min(cellW, cellH) * 0.12);
+  const radius = Math.max(1, Math.min(cellW, cellH) * 0.18);
+  const maxVal = Math.max(...Object.values(byDate), 1);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "8px sans-serif";
+  ctx.textAlign = "right";
+  for (let dow = 0; dow < 7; dow++) {
+    if (dow % 2 === 1) continue;
+    const y = padT + dow * cellH + cellH / 2 + 3;
+    ctx.fillText(DOW[dow], padL - 3, y);
+  }
+  let lastMonth = -1;
+  ctx.textAlign = "center";
+  for (let w = 0; w < totalWeeks; w++) {
+    const weekStart = new Date(startDay);
+    weekStart.setDate(weekStart.getDate() + w * 7);
+    const mo = weekStart.getMonth();
+    if (mo !== lastMonth) {
+      lastMonth = mo;
+      const label = weekStart.toLocaleDateString("en-US", { month: "short" });
+      ctx.fillText(label, padL + w * cellW + cellW / 2, padT - 5);
+    }
+  }
+  for (let w = 0; w < totalWeeks; w++) {
+    for (let dow = 0; dow < 7; dow++) {
+      const cellDate = new Date(startDay);
+      cellDate.setDate(cellDate.getDate() + w * 7 + dow);
+      const iso = cellDate.toISOString().slice(0, 10);
+      const val = (_b = byDate[iso]) != null ? _b : null;
+      const x = padL + w * cellW + gap / 2;
+      const y = padT + dow * cellH + gap / 2;
+      const cw = cellW - gap;
+      const ch = cellH - gap;
+      if (val === null) {
+        ctx.strokeStyle = hexToRgba(theme.fg, 0.06);
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.roundRect(x, y, cw, ch, radius);
+        ctx.stroke();
+        continue;
+      }
+      const t = Math.pow(val / maxVal, 0.6);
+      ctx.fillStyle = hexToRgba(theme.colors.accent, 0.1 + t * 0.85);
+      ctx.beginPath();
+      ctx.roundRect(x, y, cw, ch, radius);
+      ctx.fill();
+      hits.add({
+        shape: "rect",
+        x,
+        y,
+        w: cw,
+        h: ch,
+        title: formatDate(iso),
+        details: [
+          { label: metric.charAt(0).toUpperCase() + metric.slice(1), value: formatMetric(metric, val) },
+          ...byDate[iso] != null && metric !== "steps" && ((_d = (_c = days.find((d) => d.date === iso)) == null ? void 0 : _c.activity) == null ? void 0 : _d.steps) ? [{ label: "Steps", value: (days.find((d) => d.date === iso).activity.steps || 0).toLocaleString() }] : []
+        ],
+        payload: iso
+      });
+    }
+  }
+  const total = Object.values(byDate).reduce((s, v) => s + v, 0);
+  const avg2 = total / Object.keys(byDate).length;
+  statsEl.innerHTML = `<span>${metric.charAt(0).toUpperCase() + metric.slice(1)} \u2014 Avg <strong>${formatMetric(metric, avg2)}</strong> \xB7 Max <strong>${formatMetric(metric, maxVal)}</strong> \xB7 Total <strong>${formatMetric(metric, total)}</strong></span>`;
+};
+function formatMetric(metric, val) {
+  if (metric === "calories") return `${Math.round(val).toLocaleString()} kcal`;
+  if (metric === "distance") return `${val.toFixed(1)} km`;
+  return Math.round(val).toLocaleString();
+}
+
+// src/visualizations/sleep-quality-bars.ts
+var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const days = data.filter((d) => d.sleep && d.sleep.totalDuration > 0);
+  if (!days.length) return;
+  const padL = 40, padR = 16, padT = 20, padB = 28;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const maxTotal = Math.max(...days.map((d) => d.sleep.totalDuration));
+  const barW = plotW / days.length;
+  const gap = Math.max(1, barW * 0.15);
+  const maxHours = Math.ceil(maxTotal / 3600);
+  const gridStep = maxHours <= 8 ? 2 : 4;
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
+  ctx.lineWidth = 1;
+  for (let h = 0; h <= maxHours; h += gridStep) {
+    const y = padT + plotH - h / maxHours * plotH;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W - padR, y);
+    ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(`${h}h`, padL - 4, y + 3);
+  }
+  const legend = [
+    { label: "Deep", color: theme.colors.sleep.deep },
+    { label: "REM", color: theme.colors.sleep.rem },
+    { label: "Core", color: theme.colors.sleep.core },
+    { label: "Awake", color: theme.colors.sleep.awake }
+  ];
+  let lx = padL;
+  ctx.font = "8px sans-serif";
+  ctx.textAlign = "left";
+  for (const item of legend) {
+    ctx.fillStyle = item.color;
+    ctx.fillRect(lx, padT - 12, 8, 6);
+    ctx.fillStyle = theme.muted;
+    ctx.fillText(item.label, lx + 10, padT - 7);
+    lx += 44;
+  }
+  days.forEach((day, i) => {
+    const sl = day.sleep;
+    const x = padL + i * barW + gap / 2;
+    const bw = barW - gap;
+    const segments = [
+      { secs: sl.deepSleep || 0, color: theme.colors.sleep.deep, label: "Deep" },
+      { secs: sl.remSleep || 0, color: theme.colors.sleep.rem, label: "REM" },
+      { secs: sl.coreSleep || 0, color: theme.colors.sleep.core, label: "Core" },
+      { secs: sl.awakeTime || 0, color: theme.colors.sleep.awake, label: "Awake" }
+    ].filter((s) => s.secs > 0);
+    let stackY = padT + plotH;
+    segments.forEach(({ secs, color, label }, si) => {
+      const segH = secs / maxTotal * plotH;
+      stackY -= segH;
+      const isTop = si === segments.length - 1;
+      const r = isTop ? Math.min(3, bw / 4) : 0;
+      ctx.fillStyle = hexToRgba(color, 0.85);
+      ctx.beginPath();
+      if (isTop) {
+        ctx.roundRect(x, stackY, bw, segH, [r, r, 0, 0]);
+      } else {
+        ctx.rect(x, stackY, bw, segH);
+      }
+      ctx.fill();
+      if (segH > 14) {
+        ctx.fillStyle = hexToRgba(theme.bg, 0.7);
+        ctx.font = "7px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(label, x + bw / 2, stackY + segH / 2 + 2.5);
+      }
+    });
+    const d = /* @__PURE__ */ new Date(day.date + "T00:00:00");
+    const lbl = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    ctx.fillStyle = theme.muted;
+    ctx.font = "8px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(lbl, x + bw / 2, H - 6);
+    const barTop = padT + plotH - sl.totalDuration / maxTotal * plotH;
+    hits.add({
+      shape: "rect",
+      x,
+      y: barTop,
+      w: bw,
+      h: plotH - (barTop - padT),
+      title: formatDate(day.date),
+      details: [
+        { label: "Total", value: formatDuration(sl.totalDuration) },
+        ...sl.deepSleep ? [{ label: "Deep", value: formatDuration(sl.deepSleep) }] : [],
+        ...sl.remSleep ? [{ label: "REM", value: formatDuration(sl.remSleep) }] : [],
+        ...sl.coreSleep ? [{ label: "Core", value: formatDuration(sl.coreSleep) }] : [],
+        ...sl.awakeTime ? [{ label: "Awake", value: formatDuration(sl.awakeTime) }] : [],
+        ...sl.bedtime ? [{
+          label: "Bedtime",
+          value: new Date(sl.bedtime).toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit"
+          })
+        }] : []
+      ],
+      payload: day
+    });
+  });
+  const avgTotal = days.reduce((s, d) => s + d.sleep.totalDuration, 0) / days.length;
+  const avgDeep = days.reduce((s, d) => s + (d.sleep.deepSleep || 0), 0) / days.length;
+  const avgRem = days.reduce((s, d) => s + (d.sleep.remSleep || 0), 0) / days.length;
+  statsEl.innerHTML = `<span>Avg sleep <strong>${formatDuration(avgTotal)}</strong></span><span>Avg deep <strong>${formatDuration(avgDeep)}</strong></span><span>Avg REM <strong>${formatDuration(avgRem)}</strong></span>`;
+};
+
+// src/visualizations/workout-log.ts
+var TYPE_LABELS = {
+  running: "Run",
+  cycling: "Bike",
+  walking: "Walk",
+  swimming: "Swim",
+  hiking: "Hike",
+  yoga: "Yoga",
+  strength: "Lift",
+  "strength training": "Lift",
+  elliptical: "Elli",
+  rowing: "Row",
+  pilates: "Pil",
+  "high intensity interval training": "HIIT",
+  hiit: "HIIT",
+  tennis: "Ten",
+  basketball: "Bball",
+  soccer: "Soccer",
+  dance: "Dance",
+  "core training": "Core",
+  "functional strength training": "Func"
+};
+function shortLabel(type) {
+  var _a;
+  const lower = type.toLowerCase().trim();
+  return (_a = TYPE_LABELS[lower]) != null ? _a : type.slice(0, 5);
+}
+function typeColorIndex(type) {
+  let hash = 0;
+  for (let i = 0; i < type.length; i++) hash = hash * 31 + type.charCodeAt(i) & 65535;
+  return hash % 6;
+}
+var HUE_OFFSETS = [0, 40, 80, 160, 210, 280];
+var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const entries = [];
+  for (const day of data) {
+    if (!day.workouts) continue;
+    for (const w of day.workouts) {
+      if (!w.duration) continue;
+      entries.push({
+        date: day.date,
+        type: w.type || "Workout",
+        duration: w.duration,
+        calories: w.calories || 0,
+        distance: w.distance,
+        durationFormatted: w.durationFormatted,
+        distanceFormatted: w.distanceFormatted
+      });
+    }
+  }
+  if (!entries.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No workouts in range", W / 2, H / 2);
+    return;
+  }
+  const padL = 40, padR = 16, padT = 12, padB = 8;
+  const plotW = W - padL - padR;
+  const maxDuration = Math.max(...entries.map((e) => e.duration));
+  const rowH = Math.min(28, (H - padT - padB) / entries.length);
+  const barH = rowH * 0.55;
+  const gap = (rowH - barH) / 2;
+  const radius = barH / 3;
+  const visibleCount = Math.floor((H - padT - padB) / rowH);
+  const visible = entries.slice(0, visibleCount);
+  const maxMin = Math.ceil(maxDuration / 60);
+  const tickStep = maxMin <= 60 ? 15 : maxMin <= 120 ? 30 : 60;
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
+  ctx.lineWidth = 1;
+  ctx.fillStyle = theme.muted;
+  ctx.font = "8px sans-serif";
+  ctx.textAlign = "center";
+  for (let t = 0; t <= maxMin; t += tickStep) {
+    const x = padL + t / maxMin * plotW;
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + visible.length * rowH);
+    ctx.stroke();
+    ctx.fillText(`${t}m`, x, padT - 2);
+  }
+  visible.forEach((entry, i) => {
+    var _a, _b;
+    const y = padT + i * rowH + gap;
+    const barW = entry.duration / (maxMin * 60) * plotW;
+    const ci = typeColorIndex(entry.type);
+    const hue = HUE_OFFSETS[ci];
+    const barColor = `hsl(${hue},60%,${theme.isDark ? 55 : 42}%)`;
+    ctx.fillStyle = hexToRgba(barColor, 0.8);
+    ctx.beginPath();
+    ctx.roundRect(padL, y, Math.max(barW, 4), barH, radius);
+    ctx.fill();
+    ctx.fillStyle = theme.muted;
+    ctx.font = "8px sans-serif";
+    ctx.textAlign = "right";
+    const d = /* @__PURE__ */ new Date(entry.date + "T00:00:00");
+    const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    ctx.fillText(dateStr, padL - 3, y + barH / 2 + 3);
+    ctx.fillStyle = barW > 30 ? hexToRgba(theme.bg, 0.8) : theme.fg;
+    ctx.font = `bold 7px sans-serif`;
+    ctx.textAlign = barW > 30 ? "left" : "left";
+    ctx.fillText(shortLabel(entry.type), barW > 30 ? padL + 4 : padL + barW + 4, y + barH / 2 + 2.5);
+    hits.add({
+      shape: "rect",
+      x: padL,
+      y,
+      w: Math.max(barW, 24),
+      h: barH,
+      title: `${formatDate(entry.date)} \u2014 ${entry.type}`,
+      details: [
+        { label: "Duration", value: (_a = entry.durationFormatted) != null ? _a : formatDuration(entry.duration) },
+        ...entry.calories ? [{ label: "Calories", value: `${Math.round(entry.calories)} kcal` }] : [],
+        ...entry.distance != null ? [{ label: "Distance", value: (_b = entry.distanceFormatted) != null ? _b : `${entry.distance.toFixed(2)} km` }] : []
+      ],
+      payload: entry
+    });
+  });
+  if (entries.length > visibleCount) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "8px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(`+${entries.length - visibleCount} more \u2014 increase height to see all`, padL, H - 2);
+  }
+  const totalDur = entries.reduce((s, e) => s + e.duration, 0);
+  const totalCal = entries.reduce((s, e) => s + e.calories, 0);
+  const types = [...new Set(entries.map((e) => e.type))];
+  statsEl.innerHTML = `<span>${entries.length} workouts</span><span>Total time <strong>${formatDuration(totalDur)}</strong></span>` + (totalCal ? `<span>Total cal <strong>${Math.round(totalCal).toLocaleString()} kcal</strong></span>` : "") + `<span>Types: <strong>${types.slice(0, 4).join(", ")}${types.length > 4 ? "\u2026" : ""}</strong></span>`;
+};
+
 // src/visualizations/index.ts
 var VISUALIZATIONS = {
   "heart-terrain": renderHeartTerrain,
@@ -1355,7 +1800,11 @@ var VISUALIZATIONS = {
   "breathing-wave": renderBreathingWave,
   "vitals-rings": renderVitalsRings,
   "walking-symmetry": renderWalkingSymmetry,
-  "sleep-architecture": renderSleepArchitecture
+  "sleep-architecture": renderSleepArchitecture,
+  "hrv-trend": renderHrvTrend,
+  "activity-heatmap": renderActivityHeatmap,
+  "sleep-quality-bars": renderSleepQualityBars,
+  "workout-log": renderWorkoutLog
 };
 
 // src/visualizations/intro-stats.ts

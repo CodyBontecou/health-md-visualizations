@@ -7,6 +7,10 @@ import { renderBreathingWave } from "./breathing-wave";
 import { renderVitalsRings } from "./vitals-rings";
 import { renderWalkingSymmetry } from "./walking-symmetry";
 import { renderSleepArchitecture } from "./sleep-architecture";
+import { renderHrvTrend } from "./hrv-trend";
+import { renderActivityHeatmap } from "./activity-heatmap";
+import { renderSleepQualityBars } from "./sleep-quality-bars";
+import { renderWorkoutLog } from "./workout-log";
 
 export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"heart-terrain": renderHeartTerrain,
@@ -17,4 +21,8 @@ export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"vitals-rings": renderVitalsRings,
 	"walking-symmetry": renderWalkingSymmetry,
 	"sleep-architecture": renderSleepArchitecture,
+	"hrv-trend": renderHrvTrend,
+	"activity-heatmap": renderActivityHeatmap,
+	"sleep-quality-bars": renderSleepQualityBars,
+	"workout-log": renderWorkoutLog,
 };
