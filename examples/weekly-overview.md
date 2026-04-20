@@ -15,6 +15,14 @@ type: intro-stats
 last: 7
 ```
 
+### Summary Card — Heart Rate
+
+```health-viz
+type: summary-card
+metric: heart-rate
+last: 14
+```
+
 ---
 
 ## Activity Heatmap — Steps

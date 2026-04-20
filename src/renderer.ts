@@ -2,8 +2,7 @@ import { MarkdownPostProcessorContext, MarkdownRenderChild } from "obsidian";
 import type HealthMdPlugin from "./main";
 import { HealthDay, HitRegion, HitRegistry, VizConfig } from "./types";
 import { setupCanvas, resolveTheme, formatDuration } from "./canvas-utils";
-import { VISUALIZATIONS } from "./visualizations";
-import { renderIntroStats } from "./visualizations/intro-stats";
+import { HTML_VISUALIZATIONS, VISUALIZATIONS } from "./visualizations";
 
 function parseConfig(source: string): VizConfig {
 	const config: VizConfig = { type: "" };
@@ -474,8 +473,9 @@ export async function renderCodeBlock(
 		return;
 	}
 
-	// Intro stats is HTML-only, no canvas
-	if (config.type === "intro-stats") {
+	// HTML-only visualizations (no canvas)
+	const htmlRenderFn = HTML_VISUALIZATIONS[config.type];
+	if (htmlRenderFn) {
 		const allData = await plugin.dataLoader.load();
 		if (!allData.length) {
 			el.createEl("p", {
@@ -491,14 +491,14 @@ export async function renderCodeBlock(
 			return;
 		}
 		const container = el.createDiv({ cls: "health-md-container" });
-		function drawIntro(): void {
+		function drawHtml(): void {
 			container.empty();
-			renderIntroStats(data, container, config, resolveTheme(plugin.settings));
+			htmlRenderFn(data, container, config, resolveTheme(plugin.settings));
 		}
-		drawIntro();
-		const introChild = new VizRenderChild(container);
-		introChild.setUnregisterDraw(plugin.registerDraw(drawIntro));
-		ctx.addChild(introChild);
+		drawHtml();
+		const htmlChild = new VizRenderChild(container);
+		htmlChild.setUnregisterDraw(plugin.registerDraw(drawHtml));
+		ctx.addChild(htmlChild);
 		return;
 	}
 

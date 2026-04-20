@@ -1,4 +1,4 @@
-import { RenderFn } from "../types";
+import { HtmlRenderFn, RenderFn } from "../types";
 import { renderHeartTerrain } from "./heart-terrain";
 import { renderSleepPolar } from "./sleep-polar";
 import { renderStepSpiral } from "./step-spiral";
@@ -11,6 +11,8 @@ import { renderHrvTrend } from "./hrv-trend";
 import { renderActivityHeatmap } from "./activity-heatmap";
 import { renderSleepQualityBars } from "./sleep-quality-bars";
 import { renderWorkoutLog } from "./workout-log";
+import { renderIntroStats } from "./intro-stats";
+import { renderSummaryCard } from "./summary-card";
 
 export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"heart-terrain": renderHeartTerrain,
@@ -25,4 +27,9 @@ export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"activity-heatmap": renderActivityHeatmap,
 	"sleep-quality-bars": renderSleepQualityBars,
 	"workout-log": renderWorkoutLog,
+};
+
+export const HTML_VISUALIZATIONS: Record<string, HtmlRenderFn> = {
+	"intro-stats": renderIntroStats,
+	"summary-card": renderSummaryCard,
 };
