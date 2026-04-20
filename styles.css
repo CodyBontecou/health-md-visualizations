@@ -160,6 +160,65 @@
 	font-variant-numeric: tabular-nums;
 }
 
+/* Trend tile */
+.health-md-trend-tile {
+	gap: 6px;
+}
+
+.health-md-trend-header {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+}
+
+.health-md-trend-name {
+	font-size: 0.95em;
+	font-weight: 600;
+}
+
+.health-md-trend-delta-row {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	line-height: 1.1;
+}
+
+.health-md-trend-arrow {
+	font-size: 1.6em;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.health-md-trend-pct {
+	font-size: 1.6em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-trend-abs {
+	font-size: 0.85em;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-trend-narrative {
+	font-size: 0.82em;
+	line-height: 1.35;
+}
+
+.health-md-trend-consistency {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.78em;
+}
+
+.health-md-trend-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	display: inline-block;
+}
+
 /* Intro stats grid */
 .health-md-intro-grid {
 	display: grid;

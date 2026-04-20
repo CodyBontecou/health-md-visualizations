@@ -13,6 +13,7 @@ import { renderSleepQualityBars } from "./sleep-quality-bars";
 import { renderWorkoutLog } from "./workout-log";
 import { renderIntroStats } from "./intro-stats";
 import { renderSummaryCard } from "./summary-card";
+import { renderTrendTile } from "./trend-tile";
 import { renderActivityRings } from "./activity-rings";
 import { renderHeartRange } from "./heart-range";
 import { renderBarChart } from "./bar-chart";
@@ -42,4 +43,5 @@ export const VISUALIZATIONS: Record<string, RenderFn> = {
 export const HTML_VISUALIZATIONS: Record<string, HtmlRenderFn> = {
 	"intro-stats": renderIntroStats,
 	"summary-card": renderSummaryCard,
+	"trend-tile": renderTrendTile,
 };

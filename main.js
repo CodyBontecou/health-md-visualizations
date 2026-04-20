@@ -517,13 +517,13 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     const globalMax = Math.max(...heartDays.map((d) => d.heart.heartRateMax || d.heart.averageHeartRate));
     const colW2 = W / heartDays.length;
     heartDays.forEach((day, x) => {
-      const avg3 = day.heart.averageHeartRate;
-      const lo = day.heart.heartRateMin || avg3;
-      const hi = day.heart.heartRateMax || avg3;
+      const avg4 = day.heart.averageHeartRate;
+      const lo = day.heart.heartRateMin || avg4;
+      const hi = day.heart.heartRateMax || avg4;
       const grad = ctx.createLinearGradient(0, H, 0, 0);
       const tLo = (lo - globalMin) / (globalMax - globalMin || 1);
       const tHi = (hi - globalMin) / (globalMax - globalMin || 1);
-      const tAvg = (avg3 - globalMin) / (globalMax - globalMin || 1);
+      const tAvg = (avg4 - globalMin) / (globalMax - globalMin || 1);
       grad.addColorStop(0, `hsl(${lerp(220, 0, tLo)},70%,${theme.isDark ? 30 : 45}%)`);
       grad.addColorStop(0.5, `hsl(${lerp(220, 0, tAvg)},80%,${theme.isDark ? 45 : 55}%)`);
       grad.addColorStop(1, `hsl(${lerp(220, 0, tHi)},90%,${theme.isDark ? 55 : 65}%)`);
@@ -537,7 +537,7 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
         h: H,
         title: formatDate(day.date),
         details: [
-          { label: "Avg", value: `${Math.round(avg3)} bpm` },
+          { label: "Avg", value: `${Math.round(avg4)} bpm` },
           { label: "Min", value: `${lo} bpm` },
           { label: "Max", value: `${hi} bpm` }
         ],
@@ -852,14 +852,14 @@ function getBloodOxygenValues(day) {
   if ((_b = (_a = day.vitals) == null ? void 0 : _a.bloodOxygenSamples) == null ? void 0 : _b.length) {
     return day.vitals.bloodOxygenSamples.map((s) => s.value || s.percent || 0);
   }
-  const avg3 = (_e = (_c = day.vitals) == null ? void 0 : _c.bloodOxygenAvg) != null ? _e : (_d = day.vitals) == null ? void 0 : _d.bloodOxygenPercent;
-  if (avg3 !== void 0) {
+  const avg4 = (_e = (_c = day.vitals) == null ? void 0 : _c.bloodOxygenAvg) != null ? _e : (_d = day.vitals) == null ? void 0 : _d.bloodOxygenPercent;
+  if (avg4 !== void 0) {
     const min = (_f = day.vitals) == null ? void 0 : _f.bloodOxygenMin;
     const max = (_g = day.vitals) == null ? void 0 : _g.bloodOxygenMax;
     if (min !== void 0 && max !== void 0 && min !== max) {
-      return [min, avg3, max];
+      return [min, avg4, max];
     }
-    return [avg3];
+    return [avg4];
   }
   return [];
 }
@@ -934,14 +934,14 @@ function getRespiratoryValues(day) {
   if ((_b = (_a = day.vitals) == null ? void 0 : _a.respiratoryRateSamples) == null ? void 0 : _b.length) {
     return day.vitals.respiratoryRateSamples.map((s) => s.value);
   }
-  const avg3 = (_e = (_c = day.vitals) == null ? void 0 : _c.respiratoryRate) != null ? _e : (_d = day.vitals) == null ? void 0 : _d.respiratoryRateAvg;
-  if (avg3 !== void 0) {
+  const avg4 = (_e = (_c = day.vitals) == null ? void 0 : _c.respiratoryRate) != null ? _e : (_d = day.vitals) == null ? void 0 : _d.respiratoryRateAvg;
+  if (avg4 !== void 0) {
     const min = (_f = day.vitals) == null ? void 0 : _f.respiratoryRateMin;
     const max = (_g = day.vitals) == null ? void 0 : _g.respiratoryRateMax;
     if (min !== void 0 && max !== void 0 && min !== max) {
-      return [min, avg3, max];
+      return [min, avg4, max];
     }
-    return [avg3];
+    return [avg4];
   }
   return [];
 }
@@ -1010,11 +1010,11 @@ var renderBreathingWave = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       payload: day
     });
   });
-  const avg3 = (allVals.reduce((a, b) => a + b, 0) / allVals.length).toFixed(
+  const avg4 = (allVals.reduce((a, b) => a + b, 0) / allVals.length).toFixed(
     1
   );
   statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avg3}</div><div class="health-md-stat-label">Avg br/min</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avg4}</div><div class="health-md-stat-label">Avg br/min</div></div>
 		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.muted}">${minR.toFixed(1)}</div><div class="health-md-stat-label">Min</div></div>
 		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${maxR.toFixed(1)}</div><div class="health-md-stat-label">Max</div></div>
 	`;
@@ -1442,8 +1442,8 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     ctx.fillText(label, xFor(i), H - 6);
   });
-  const avg3 = values.reduce((s, v) => s + v, 0) / values.length;
-  statsEl.innerHTML = `<span>Avg HRV <strong>${avg3.toFixed(1)} ms</strong></span><span>Min <strong>${minVal.toFixed(1)}</strong></span><span>Max <strong>${maxVal.toFixed(1)}</strong></span>`;
+  const avg4 = values.reduce((s, v) => s + v, 0) / values.length;
+  statsEl.innerHTML = `<span>Avg HRV <strong>${avg4.toFixed(1)} ms</strong></span><span>Min <strong>${minVal.toFixed(1)}</strong></span><span>Max <strong>${maxVal.toFixed(1)}</strong></span>`;
 };
 
 // src/visualizations/activity-heatmap.ts
@@ -1540,8 +1540,8 @@ var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
     }
   }
   const total = Object.values(byDate).reduce((s, v) => s + v, 0);
-  const avg3 = total / Object.keys(byDate).length;
-  statsEl.innerHTML = `<span>${metric.charAt(0).toUpperCase() + metric.slice(1)} \u2014 Avg <strong>${formatMetric(metric, avg3)}</strong> \xB7 Max <strong>${formatMetric(metric, maxVal)}</strong> \xB7 Total <strong>${formatMetric(metric, total)}</strong></span>`;
+  const avg4 = total / Object.keys(byDate).length;
+  statsEl.innerHTML = `<span>${metric.charAt(0).toUpperCase() + metric.slice(1)} \u2014 Avg <strong>${formatMetric(metric, avg4)}</strong> \xB7 Max <strong>${formatMetric(metric, maxVal)}</strong> \xB7 Total <strong>${formatMetric(metric, total)}</strong></span>`;
 };
 function formatMetric(metric, val) {
   if (metric === "calories") return `${Math.round(val).toLocaleString()} kcal`;
@@ -2088,6 +2088,239 @@ var renderSummaryCard = (data, el, config, theme) => {
   }
 };
 
+// src/visualizations/trend-tile.ts
+var METRICS2 = {
+  "resting-heart-rate": {
+    category: "HEART",
+    color: "#fa114f",
+    label: "Resting Heart Rate",
+    unit: "bpm",
+    decimals: 0,
+    higherIsBetter: false,
+    extract: (d) => {
+      var _a, _b;
+      return (_b = (_a = d.heart) == null ? void 0 : _a.restingHeartRate) != null ? _b : null;
+    }
+  },
+  "hrv": {
+    category: "HEART",
+    color: "#fa114f",
+    label: "Heart Rate Variability",
+    unit: "ms",
+    decimals: 1,
+    higherIsBetter: true,
+    extract: (d) => {
+      var _a, _b;
+      if (((_a = d.heart) == null ? void 0 : _a.hrv) != null) return d.heart.hrv;
+      const s = (_b = d.heart) == null ? void 0 : _b.hrvSamples;
+      if (s && s.length) return s.reduce((acc, x) => acc + x.value, 0) / s.length;
+      return null;
+    }
+  },
+  "steps": {
+    category: "ACTIVITY",
+    color: "#ff8e00",
+    label: "Steps",
+    unit: "steps",
+    decimals: 0,
+    higherIsBetter: true,
+    extract: (d) => {
+      var _a, _b;
+      return ((_b = (_a = d.activity) == null ? void 0 : _a.steps) != null ? _b : 0) > 0 ? d.activity.steps : null;
+    }
+  },
+  "vo2max": {
+    category: "HEART",
+    color: "#fa114f",
+    label: "Cardio Fitness",
+    unit: "ml/kg\xB7min",
+    decimals: 1,
+    higherIsBetter: true,
+    extract: (d) => {
+      var _a, _b;
+      return (_b = (_a = d.activity) == null ? void 0 : _a.vo2Max) != null ? _b : null;
+    }
+  },
+  "walking-speed": {
+    category: "ACTIVITY",
+    color: "#ff8e00",
+    label: "Walking Speed",
+    unit: "m/s",
+    decimals: 2,
+    higherIsBetter: true,
+    extract: (d) => {
+      var _a, _b;
+      return (_b = (_a = d.mobility) == null ? void 0 : _a.walkingSpeed) != null ? _b : null;
+    }
+  },
+  "sleep-duration": {
+    category: "SLEEP",
+    color: "#715afc",
+    label: "Sleep Duration",
+    unit: "h",
+    decimals: 1,
+    higherIsBetter: true,
+    extract: (d) => {
+      var _a;
+      const v = (_a = d.sleep) == null ? void 0 : _a.totalDuration;
+      return v != null && v > 0 ? v / 3600 : null;
+    }
+  },
+  "active-calories": {
+    category: "ACTIVITY",
+    color: "#ff8e00",
+    label: "Active Energy",
+    unit: "CAL",
+    decimals: 0,
+    higherIsBetter: true,
+    extract: (d) => {
+      var _a, _b;
+      return ((_b = (_a = d.activity) == null ? void 0 : _a.activeCalories) != null ? _b : 0) > 0 ? d.activity.activeCalories : null;
+    }
+  }
+};
+function avg2(nums) {
+  return nums.reduce((s, n) => s + n, 0) / nums.length;
+}
+function formatValue2(v, meta) {
+  if (meta.unit === "steps") return Math.round(v).toLocaleString();
+  if (meta.unit === "CAL") return `${Math.round(v)}`;
+  if (meta.unit === "h") {
+    const h = Math.floor(v);
+    const m = Math.round((v - h) * 60);
+    return `${h}h ${m}m`;
+  }
+  return v.toFixed(meta.decimals);
+}
+function buildSparkline2(current, prior, color, isDark) {
+  if (!current.length) return "";
+  const W = 120, H = 36, padY = 3;
+  const plotH = H - padY * 2;
+  const combined = [...prior, ...current];
+  const min = Math.min(...combined);
+  const max = Math.max(...combined);
+  const range = max - min || 1;
+  function pathFor(values, offsetFrac, widthFrac) {
+    if (values.length < 2) return "";
+    const x0 = offsetFrac * W;
+    const x1 = (offsetFrac + widthFrac) * W;
+    const xFor = (i) => x0 + i / (values.length - 1) * (x1 - x0);
+    const yFor = (v) => padY + plotH - (v - min) / range * plotH;
+    let p = `M ${xFor(0).toFixed(2)} ${yFor(values[0]).toFixed(2)}`;
+    for (let i = 1; i < values.length; i++) {
+      const px0 = xFor(i - 1), py0 = yFor(values[i - 1]);
+      const px1 = xFor(i), py1 = yFor(values[i]);
+      const mx = (px0 + px1) / 2;
+      p += ` C ${mx.toFixed(2)} ${py0.toFixed(2)}, ${mx.toFixed(2)} ${py1.toFixed(2)}, ${px1.toFixed(2)} ${py1.toFixed(2)}`;
+    }
+    return p;
+  }
+  const priorFrac = prior.length / (prior.length + current.length || 1);
+  const priorPath = pathFor(prior, 0, priorFrac);
+  const currentPath = pathFor(current, priorFrac, 1 - priorFrac);
+  const priorAlpha = isDark ? 0.4 : 0.35;
+  return `
+		<svg class="health-md-summary-spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+			${priorPath ? `<path d="${priorPath}" fill="none" stroke="${color}" stroke-opacity="${priorAlpha}" stroke-width="1.25" stroke-dasharray="3 2" vector-effect="non-scaling-stroke"/>` : ""}
+			${currentPath ? `<path d="${currentPath}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>` : ""}
+		</svg>
+	`;
+}
+function splitWindows2(data, currentWindow, priorWindow) {
+  if (data.length < currentWindow + 1) {
+    const mid = Math.floor(data.length / 2);
+    return { current: data.slice(mid), prior: data.slice(0, mid) };
+  }
+  const current = data.slice(-currentWindow);
+  const priorEnd = data.length - currentWindow;
+  const priorStart = Math.max(0, priorEnd - priorWindow);
+  const prior = data.slice(priorStart, priorEnd);
+  return { current, prior };
+}
+function narrative(meta, delta, windowDays) {
+  const absPct = Math.abs(delta);
+  if (absPct < 1) {
+    return `Your ${meta.label.toLowerCase()} has been steady over the past ${windowDays} days.`;
+  }
+  const direction = delta > 0 ? "higher" : "lower";
+  return `Your ${meta.label.toLowerCase()} is ${direction} than it was ${windowDays} days ago.`;
+}
+var renderTrendTile = (data, el, config, theme) => {
+  const metricId = config.metric || "resting-heart-rate";
+  const meta = METRICS2[metricId];
+  if (!meta) {
+    el.createEl("p", {
+      text: `Unknown metric: ${metricId}`,
+      cls: "health-md-error"
+    });
+    return;
+  }
+  const currentWindow = Number(config.currentWindow) || 90;
+  const priorWindow = Number(config.priorWindow) || 90;
+  const { current, prior } = splitWindows2(data, currentWindow, priorWindow);
+  const currentVals = current.map(meta.extract).filter((v) => v != null);
+  const priorVals = prior.map(meta.extract).filter((v) => v != null);
+  if (!currentVals.length) {
+    el.createEl("p", {
+      text: `No ${meta.label.toLowerCase()} data in range.`,
+      cls: "health-md-error"
+    });
+    return;
+  }
+  const card = el.createDiv({ cls: "health-md-summary-card health-md-trend-tile" });
+  card.style.setProperty("--hmd-summary-color", meta.color);
+  card.style.borderColor = hexToRgba(theme.fg, 0.12);
+  const header = card.createDiv({ cls: "health-md-trend-header" });
+  const pill = header.createSpan({ cls: "health-md-summary-pill" });
+  pill.textContent = meta.category;
+  pill.style.color = meta.color;
+  const nameEl = header.createSpan({ cls: "health-md-trend-name" });
+  nameEl.textContent = meta.label;
+  nameEl.style.color = theme.fg;
+  const currentAvg = avg2(currentVals);
+  const priorAvg = priorVals.length ? avg2(priorVals) : null;
+  const delta = priorAvg == null || priorAvg === 0 ? 0 : (currentAvg - priorAvg) / priorAvg * 100;
+  const isImprovement = Math.abs(delta) >= 0.5 && (meta.higherIsBetter ? delta > 0 : delta < 0);
+  const isRegression = Math.abs(delta) >= 0.5 && (meta.higherIsBetter ? delta < 0 : delta > 0);
+  const arrow = Math.abs(delta) < 0.5 ? "\u2192" : delta > 0 ? "\u2191" : "\u2193";
+  const arrowColor = isImprovement ? "#30c26a" : isRegression ? "#ff3b30" : theme.muted;
+  const deltaRow = card.createDiv({ cls: "health-md-trend-delta-row" });
+  const arrowEl = deltaRow.createSpan({ cls: "health-md-trend-arrow" });
+  arrowEl.textContent = arrow;
+  arrowEl.style.color = arrowColor;
+  const pctEl = deltaRow.createSpan({ cls: "health-md-trend-pct" });
+  pctEl.textContent = `${Math.abs(delta).toFixed(Math.abs(delta) < 10 ? 1 : 0)}%`;
+  pctEl.style.color = arrowColor;
+  if (priorAvg != null) {
+    const absDelta = currentAvg - priorAvg;
+    const deltaStr = `${absDelta >= 0 ? "+" : "\u2212"}${formatValue2(Math.abs(absDelta), meta)} ${meta.unit === "h" ? "" : meta.unit}`.trim();
+    const absEl = deltaRow.createSpan({ cls: "health-md-trend-abs" });
+    absEl.textContent = deltaStr;
+    absEl.style.color = theme.muted;
+  }
+  const narr = card.createDiv({ cls: "health-md-trend-narrative" });
+  narr.textContent = priorVals.length ? narrative(meta, delta, currentWindow + priorWindow) : `Your ${meta.label.toLowerCase()}: ${formatValue2(currentAvg, meta)} ${meta.unit === "h" ? "" : meta.unit}`.trim();
+  narr.style.color = theme.muted;
+  const spark = buildSparkline2(currentVals, priorVals, meta.color, theme.isDark);
+  if (spark) {
+    const wrap = card.createDiv({ cls: "health-md-summary-spark" });
+    wrap.innerHTML = spark;
+  }
+  if (currentVals.length >= 5) {
+    const mean = currentAvg;
+    const variance = currentVals.reduce((s, v) => s + (v - mean) ** 2, 0) / currentVals.length;
+    const cv = mean !== 0 ? Math.sqrt(variance) / Math.abs(mean) : 0;
+    const label = cv < 0.1 ? "Very consistent" : cv < 0.2 ? "Consistent" : cv < 0.35 ? "Variable" : "Irregular";
+    const dotColor = cv < 0.1 ? "#30c26a" : cv < 0.2 ? "#9ecb3f" : cv < 0.35 ? "#ffa534" : "#ff3b30";
+    const consistency = card.createDiv({ cls: "health-md-trend-consistency" });
+    const dot = consistency.createSpan({ cls: "health-md-trend-dot" });
+    dot.style.backgroundColor = dotColor;
+    const txt = consistency.createSpan();
+    txt.textContent = label;
+    txt.style.color = theme.muted;
+  }
+};
+
 // src/visualizations/activity-rings.ts
 var RING_COLORS = {
   move: "#fa114f",
@@ -2277,13 +2510,13 @@ function extractForMetric(day, metric) {
   }
   const min = day.heart.heartRateMin;
   const max = day.heart.heartRateMax;
-  const avg3 = day.heart.averageHeartRate;
-  if (avg3 == null || avg3 <= 0) return null;
+  const avg4 = day.heart.averageHeartRate;
+  if (avg4 == null || avg4 <= 0) return null;
   return {
     date: day.date,
-    min: min > 0 ? min : avg3,
-    max: max > 0 ? max : avg3,
-    avg: avg3,
+    min: min > 0 ? min : avg4,
+    max: max > 0 ? max : avg4,
+    avg: avg4,
     day
   };
 }
@@ -2428,7 +2661,7 @@ var renderHeartRange = (ctx, data, W, H, config, theme, statsEl, hits) => {
 };
 
 // src/visualizations/bar-chart.ts
-var METRICS2 = {
+var METRICS3 = {
   steps: {
     label: "Steps",
     unit: "steps",
@@ -2511,7 +2744,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   const metricId = config.metric || "steps";
-  const meta = METRICS2[metricId];
+  const meta = METRICS3[metricId];
   if (!meta) {
     ctx.fillStyle = theme.muted;
     ctx.font = "12px sans-serif";
@@ -2909,7 +3142,7 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
 };
 
 // src/visualizations/weekday-average.ts
-var METRICS3 = {
+var METRICS4 = {
   steps: {
     label: "Steps",
     unit: "steps",
@@ -2985,7 +3218,7 @@ var renderWeekdayAverage = (ctx, data, W, H, config, theme, statsEl, hits) => {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   const metricId = config.metric || "steps";
-  const meta = METRICS3[metricId];
+  const meta = METRICS4[metricId];
   if (!meta) {
     ctx.fillStyle = theme.muted;
     ctx.font = "12px sans-serif";
@@ -3163,7 +3396,8 @@ var VISUALIZATIONS = {
 };
 var HTML_VISUALIZATIONS = {
   "intro-stats": renderIntroStats,
-  "summary-card": renderSummaryCard
+  "summary-card": renderSummaryCard,
+  "trend-tile": renderTrendTile
 };
 
 // src/renderer.ts
@@ -3258,7 +3492,7 @@ function sliceTimestamped(arr, fromMs, toMs) {
     return true;
   });
 }
-function avg2(nums) {
+function avg3(nums) {
   let sum = 0;
   for (const n of nums) sum += n;
   return sum / nums.length;
@@ -3277,7 +3511,7 @@ function recomputeHeart(original, sliced) {
   if (hadHrSamples) {
     const values = sampleValues((_a = sliced.heartRateSamples) != null ? _a : []);
     if (values.length) {
-      next.averageHeartRate = avg2(values);
+      next.averageHeartRate = avg3(values);
       next.heartRateMin = Math.min(...values);
       next.heartRateMax = Math.max(...values);
     } else {
@@ -3289,7 +3523,7 @@ function recomputeHeart(original, sliced) {
   const hadHrvSamples = !!original.hrvSamples && original.hrvSamples.length > 0;
   if (hadHrvSamples) {
     const values = sampleValues((_b = sliced.hrvSamples) != null ? _b : []);
-    next.hrv = values.length ? avg2(values) : void 0;
+    next.hrv = values.length ? avg3(values) : void 0;
   }
   return next;
 }
@@ -3300,7 +3534,7 @@ function recomputeVitals(original, sliced) {
   if (hadOxSamples) {
     const values = sampleValues((_a = sliced.bloodOxygenSamples) != null ? _a : []);
     if (values.length) {
-      const a = avg2(values);
+      const a = avg3(values);
       next.bloodOxygenAvg = a;
       next.bloodOxygenMin = Math.min(...values);
       next.bloodOxygenMax = Math.max(...values);
@@ -3316,7 +3550,7 @@ function recomputeVitals(original, sliced) {
   if (hadRespSamples) {
     const values = sampleValues((_b = sliced.respiratoryRateSamples) != null ? _b : []);
     if (values.length) {
-      const a = avg2(values);
+      const a = avg3(values);
       next.respiratoryRateAvg = a;
       next.respiratoryRateMin = Math.min(...values);
       next.respiratoryRateMax = Math.max(...values);

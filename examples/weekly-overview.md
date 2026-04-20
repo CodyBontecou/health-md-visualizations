@@ -25,6 +25,16 @@ last: 14
 
 ---
 
+## Trend Tile (Resting HR 90d)
+
+```health-viz
+type: trend-tile
+metric: resting-heart-rate
+last: 180
+```
+
+---
+
 ## Weekday Averages (Steps)
 
 ```health-viz
