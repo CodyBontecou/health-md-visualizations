@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "obsidian_health_md",
+  "project_id": "0c9bfb44-2e18-4b76-96d9-7789e9b134d8"
+}
