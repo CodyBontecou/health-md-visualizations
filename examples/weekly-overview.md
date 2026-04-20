@@ -74,6 +74,14 @@ last: 7
 height: 240
 ```
 
+### Apple Activity Rings (Move / Exercise / Stand)
+
+```health-viz
+type: activity-rings
+last: 7
+height: 260
+```
+
 ---
 
 ## Heart Rate Terrain

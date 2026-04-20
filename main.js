@@ -2088,6 +2088,180 @@ var renderSummaryCard = (data, el, config, theme) => {
   }
 };
 
+// src/visualizations/activity-rings.ts
+var RING_COLORS = {
+  move: "#fa114f",
+  exercise: "#92e82a",
+  stand: "#1eeaef"
+};
+function extractValues(day) {
+  var _a, _b, _c, _d;
+  const act = day.activity;
+  if (!act) return { move: 0, exercise: 0, stand: 0 };
+  const steps = (_a = act.steps) != null ? _a : 0;
+  const standProxy = Math.min(12, Math.floor(steps / 1e3));
+  return {
+    move: (_b = act.activeCalories) != null ? _b : 0,
+    exercise: (_c = act.exerciseMinutes) != null ? _c : 0,
+    stand: (_d = act.standHours) != null ? _d : standProxy
+  };
+}
+function drawRingSet(ctx, cx, cy, outerR, stroke, values, goals, theme, hits, day, label) {
+  const rings = [
+    { key: "move", color: RING_COLORS.move, value: values.move, goal: goals.move, unit: "CAL" },
+    { key: "exercise", color: RING_COLORS.exercise, value: values.exercise, goal: goals.exercise, unit: "MIN" },
+    { key: "stand", color: RING_COLORS.stand, value: values.stand, goal: goals.stand, unit: "HR" }
+  ];
+  const gap = Math.max(2, stroke * 0.18);
+  rings.forEach((ring, i) => {
+    const r = outerR - i * (stroke + gap);
+    if (r < stroke) return;
+    const progress = ring.goal > 0 ? ring.value / ring.goal : 0;
+    ctx.strokeStyle = hexToRgba(ring.color, theme.isDark ? 0.18 : 0.15);
+    ctx.lineWidth = stroke;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    if (progress <= 0) return;
+    const startA = -Math.PI / 2;
+    const clamped = Math.min(progress, 1);
+    const endA = startA + clamped * Math.PI * 2;
+    const grad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+    grad.addColorStop(0, ring.color);
+    grad.addColorStop(1, hexToRgba(ring.color, 0.75));
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = stroke;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startA, endA);
+    ctx.stroke();
+    if (progress > 1) {
+      const excess = Math.min(progress - 1, 1);
+      const excessEnd = startA + excess * Math.PI * 2;
+      ctx.strokeStyle = hexToRgba(ring.color, 0.55);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, startA, excessEnd);
+      ctx.stroke();
+    }
+    hits.add({
+      shape: "sector",
+      cx,
+      cy,
+      r0: r - stroke / 2,
+      r1: r + stroke / 2,
+      a0: 0,
+      a1: Math.PI * 2,
+      title: `${label} \u2014 ${ring.key.toUpperCase()}`,
+      details: [
+        { label: "Value", value: `${Math.round(ring.value)} ${ring.unit}` },
+        { label: "Goal", value: `${ring.goal} ${ring.unit}` },
+        { label: "Progress", value: `${Math.round(progress * 100)}%` }
+      ],
+      payload: day
+    });
+  });
+}
+var renderActivityRings = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const days = data.filter((d) => d.activity);
+  if (!days.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No activity data", W / 2, H / 2);
+    return;
+  }
+  const goals = {
+    move: Number(config.moveGoal) || 500,
+    exercise: Number(config.exerciseGoal) || 30,
+    stand: Number(config.standGoal) || 12
+  };
+  if (days.length === 1) {
+    const day = days[0];
+    const values = extractValues(day);
+    const cx = W / 2;
+    const cy = H / 2;
+    const outerR = Math.min(W, H) / 2 - 12;
+    const stroke = Math.max(10, outerR * 0.14);
+    drawRingSet(ctx, cx, cy, outerR, stroke, values, goals, theme, hits, day, formatDate(day.date));
+    const innerR = outerR - 3 * (stroke + stroke * 0.18) - stroke;
+    const lines = [
+      { text: `${Math.round(values.move)}/${goals.move} CAL`, color: RING_COLORS.move },
+      { text: `${Math.round(values.exercise)}/${goals.exercise} MIN`, color: RING_COLORS.exercise },
+      { text: `${Math.round(values.stand)}/${goals.stand} HR`, color: RING_COLORS.stand }
+    ];
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const lineH = Math.max(12, innerR * 0.42);
+    const fontSize = Math.max(9, Math.min(14, innerR * 0.28));
+    ctx.font = `600 ${fontSize}px sans-serif`;
+    const startY = cy - (lines.length - 1) * lineH / 2;
+    lines.forEach((l, i) => {
+      ctx.fillStyle = l.color;
+      ctx.fillText(l.text, cx, startY + i * lineH);
+    });
+    statsEl.innerHTML = `
+			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.move}">${Math.round(values.move)}</div><div class="health-md-stat-label">Move \xB7 /${goals.move}</div></div>
+			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.exercise}">${Math.round(values.exercise)}</div><div class="health-md-stat-label">Exercise \xB7 /${goals.exercise}</div></div>
+			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.stand}">${Math.round(values.stand)}</div><div class="health-md-stat-label">Stand \xB7 /${goals.stand}</div></div>
+		`;
+    return;
+  }
+  const canvas = ctx.canvas;
+  const n = days.length;
+  const cols = Math.min(n, Math.max(3, Math.round(Math.sqrt(n * (W / H)))));
+  const rows = Math.ceil(n / cols);
+  const gap = 10;
+  const cellW = (W - gap * (cols - 1)) / cols;
+  const dateLabelH = 16;
+  const cellH = cellW + dateLabelH;
+  const neededH = rows * cellH + (rows - 1) * gap + 8;
+  if (neededH > H) {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = neededH * dpr;
+    canvas.style.width = W + "px";
+    canvas.style.height = neededH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, neededH);
+  }
+  days.forEach((day, idx) => {
+    const row = Math.floor(idx / cols);
+    const col = idx % cols;
+    const x0 = col * (cellW + gap);
+    const y0 = row * (cellH + gap);
+    const cx = x0 + cellW / 2;
+    const cy = y0 + cellW / 2;
+    const outerR = cellW / 2 - 4;
+    const stroke = Math.max(4, outerR * 0.18);
+    const values = extractValues(day);
+    drawRingSet(ctx, cx, cy, outerR, stroke, values, goals, theme, hits, day, formatDate(day.date));
+    const d = /* @__PURE__ */ new Date(day.date + "T00:00:00");
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    ctx.fillStyle = theme.muted;
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, cx, y0 + cellW + dateLabelH / 2 + 1);
+  });
+  const totalMove = days.reduce((s, d) => s + extractValues(d).move, 0);
+  const totalEx = days.reduce((s, d) => s + extractValues(d).exercise, 0);
+  const closedMove = days.filter((d) => extractValues(d).move >= goals.move).length;
+  const closedEx = days.filter((d) => extractValues(d).exercise >= goals.exercise).length;
+  const closedStand = days.filter((d) => extractValues(d).stand >= goals.stand).length;
+  statsEl.innerHTML = `
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.move}">${closedMove}/${days.length}</div><div class="health-md-stat-label">Move Closed</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.exercise}">${closedEx}/${days.length}</div><div class="health-md-stat-label">Exercise Closed</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.stand}">${closedStand}/${days.length}</div><div class="health-md-stat-label">Stand Closed</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value">${Math.round(totalMove).toLocaleString()}</div><div class="health-md-stat-label">Total CAL</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value">${Math.round(totalEx)}</div><div class="health-md-stat-label">Total MIN</div></div>
+	`;
+};
+
 // src/visualizations/index.ts
 var VISUALIZATIONS = {
   "heart-terrain": renderHeartTerrain,
@@ -2101,7 +2275,8 @@ var VISUALIZATIONS = {
   "hrv-trend": renderHrvTrend,
   "activity-heatmap": renderActivityHeatmap,
   "sleep-quality-bars": renderSleepQualityBars,
-  "workout-log": renderWorkoutLog
+  "workout-log": renderWorkoutLog,
+  "activity-rings": renderActivityRings
 };
 var HTML_VISUALIZATIONS = {
   "intro-stats": renderIntroStats,

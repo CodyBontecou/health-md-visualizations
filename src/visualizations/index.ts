@@ -13,6 +13,7 @@ import { renderSleepQualityBars } from "./sleep-quality-bars";
 import { renderWorkoutLog } from "./workout-log";
 import { renderIntroStats } from "./intro-stats";
 import { renderSummaryCard } from "./summary-card";
+import { renderActivityRings } from "./activity-rings";
 
 export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"heart-terrain": renderHeartTerrain,
@@ -27,6 +28,7 @@ export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"activity-heatmap": renderActivityHeatmap,
 	"sleep-quality-bars": renderSleepQualityBars,
 	"workout-log": renderWorkoutLog,
+	"activity-rings": renderActivityRings,
 };
 
 export const HTML_VISUALIZATIONS: Record<string, HtmlRenderFn> = {
