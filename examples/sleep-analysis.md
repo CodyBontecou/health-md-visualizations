@@ -14,6 +14,20 @@ last: 30
 
 ---
 
+## Sleep Schedule (Apple style)
+
+Horizontal bars showing bedtime → wake time against a 24-hour axis.
+Inner band is time actually asleep; outer band is total in-bed.
+
+```health-viz
+type: sleep-schedule
+last: 14
+height: 360
+sleepGoal: 8
+```
+
+---
+
 ## Nightly Stage Breakdown
 
 Stacked bars — each column is one night. Colors: deep (darkest) at the base,

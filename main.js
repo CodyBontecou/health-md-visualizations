@@ -2672,6 +2672,242 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
 	`;
 };
 
+// src/visualizations/sleep-schedule.ts
+function parseWindow(str) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(str || "");
+  if (!m) return { h: 0, m: 0 };
+  return { h: Math.min(23, Number(m[1])), m: Math.min(59, Number(m[2])) };
+}
+function resolveBedWake(night) {
+  const sleep = night.sleep;
+  if (!sleep || !sleep.bedtime || !sleep.wakeTime) return null;
+  const isTimeOnly = (s) => /^\d{1,2}:\d{2}$/.test(s);
+  let bedMs, wakeMs;
+  if (isTimeOnly(sleep.bedtime)) {
+    bedMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.bedtime}:00`)).getTime();
+    wakeMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.wakeTime}:00`)).getTime();
+    if (wakeMs <= bedMs) wakeMs += 864e5;
+  } else {
+    bedMs = Date.parse(sleep.bedtime);
+    wakeMs = Date.parse(sleep.wakeTime);
+  }
+  if (!isFinite(bedMs) || !isFinite(wakeMs) || wakeMs <= bedMs) return null;
+  return { bedMs, wakeMs };
+}
+function formatHour(ms) {
+  return new Date(ms).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+function hourLabel(h) {
+  const hr = (h % 24 + 24) % 24;
+  if (hr === 0) return "12A";
+  if (hr === 12) return "12P";
+  if (hr < 12) return `${hr}A`;
+  return `${hr - 12}P`;
+}
+var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  const canvas = ctx.canvas;
+  const sleepGoalHours = Number(config.sleepGoal) || 8;
+  const windowStart = parseWindow(String(config.windowStart || "18:00"));
+  const windowEnd = parseWindow(String(config.windowEnd || "10:00"));
+  const nights = [];
+  for (const d of data) {
+    if (!d.sleep) continue;
+    if (!(d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)) continue;
+    const bw = resolveBedWake(d);
+    if (!bw) continue;
+    nights.push({
+      date: d.date,
+      day: d,
+      bedMs: bw.bedMs,
+      wakeMs: bw.wakeMs,
+      totalSeconds: d.sleep.totalDuration || (bw.wakeMs - bw.bedMs) / 1e3
+    });
+  }
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  if (!nights.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No sleep data", W / 2, H / 2);
+    return;
+  }
+  const rowH = 26;
+  const rowGap = 6;
+  const padT = 10;
+  const axisH = 20;
+  const gutterW = 104;
+  const rightPad = 16;
+  const barAreaX = gutterW;
+  const barAreaW = W - gutterW - rightPad;
+  const neededH = padT + nights.length * (rowH + rowGap) + axisH + 8;
+  if (neededH !== H) {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = neededH * dpr;
+    canvas.style.width = W + "px";
+    canvas.style.height = neededH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, neededH);
+  }
+  function windowBoundsFor(dateIso) {
+    const startMs = (/* @__PURE__ */ new Date(`${dateIso}T${String(windowStart.h).padStart(2, "0")}:${String(windowStart.m).padStart(2, "0")}:00`)).getTime();
+    const base = (/* @__PURE__ */ new Date(`${dateIso}T00:00:00`)).getTime();
+    let endMs = base + 864e5 + windowEnd.h * 36e5 + windowEnd.m * 6e4;
+    if (endMs <= startMs) endMs += 864e5;
+    return { startMs, endMs };
+  }
+  const sampleBounds = windowBoundsFor(nights[0].date);
+  const windowSpan = sampleBounds.endMs - sampleBounds.startMs;
+  const windowHours = windowSpan / 36e5;
+  const plotTop = padT;
+  const plotH = nights.length * (rowH + rowGap) - rowGap;
+  const bgGrad = ctx.createLinearGradient(barAreaX, 0, barAreaX + barAreaW, 0);
+  const cSunset = theme.isDark ? "#3a1a3a" : "#f5dccc";
+  const cNight = theme.isDark ? "#0b0b22" : "#d6dbe8";
+  const cSunrise = theme.isDark ? "#3a2a14" : "#fee7c8";
+  bgGrad.addColorStop(0, cSunset);
+  bgGrad.addColorStop(0.45, cNight);
+  bgGrad.addColorStop(0.65, cNight);
+  bgGrad.addColorStop(1, cSunrise);
+  ctx.fillStyle = bgGrad;
+  ctx.beginPath();
+  ctx.roundRect(barAreaX, plotTop, barAreaW, plotH, 8);
+  ctx.fill();
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
+  ctx.lineWidth = 1;
+  const startHour = windowStart.h;
+  const numTicks = Math.max(2, Math.round(windowHours / 2));
+  for (let k = 0; k <= numTicks; k++) {
+    const frac = k / numTicks;
+    const x = barAreaX + frac * barAreaW;
+    ctx.beginPath();
+    ctx.moveTo(x, plotTop);
+    ctx.lineTo(x, plotTop + plotH);
+    ctx.stroke();
+    const h = startHour + frac * windowHours;
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(hourLabel(h), x, plotTop + plotH + 4);
+  }
+  const meanBedOffset = nights.reduce((s, nn) => {
+    const wb = windowBoundsFor(nn.date);
+    return s + (nn.bedMs - wb.startMs);
+  }, 0) / nights.length;
+  const goalSpan = sleepGoalHours * 36e5;
+  const goalStartFrac = meanBedOffset / windowSpan;
+  const goalEndFrac = (meanBedOffset + goalSpan) / windowSpan;
+  if (goalEndFrac > 0 && goalStartFrac < 1) {
+    const gx0 = barAreaX + Math.max(0, goalStartFrac) * barAreaW;
+    const gx1 = barAreaX + Math.min(1, goalEndFrac) * barAreaW;
+    ctx.save();
+    ctx.strokeStyle = hexToRgba(theme.colors.sleep.rem, 0.8);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(gx0, plotTop + plotH + 10);
+    ctx.lineTo(gx1, plotTop + plotH + 10);
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = theme.colors.sleep.rem;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 14);
+  }
+  nights.forEach((n, i) => {
+    const wb = windowBoundsFor(n.date);
+    const y = padT + i * (rowH + rowGap);
+    const d = /* @__PURE__ */ new Date(n.date + "T00:00:00");
+    const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+    const datepart = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    ctx.fillStyle = theme.fg;
+    ctx.font = "600 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(weekday, 10, y + rowH / 2 - 6);
+    ctx.fillStyle = theme.muted;
+    ctx.font = "10px sans-serif";
+    ctx.fillText(datepart, 10, y + rowH / 2 + 7);
+    const bedFrac = Math.max(0, Math.min(1, (n.bedMs - wb.startMs) / windowSpan));
+    const wakeFrac = Math.max(0, Math.min(1, (n.wakeMs - wb.startMs) / windowSpan));
+    if (wakeFrac <= bedFrac) return;
+    const bx = barAreaX + bedFrac * barAreaW;
+    const bw2 = (wakeFrac - bedFrac) * barAreaW;
+    const sleptHours = n.totalSeconds / 3600;
+    let barColor = theme.colors.sleep.core;
+    if (sleptHours >= sleepGoalHours * 0.95 && sleptHours <= sleepGoalHours * 1.15) {
+      barColor = theme.colors.sleep.rem;
+    } else if (sleptHours < sleepGoalHours * 0.85) {
+      barColor = theme.colors.sleep.awake;
+    } else {
+      barColor = theme.colors.sleep.deep;
+    }
+    ctx.fillStyle = hexToRgba(barColor, 0.45);
+    ctx.beginPath();
+    ctx.roundRect(bx, y + 3, bw2, rowH - 6, 4);
+    ctx.fill();
+    const bedWindowSec = (n.wakeMs - n.bedMs) / 1e3;
+    const asleepFrac = bedWindowSec > 0 ? Math.min(1, n.totalSeconds / bedWindowSec) : 1;
+    if (asleepFrac < 1 && asleepFrac > 0) {
+      const innerW = bw2 * asleepFrac;
+      ctx.fillStyle = barColor;
+      ctx.beginPath();
+      ctx.roundRect(bx, y + 6, innerW, rowH - 12, 3);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = barColor;
+      ctx.beginPath();
+      ctx.roundRect(bx, y + 6, bw2, rowH - 12, 3);
+      ctx.fill();
+    }
+    hits.add({
+      shape: "rect",
+      x: bx,
+      y,
+      w: bw2,
+      h: rowH,
+      title: formatDate(n.date),
+      details: [
+        { label: "Bedtime", value: formatHour(n.bedMs) },
+        { label: "Wake", value: formatHour(n.wakeMs) },
+        { label: "Total sleep", value: formatDuration(n.totalSeconds) },
+        { label: "Goal", value: `${sleepGoalHours}h` }
+      ],
+      payload: n.day
+    });
+  });
+  const bedOffsets = nights.map((n) => {
+    const wb = windowBoundsFor(n.date);
+    return (n.bedMs - wb.startMs) / 36e5;
+  });
+  const wakeOffsets = nights.map((n) => {
+    const wb = windowBoundsFor(n.date);
+    return (n.wakeMs - wb.startMs) / 36e5;
+  });
+  const meanBedH = bedOffsets.reduce((s, v) => s + v, 0) / bedOffsets.length;
+  const meanWakeH = wakeOffsets.reduce((s, v) => s + v, 0) / wakeOffsets.length;
+  const variance = bedOffsets.reduce((s, v) => s + (v - meanBedH) ** 2, 0) / bedOffsets.length;
+  const stdev = Math.sqrt(variance);
+  function offsetToHourStr(offsetH) {
+    const abs = new Date(windowBoundsFor(nights[0].date).startMs + offsetH * 36e5);
+    return abs.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  const consistencyLabel = stdev < 0.5 ? "Very consistent" : stdev < 1 ? "Consistent" : stdev < 2 ? "Variable" : "Irregular";
+  statsEl.innerHTML = `
+		<div class="health-md-stat-box"><div class="health-md-stat-value">${offsetToHourStr(meanBedH)}</div><div class="health-md-stat-label">Avg Bedtime</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value">${offsetToHourStr(meanWakeH)}</div><div class="health-md-stat-label">Avg Wake</div></div>
+		<div class="health-md-stat-box"><div class="health-md-stat-value">${consistencyLabel}</div><div class="health-md-stat-label">\xB1${stdev.toFixed(1)}h stdev</div></div>
+	`;
+};
+
 // src/visualizations/index.ts
 var VISUALIZATIONS = {
   "heart-terrain": renderHeartTerrain,
@@ -2688,7 +2924,8 @@ var VISUALIZATIONS = {
   "workout-log": renderWorkoutLog,
   "activity-rings": renderActivityRings,
   "heart-range": renderHeartRange,
-  "bar-chart": renderBarChart
+  "bar-chart": renderBarChart,
+  "sleep-schedule": renderSleepSchedule
 };
 var HTML_VISUALIZATIONS = {
   "intro-stats": renderIntroStats,
