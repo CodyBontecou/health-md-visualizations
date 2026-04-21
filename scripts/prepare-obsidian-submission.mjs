@@ -62,11 +62,25 @@ if (versions[manifest.version] !== manifest.minAppVersion) {
 }
 
 let repoPath = "<github-user>/<github-repo>";
-try {
-	const remote = execSync("git config --get remote.origin.url", { cwd: root, encoding: "utf8" });
-	repoPath = parseGitHubRepoPath(remote) ?? repoPath;
-} catch {
-	// Keep placeholder if git remote is unavailable.
+
+const repositoryField =
+	typeof packageJson.repository === "string"
+		? packageJson.repository
+		: typeof packageJson.repository?.url === "string"
+			? packageJson.repository.url
+			: null;
+
+if (repositoryField) {
+	repoPath = parseGitHubRepoPath(repositoryField) ?? repoPath;
+}
+
+if (repoPath === "<github-user>/<github-repo>") {
+	try {
+		const remote = execSync("git config --get remote.origin.url", { cwd: root, encoding: "utf8" });
+		repoPath = parseGitHubRepoPath(remote) ?? repoPath;
+	} catch {
+		// Keep placeholder if git remote is unavailable.
+	}
 }
 
 const outputDir = path.join(root, "release", "obsidian-submission", manifest.version);

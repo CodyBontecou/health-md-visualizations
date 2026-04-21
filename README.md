@@ -12,15 +12,15 @@ Download [Health.md](https://apps.apple.com/us/app/health-md/id6757763969) on th
 
 ### Manual
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/CodyBontecou/obsidian-health-md/releases).
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/CodyBontecou/health-md-visualizations/releases).
 2. Copy them into `<your vault>/.obsidian/plugins/health-md/`.
 3. Reload Obsidian and enable **Health.md Visualizations** in **Settings → Community plugins**.
 
 ### From source
 
 ```bash
-git clone https://github.com/CodyBontecou/obsidian-health-md.git
-cd obsidian-health-md
+git clone https://github.com/CodyBontecou/health-md-visualizations.git
+cd health-md-visualizations
 npm install
 npm run build
 ```
