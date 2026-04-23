@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, ResolvedTheme } from "../types";
 import { hexToRgba, formatDate } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 export interface RangeValue {
 	min: number;
@@ -200,9 +201,21 @@ export function renderRangeChart(
 	const overallMin = Math.min(...present.map((p) => p.min));
 	const overallMax = Math.max(...present.map((p) => p.max));
 	const overallAvg = present.reduce((s, p) => s + p.avg, 0) / present.length;
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${spec.stats.lowColor}">${spec.formatValue(overallMin)}</div><div class="health-md-stat-label">Lowest</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${spec.stats.avgColor}">${spec.formatValue(overallAvg)}</div><div class="health-md-stat-label">${spec.label} Avg</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${spec.stats.highColor}">${spec.formatValue(overallMax)}</div><div class="health-md-stat-label">Highest</div></div>
-	`;
+	renderStatBoxes(statsEl, [
+		{
+			value: spec.formatValue(overallMin),
+			label: "Lowest",
+			color: spec.stats.lowColor,
+		},
+		{
+			value: spec.formatValue(overallAvg),
+			label: `${spec.label} avg`,
+			color: spec.stats.avgColor,
+		},
+		{
+			value: spec.formatValue(overallMax),
+			label: "Highest",
+			color: spec.stats.highColor,
+		},
+	]);
 }

@@ -1,5 +1,6 @@
 import { HealthDay, VizConfig, ResolvedTheme, HtmlRenderFn } from "../types";
 import { hexToRgba } from "../canvas-utils";
+import { appendSvgFromMarkup } from "../dom-utils";
 
 type Metric =
 	| "resting-heart-rate"
@@ -198,8 +199,12 @@ export const renderTrendTile: HtmlRenderFn = (
 	const priorWindow = Number(config.priorWindow) || 90;
 	const { current, prior } = splitWindows(data, currentWindow, priorWindow);
 
-	const currentVals = current.map(meta.extract).filter((v): v is number => v != null);
-	const priorVals = prior.map(meta.extract).filter((v): v is number => v != null);
+	const currentVals = current
+		.map((day) => meta.extract(day))
+		.filter((v): v is number => v != null);
+	const priorVals = prior
+		.map((day) => meta.extract(day))
+		.filter((v): v is number => v != null);
 
 	if (!currentVals.length) {
 		el.createEl("p", {
@@ -255,7 +260,7 @@ export const renderTrendTile: HtmlRenderFn = (
 	const spark = buildSparkline(currentVals, priorVals, meta.color, theme.isDark);
 	if (spark) {
 		const wrap = card.createDiv({ cls: "health-md-summary-spark" });
-		wrap.innerHTML = spark;
+		appendSvgFromMarkup(wrap, spark);
 	}
 
 	// Consistency dot: based on coefficient of variation within current window

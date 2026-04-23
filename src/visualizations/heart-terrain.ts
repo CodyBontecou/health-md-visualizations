@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { lerp, hsl, formatDate } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 export const renderHeartTerrain: RenderFn = (
 	ctx: CanvasRenderingContext2D,
@@ -25,12 +26,20 @@ export const renderHeartTerrain: RenderFn = (
 			const bucket = Math.floor(mins / 15);
 			if (bucket >= 0 && bucket < BUCKETS) {
 				if (!col[bucket]) col[bucket] = [];
-				(col[bucket] as number[]).push(s.value);
+				const bucketValues = col[bucket];
+				if (bucketValues) {
+					bucketValues.push(s.value);
+				}
 			}
 		});
-		const averaged = col.map((b) =>
-			b ? (b as number[]).reduce((a, c) => a + c, 0) / (b as number[]).length : null
+
+		const averaged = col.map((bucketValues) =>
+			bucketValues
+				? bucketValues.reduce((sum, value) => sum + value, 0) /
+					bucketValues.length
+				: null
 		);
+
 		averaged.forEach((v) => {
 			if (v) {
 				minBPM = Math.min(minBPM, v);
@@ -44,27 +53,47 @@ export const renderHeartTerrain: RenderFn = (
 		// Fallback: per-day average heatmap when no timestamped samples are available
 		const heartDays = data.filter((d) => d.heart && d.heart.averageHeartRate > 0);
 		if (!heartDays.length) {
-			statsEl.innerHTML = `<p style="color:var(--text-muted)">No heart rate data available.</p>`;
+			statsEl.empty();
+			statsEl.createEl("p", {
+				text: "No heart rate data available.",
+				cls: "health-md-muted",
+			});
 			return;
 		}
+
 		const allAvg = heartDays.map((d) => d.heart!.averageHeartRate);
-		const globalMin = Math.min(...heartDays.map((d) => d.heart!.heartRateMin || d.heart!.averageHeartRate));
-		const globalMax = Math.max(...heartDays.map((d) => d.heart!.heartRateMax || d.heart!.averageHeartRate));
+		const globalMin = Math.min(
+			...heartDays.map((d) => d.heart!.heartRateMin || d.heart!.averageHeartRate)
+		);
+		const globalMax = Math.max(
+			...heartDays.map((d) => d.heart!.heartRateMax || d.heart!.averageHeartRate)
+		);
 		const colW = W / heartDays.length;
+
 		heartDays.forEach((day, x) => {
 			const avg = day.heart!.averageHeartRate;
 			const lo = day.heart!.heartRateMin || avg;
 			const hi = day.heart!.heartRateMax || avg;
-			// Draw a gradient column: bottom = min (blue), top = max (red), center = avg
+
 			const grad = ctx.createLinearGradient(0, H, 0, 0);
 			const tLo = (lo - globalMin) / (globalMax - globalMin || 1);
 			const tHi = (hi - globalMin) / (globalMax - globalMin || 1);
 			const tAvg = (avg - globalMin) / (globalMax - globalMin || 1);
-			grad.addColorStop(0, `hsl(${lerp(220, 0, tLo)},70%,${theme.isDark ? 30 : 45}%)`);
-			grad.addColorStop(0.5, `hsl(${lerp(220, 0, tAvg)},80%,${theme.isDark ? 45 : 55}%)`);
-			grad.addColorStop(1, `hsl(${lerp(220, 0, tHi)},90%,${theme.isDark ? 55 : 65}%)`);
+			grad.addColorStop(
+				0,
+				`hsl(${lerp(220, 0, tLo)},70%,${theme.isDark ? 30 : 45}%)`
+			);
+			grad.addColorStop(
+				0.5,
+				`hsl(${lerp(220, 0, tAvg)},80%,${theme.isDark ? 45 : 55}%)`
+			);
+			grad.addColorStop(
+				1,
+				`hsl(${lerp(220, 0, tHi)},90%,${theme.isDark ? 55 : 65}%)`
+			);
 			ctx.fillStyle = grad;
 			ctx.fillRect(x * colW, 0, colW + 1, H);
+
 			hits.add({
 				shape: "rect",
 				x: x * colW,
@@ -80,12 +109,15 @@ export const renderHeartTerrain: RenderFn = (
 				payload: day,
 			});
 		});
-		const overallAvg = Math.round(allAvg.reduce((a, b) => a + b, 0) / allAvg.length);
-		statsEl.innerHTML = `
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#4488ff">${globalMin}</div><div class="health-md-stat-label">Lowest</div></div>
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#cc6666">${overallAvg}</div><div class="health-md-stat-label">Average</div></div>
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#ff4444">${globalMax}</div><div class="health-md-stat-label">Highest</div></div>
-		`;
+
+		const overallAvg = Math.round(
+			allAvg.reduce((a, b) => a + b, 0) / allAvg.length
+		);
+		renderStatBoxes(statsEl, [
+			{ value: String(globalMin), label: "Lowest", color: "#4488ff" },
+			{ value: String(overallAvg), label: "Average", color: "#cc6666" },
+			{ value: String(globalMax), label: "Highest", color: "#ff4444" },
+		]);
 		return;
 	}
 
@@ -113,18 +145,9 @@ export const renderHeartTerrain: RenderFn = (
 			h: H,
 			title: formatDate(day.date),
 			details: [
-				{
-					label: "Avg",
-					value: `${Math.round(dayObj.heart!.averageHeartRate)} bpm`,
-				},
-				{
-					label: "Min",
-					value: `${dayObj.heart!.heartRateMin} bpm`,
-				},
-				{
-					label: "Max",
-					value: `${dayObj.heart!.heartRateMax} bpm`,
-				},
+				{ label: "Avg", value: `${Math.round(dayObj.heart!.averageHeartRate)} bpm` },
+				{ label: "Min", value: `${dayObj.heart!.heartRateMin} bpm` },
+				{ label: "Max", value: `${dayObj.heart!.heartRateMax} bpm` },
 				{ label: "Samples", value: `${samples.length}` },
 			],
 			payload: dayObj,
@@ -134,13 +157,12 @@ export const renderHeartTerrain: RenderFn = (
 	const minHR = Math.min(...days.map((d) => d.heart!.heartRateMin || 999));
 	const maxHR = Math.max(...days.map((d) => d.heart!.heartRateMax || 0));
 	const avgHR = Math.round(
-		days.reduce((s, d) => s + (d.heart!.averageHeartRate || 0), 0) /
-			days.length
+		days.reduce((s, d) => s + (d.heart!.averageHeartRate || 0), 0) / days.length
 	);
 
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#4488ff">${minHR}</div><div class="health-md-stat-label">Lowest</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#cc6666">${avgHR}</div><div class="health-md-stat-label">Average</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#ff4444">${maxHR}</div><div class="health-md-stat-label">Highest</div></div>
-	`;
+	renderStatBoxes(statsEl, [
+		{ value: String(minHR), label: "Lowest", color: "#4488ff" },
+		{ value: String(avgHR), label: "Average", color: "#cc6666" },
+		{ value: String(maxHR), label: "Highest", color: "#ff4444" },
+	]);
 };

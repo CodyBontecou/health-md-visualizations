@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate } from "../canvas-utils";
+import { renderInlineStats } from "../dom-utils";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -130,11 +131,17 @@ export const renderActivityHeatmap: RenderFn = (
 	// Stats
 	const total = Object.values(byDate).reduce((s, v) => s + v, 0);
 	const avg = total / Object.keys(byDate).length;
-	statsEl.innerHTML =
-		`<span>${metric.charAt(0).toUpperCase() + metric.slice(1)} — ` +
-		`Avg <strong>${formatMetric(metric, avg)}</strong> · ` +
-		`Max <strong>${formatMetric(metric, maxVal)}</strong> · ` +
-		`Total <strong>${formatMetric(metric, total)}</strong></span>`;
+	const metricLabel = metric.charAt(0).toUpperCase() + metric.slice(1);
+	renderInlineStats(statsEl, [
+		[
+			{ text: `${metricLabel} — Avg ` },
+			{ text: formatMetric(metric, avg), strong: true },
+			{ text: " · Max " },
+			{ text: formatMetric(metric, maxVal), strong: true },
+			{ text: " · Total " },
+			{ text: formatMetric(metric, total), strong: true },
+		],
+	]);
 };
 
 function formatMetric(metric: string, val: number): string {

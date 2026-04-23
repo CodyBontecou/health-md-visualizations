@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate, formatDuration } from "../canvas-utils";
+import { renderInlineStats } from "../dom-utils";
 
 // Map workout type names to short display labels
 const TYPE_LABELS: Record<string, string> = {
@@ -174,9 +175,22 @@ export const renderWorkoutLog: RenderFn = (
 	const totalDur = entries.reduce((s, e) => s + e.duration, 0);
 	const totalCal = entries.reduce((s, e) => s + e.calories, 0);
 	const types = [...new Set(entries.map((e) => e.type))];
-	statsEl.innerHTML =
-		`<span>${entries.length} workouts</span>` +
-		`<span>Total time <strong>${formatDuration(totalDur)}</strong></span>` +
-		(totalCal ? `<span>Total cal <strong>${Math.round(totalCal).toLocaleString()} kcal</strong></span>` : "") +
-		`<span>Types: <strong>${types.slice(0, 4).join(", ")}${types.length > 4 ? "…" : ""}</strong></span>`;
+	const statRows = [
+		[{ text: `${entries.length} workouts` }],
+		[
+			{ text: "Total time " },
+			{ text: formatDuration(totalDur), strong: true },
+		],
+		[
+			{ text: "Types: " },
+			{ text: `${types.slice(0, 4).join(", ")}${types.length > 4 ? "…" : ""}`, strong: true },
+		],
+	];
+	if (totalCal) {
+		statRows.splice(2, 0, [
+			{ text: "Total cal " },
+			{ text: `${Math.round(totalCal).toLocaleString()} kcal`, strong: true },
+		]);
+	}
+	renderInlineStats(statsEl, statRows);
 };

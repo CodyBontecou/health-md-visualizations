@@ -214,7 +214,22 @@ function getNum2(fm, key) {
 }
 function getStr(fm, key) {
   const v = fm[key];
-  return typeof v === "string" ? v : v !== void 0 ? String(v) : void 0;
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
+    return String(v);
+  }
+  if (Array.isArray(v)) {
+    return v.map((item) => {
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean" || typeof item === "bigint") {
+        return String(item);
+      }
+      return JSON.stringify(item);
+    }).join(", ");
+  }
+  if (v !== void 0 && v !== null) {
+    return JSON.stringify(v);
+  }
+  return void 0;
 }
 function parseMarkdown(content) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G;
@@ -475,6 +490,42 @@ function resolveTheme(settings) {
   };
 }
 
+// src/dom-utils.ts
+function renderStatBoxes(statsEl, boxes) {
+  statsEl.empty();
+  boxes.forEach(({ value, label, color }) => {
+    const box = statsEl.createDiv({ cls: "health-md-stat-box" });
+    const valueEl = box.createDiv({
+      cls: "health-md-stat-value",
+      text: value
+    });
+    if (color) {
+      valueEl.style.color = color;
+    }
+    box.createDiv({ cls: "health-md-stat-label", text: label });
+  });
+}
+function renderInlineStats(statsEl, stats) {
+  statsEl.empty();
+  stats.forEach((parts) => {
+    const row = statsEl.createSpan();
+    parts.forEach((part) => {
+      if (part.strong) {
+        row.createEl("strong", { text: part.text });
+        return;
+      }
+      row.appendChild(document.createTextNode(part.text));
+    });
+  });
+}
+function appendSvgFromMarkup(container, svgMarkup) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgMarkup, "image/svg+xml");
+  const svg = doc.documentElement;
+  if (svg.tagName.toLowerCase() !== "svg") return;
+  container.appendChild(document.importNode(svg, true));
+}
+
 // src/visualizations/heart-terrain.ts
 var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const BUCKETS = 96;
@@ -492,11 +543,14 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       const bucket = Math.floor(mins / 15);
       if (bucket >= 0 && bucket < BUCKETS) {
         if (!col[bucket]) col[bucket] = [];
-        col[bucket].push(s.value);
+        const bucketValues = col[bucket];
+        if (bucketValues) {
+          bucketValues.push(s.value);
+        }
       }
     });
     const averaged = col.map(
-      (b) => b ? b.reduce((a, c) => a + c, 0) / b.length : null
+      (bucketValues) => bucketValues ? bucketValues.reduce((sum, value) => sum + value, 0) / bucketValues.length : null
     );
     averaged.forEach((v) => {
       if (v) {
@@ -509,12 +563,20 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   if (grid.length === 0) {
     const heartDays = data.filter((d) => d.heart && d.heart.averageHeartRate > 0);
     if (!heartDays.length) {
-      statsEl.innerHTML = `<p style="color:var(--text-muted)">No heart rate data available.</p>`;
+      statsEl.empty();
+      statsEl.createEl("p", {
+        text: "No heart rate data available.",
+        cls: "health-md-muted"
+      });
       return;
     }
     const allAvg = heartDays.map((d) => d.heart.averageHeartRate);
-    const globalMin = Math.min(...heartDays.map((d) => d.heart.heartRateMin || d.heart.averageHeartRate));
-    const globalMax = Math.max(...heartDays.map((d) => d.heart.heartRateMax || d.heart.averageHeartRate));
+    const globalMin = Math.min(
+      ...heartDays.map((d) => d.heart.heartRateMin || d.heart.averageHeartRate)
+    );
+    const globalMax = Math.max(
+      ...heartDays.map((d) => d.heart.heartRateMax || d.heart.averageHeartRate)
+    );
     const colW2 = W / heartDays.length;
     heartDays.forEach((day, x) => {
       const avg4 = day.heart.averageHeartRate;
@@ -524,9 +586,18 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       const tLo = (lo - globalMin) / (globalMax - globalMin || 1);
       const tHi = (hi - globalMin) / (globalMax - globalMin || 1);
       const tAvg = (avg4 - globalMin) / (globalMax - globalMin || 1);
-      grad.addColorStop(0, `hsl(${lerp(220, 0, tLo)},70%,${theme.isDark ? 30 : 45}%)`);
-      grad.addColorStop(0.5, `hsl(${lerp(220, 0, tAvg)},80%,${theme.isDark ? 45 : 55}%)`);
-      grad.addColorStop(1, `hsl(${lerp(220, 0, tHi)},90%,${theme.isDark ? 55 : 65}%)`);
+      grad.addColorStop(
+        0,
+        `hsl(${lerp(220, 0, tLo)},70%,${theme.isDark ? 30 : 45}%)`
+      );
+      grad.addColorStop(
+        0.5,
+        `hsl(${lerp(220, 0, tAvg)},80%,${theme.isDark ? 45 : 55}%)`
+      );
+      grad.addColorStop(
+        1,
+        `hsl(${lerp(220, 0, tHi)},90%,${theme.isDark ? 55 : 65}%)`
+      );
       ctx.fillStyle = grad;
       ctx.fillRect(x * colW2, 0, colW2 + 1, H);
       hits.add({
@@ -544,12 +615,14 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
         payload: day
       });
     });
-    const overallAvg = Math.round(allAvg.reduce((a, b) => a + b, 0) / allAvg.length);
-    statsEl.innerHTML = `
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#4488ff">${globalMin}</div><div class="health-md-stat-label">Lowest</div></div>
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#cc6666">${overallAvg}</div><div class="health-md-stat-label">Average</div></div>
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#ff4444">${globalMax}</div><div class="health-md-stat-label">Highest</div></div>
-		`;
+    const overallAvg = Math.round(
+      allAvg.reduce((a, b) => a + b, 0) / allAvg.length
+    );
+    renderStatBoxes(statsEl, [
+      { value: String(globalMin), label: "Lowest", color: "#4488ff" },
+      { value: String(overallAvg), label: "Average", color: "#cc6666" },
+      { value: String(globalMax), label: "Highest", color: "#ff4444" }
+    ]);
     return;
   }
   const colW = W / grid.length;
@@ -574,18 +647,9 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       h: H,
       title: formatDate(day.date),
       details: [
-        {
-          label: "Avg",
-          value: `${Math.round(dayObj.heart.averageHeartRate)} bpm`
-        },
-        {
-          label: "Min",
-          value: `${dayObj.heart.heartRateMin} bpm`
-        },
-        {
-          label: "Max",
-          value: `${dayObj.heart.heartRateMax} bpm`
-        },
+        { label: "Avg", value: `${Math.round(dayObj.heart.averageHeartRate)} bpm` },
+        { label: "Min", value: `${dayObj.heart.heartRateMin} bpm` },
+        { label: "Max", value: `${dayObj.heart.heartRateMax} bpm` },
         { label: "Samples", value: `${samples.length}` }
       ],
       payload: dayObj
@@ -596,11 +660,11 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const avgHR = Math.round(
     days.reduce((s, d) => s + (d.heart.averageHeartRate || 0), 0) / days.length
   );
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#4488ff">${minHR}</div><div class="health-md-stat-label">Lowest</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#cc6666">${avgHR}</div><div class="health-md-stat-label">Average</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#ff4444">${maxHR}</div><div class="health-md-stat-label">Highest</div></div>
-	`;
+  renderStatBoxes(statsEl, [
+    { value: String(minHR), label: "Lowest", color: "#4488ff" },
+    { value: String(avgHR), label: "Average", color: "#cc6666" },
+    { value: String(maxHR), label: "Highest", color: "#ff4444" }
+  ]);
 };
 
 // src/visualizations/sleep-polar.ts
@@ -840,10 +904,18 @@ var renderStepSpiral = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     });
   });
   const avgSteps = Math.round(totalSteps / days.length);
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avgSteps.toLocaleString()}</div><div class="health-md-stat-label">Avg/Day</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${bestDay.activity.steps.toLocaleString()}</div><div class="health-md-stat-label">Best Day</div></div>
-	`;
+  renderStatBoxes(statsEl, [
+    {
+      value: avgSteps.toLocaleString(),
+      label: "Avg/day",
+      color: theme.colors.accent
+    },
+    {
+      value: bestDay.activity.steps.toLocaleString(),
+      label: "Best day",
+      color: theme.colors.accent
+    }
+  ]);
 };
 
 // src/visualizations/oxygen-river.ts
@@ -921,11 +993,11 @@ var renderOxygenRiver = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     });
   });
   const avgO2 = allSamples.reduce((s, v) => s + v.value, 0) / allSamples.length;
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#4488ff">${avgO2.toFixed(1)}%</div><div class="health-md-stat-label">Avg SpO2</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#6688cc">${minO2.toFixed(1)}%</div><div class="health-md-stat-label">Min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#88aaee">${maxO2.toFixed(1)}%</div><div class="health-md-stat-label">Max</div></div>
-	`;
+  renderStatBoxes(statsEl, [
+    { value: `${avgO2.toFixed(1)}%`, label: "Avg SpO2", color: "#4488ff" },
+    { value: `${minO2.toFixed(1)}%`, label: "Min", color: "#6688cc" },
+    { value: `${maxO2.toFixed(1)}%`, label: "Max", color: "#88aaee" }
+  ]);
 };
 
 // src/visualizations/breathing-wave.ts
@@ -979,7 +1051,11 @@ var renderBreathingWave = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     const x = i / allVals.length * W;
     const t = (v - minR) / (maxR - minR || 1);
     const y = H - 16 - t * (H - 32);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
   });
   ctx.strokeStyle = theme.colors.accent;
   ctx.lineWidth = 1.5;
@@ -1013,11 +1089,11 @@ var renderBreathingWave = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const avg4 = (allVals.reduce((a, b) => a + b, 0) / allVals.length).toFixed(
     1
   );
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avg4}</div><div class="health-md-stat-label">Avg br/min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.muted}">${minR.toFixed(1)}</div><div class="health-md-stat-label">Min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${maxR.toFixed(1)}</div><div class="health-md-stat-label">Max</div></div>
-	`;
+  renderStatBoxes(statsEl, [
+    { value: avg4, label: "Avg br/min", color: theme.colors.accent },
+    { value: minR.toFixed(1), label: "Min", color: theme.muted },
+    { value: maxR.toFixed(1), label: "Max", color: theme.colors.accent }
+  ]);
 };
 
 // src/visualizations/vitals-rings.ts
@@ -1358,8 +1434,11 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const values = days.map((d) => {
-    if (d.heart.hrv != null) return d.heart.hrv;
-    const samples = d.heart.hrvSamples;
+    var _a;
+    const heart = d.heart;
+    if (!heart) return 0;
+    if (heart.hrv != null) return heart.hrv;
+    const samples = (_a = heart.hrvSamples) != null ? _a : [];
     return samples.reduce((s, x) => s + x.value, 0) / samples.length;
   });
   const minVal = Math.min(...values);
@@ -1443,7 +1522,20 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     ctx.fillText(label, xFor(i), H - 6);
   });
   const avg4 = values.reduce((s, v) => s + v, 0) / values.length;
-  statsEl.innerHTML = `<span>Avg HRV <strong>${avg4.toFixed(1)} ms</strong></span><span>Min <strong>${minVal.toFixed(1)}</strong></span><span>Max <strong>${maxVal.toFixed(1)}</strong></span>`;
+  renderInlineStats(statsEl, [
+    [
+      { text: "Avg HRV " },
+      { text: `${avg4.toFixed(1)} ms`, strong: true }
+    ],
+    [
+      { text: "Min " },
+      { text: minVal.toFixed(1), strong: true }
+    ],
+    [
+      { text: "Max " },
+      { text: maxVal.toFixed(1), strong: true }
+    ]
+  ]);
 };
 
 // src/visualizations/activity-heatmap.ts
@@ -1541,7 +1633,17 @@ var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
   }
   const total = Object.values(byDate).reduce((s, v) => s + v, 0);
   const avg4 = total / Object.keys(byDate).length;
-  statsEl.innerHTML = `<span>${metric.charAt(0).toUpperCase() + metric.slice(1)} \u2014 Avg <strong>${formatMetric(metric, avg4)}</strong> \xB7 Max <strong>${formatMetric(metric, maxVal)}</strong> \xB7 Total <strong>${formatMetric(metric, total)}</strong></span>`;
+  const metricLabel = metric.charAt(0).toUpperCase() + metric.slice(1);
+  renderInlineStats(statsEl, [
+    [
+      { text: `${metricLabel} \u2014 Avg ` },
+      { text: formatMetric(metric, avg4), strong: true },
+      { text: " \xB7 Max " },
+      { text: formatMetric(metric, maxVal), strong: true },
+      { text: " \xB7 Total " },
+      { text: formatMetric(metric, total), strong: true }
+    ]
+  ]);
 };
 function formatMetric(metric, val) {
   if (metric === "calories") return `${Math.round(val).toLocaleString()} kcal`;
@@ -1657,7 +1759,20 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   const avgTotal = days.reduce((s, d) => s + d.sleep.totalDuration, 0) / days.length;
   const avgDeep = days.reduce((s, d) => s + (d.sleep.deepSleep || 0), 0) / days.length;
   const avgRem = days.reduce((s, d) => s + (d.sleep.remSleep || 0), 0) / days.length;
-  statsEl.innerHTML = `<span>Avg sleep <strong>${formatDuration(avgTotal)}</strong></span><span>Avg deep <strong>${formatDuration(avgDeep)}</strong></span><span>Avg REM <strong>${formatDuration(avgRem)}</strong></span>`;
+  renderInlineStats(statsEl, [
+    [
+      { text: "Avg sleep " },
+      { text: formatDuration(avgTotal), strong: true }
+    ],
+    [
+      { text: "Avg deep " },
+      { text: formatDuration(avgDeep), strong: true }
+    ],
+    [
+      { text: "Avg REM " },
+      { text: formatDuration(avgRem), strong: true }
+    ]
+  ]);
 };
 
 // src/visualizations/workout-log.ts
@@ -1788,7 +1903,24 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const totalDur = entries.reduce((s, e) => s + e.duration, 0);
   const totalCal = entries.reduce((s, e) => s + e.calories, 0);
   const types = [...new Set(entries.map((e) => e.type))];
-  statsEl.innerHTML = `<span>${entries.length} workouts</span><span>Total time <strong>${formatDuration(totalDur)}</strong></span>` + (totalCal ? `<span>Total cal <strong>${Math.round(totalCal).toLocaleString()} kcal</strong></span>` : "") + `<span>Types: <strong>${types.slice(0, 4).join(", ")}${types.length > 4 ? "\u2026" : ""}</strong></span>`;
+  const statRows = [
+    [{ text: `${entries.length} workouts` }],
+    [
+      { text: "Total time " },
+      { text: formatDuration(totalDur), strong: true }
+    ],
+    [
+      { text: "Types: " },
+      { text: `${types.slice(0, 4).join(", ")}${types.length > 4 ? "\u2026" : ""}`, strong: true }
+    ]
+  ];
+  if (totalCal) {
+    statRows.splice(2, 0, [
+      { text: "Total cal " },
+      { text: `${Math.round(totalCal).toLocaleString()} kcal`, strong: true }
+    ]);
+  }
+  renderInlineStats(statsEl, statRows);
 };
 
 // src/visualizations/intro-stats.ts
@@ -2020,7 +2152,7 @@ var renderSummaryCard = (data, el, config, theme) => {
   }
   const compareWindow = String(config.compareWindow || "same-length");
   const { current, prior, label: compareLabel } = splitWindows(data, compareWindow);
-  const currentVals = current.map(meta.extract).filter((v) => v != null);
+  const currentVals = current.map((day) => meta.extract(day)).filter((v) => v != null);
   if (!currentVals.length) {
     el.createEl("p", {
       text: `No ${metricId} data in range.`,
@@ -2028,7 +2160,7 @@ var renderSummaryCard = (data, el, config, theme) => {
     });
     return;
   }
-  const priorVals = prior.map(meta.extract).filter((v) => v != null);
+  const priorVals = prior.map((day) => meta.extract(day)).filter((v) => v != null);
   const card = el.createDiv({ cls: "health-md-summary-card" });
   card.style.setProperty("--hmd-summary-color", meta.color);
   card.style.borderColor = hexToRgba(theme.fg, 0.12);
@@ -2051,7 +2183,7 @@ var renderSummaryCard = (data, el, config, theme) => {
   const sparkHtml = buildSparkline(currentVals, meta.color, theme.isDark);
   if (sparkHtml) {
     const sparkWrap = card.createDiv({ cls: "health-md-summary-spark" });
-    sparkWrap.innerHTML = sparkHtml;
+    appendSvgFromMarkup(sparkWrap, sparkHtml);
   }
   if (priorVals.length) {
     const priorAvg = avg(priorVals);
@@ -2077,8 +2209,8 @@ var renderSummaryCard = (data, el, config, theme) => {
   }
   const minFn = (_a = meta.min) != null ? _a : (d) => meta.extract(d);
   const maxFn = (_b = meta.max) != null ? _b : (d) => meta.extract(d);
-  const mins = current.map(minFn).filter((v) => v != null && v > 0);
-  const maxs = current.map(maxFn).filter((v) => v != null && v > 0);
+  const mins = current.map((day) => minFn(day)).filter((v) => v != null && v > 0);
+  const maxs = current.map((day) => maxFn(day)).filter((v) => v != null && v > 0);
   if (mins.length && maxs.length) {
     const rangeEl = card.createDiv({ cls: "health-md-summary-meta" });
     rangeEl.style.color = theme.muted;
@@ -2258,8 +2390,8 @@ var renderTrendTile = (data, el, config, theme) => {
   const currentWindow = Number(config.currentWindow) || 90;
   const priorWindow = Number(config.priorWindow) || 90;
   const { current, prior } = splitWindows2(data, currentWindow, priorWindow);
-  const currentVals = current.map(meta.extract).filter((v) => v != null);
-  const priorVals = prior.map(meta.extract).filter((v) => v != null);
+  const currentVals = current.map((day) => meta.extract(day)).filter((v) => v != null);
+  const priorVals = prior.map((day) => meta.extract(day)).filter((v) => v != null);
   if (!currentVals.length) {
     el.createEl("p", {
       text: `No ${meta.label.toLowerCase()} data in range.`,
@@ -2304,7 +2436,7 @@ var renderTrendTile = (data, el, config, theme) => {
   const spark = buildSparkline2(currentVals, priorVals, meta.color, theme.isDark);
   if (spark) {
     const wrap = card.createDiv({ cls: "health-md-summary-spark" });
-    wrap.innerHTML = spark;
+    appendSvgFromMarkup(wrap, spark);
   }
   if (currentVals.length >= 5) {
     const mean = currentAvg;
@@ -2435,11 +2567,23 @@ var renderActivityRings = (ctx, data, W, H, config, theme, statsEl, hits) => {
       ctx.fillStyle = l.color;
       ctx.fillText(l.text, cx, startY + i * lineH);
     });
-    statsEl.innerHTML = `
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.move}">${Math.round(values.move)}</div><div class="health-md-stat-label">Move \xB7 /${goals.move}</div></div>
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.exercise}">${Math.round(values.exercise)}</div><div class="health-md-stat-label">Exercise \xB7 /${goals.exercise}</div></div>
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.stand}">${Math.round(values.stand)}</div><div class="health-md-stat-label">Stand \xB7 /${goals.stand}</div></div>
-		`;
+    renderStatBoxes(statsEl, [
+      {
+        value: String(Math.round(values.move)),
+        label: `Move / ${goals.move}`,
+        color: RING_COLORS.move
+      },
+      {
+        value: String(Math.round(values.exercise)),
+        label: `Exercise / ${goals.exercise}`,
+        color: RING_COLORS.exercise
+      },
+      {
+        value: String(Math.round(values.stand)),
+        label: `Stand / ${goals.stand}`,
+        color: RING_COLORS.stand
+      }
+    ]);
     return;
   }
   const canvas = ctx.canvas;
@@ -2486,13 +2630,31 @@ var renderActivityRings = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const closedMove = days.filter((d) => extractValues(d).move >= goals.move).length;
   const closedEx = days.filter((d) => extractValues(d).exercise >= goals.exercise).length;
   const closedStand = days.filter((d) => extractValues(d).stand >= goals.stand).length;
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.move}">${closedMove}/${days.length}</div><div class="health-md-stat-label">Move Closed</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.exercise}">${closedEx}/${days.length}</div><div class="health-md-stat-label">Exercise Closed</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.stand}">${closedStand}/${days.length}</div><div class="health-md-stat-label">Stand Closed</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${Math.round(totalMove).toLocaleString()}</div><div class="health-md-stat-label">Total CAL</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${Math.round(totalEx)}</div><div class="health-md-stat-label">Total MIN</div></div>
-	`;
+  renderStatBoxes(statsEl, [
+    {
+      value: `${closedMove}/${days.length}`,
+      label: "Move closed",
+      color: RING_COLORS.move
+    },
+    {
+      value: `${closedEx}/${days.length}`,
+      label: "Exercise closed",
+      color: RING_COLORS.exercise
+    },
+    {
+      value: `${closedStand}/${days.length}`,
+      label: "Stand closed",
+      color: RING_COLORS.stand
+    },
+    {
+      value: Math.round(totalMove).toLocaleString(),
+      label: "Total CAL"
+    },
+    {
+      value: String(Math.round(totalEx)),
+      label: "Total min"
+    }
+  ]);
 };
 
 // src/visualizations/range-chart-core.ts
@@ -2627,11 +2789,23 @@ function renderRangeChart(ctx, data, W, H, theme, statsEl, hits, spec) {
   const overallMin = Math.min(...present.map((p) => p.min));
   const overallMax = Math.max(...present.map((p) => p.max));
   const overallAvg = present.reduce((s, p) => s + p.avg, 0) / present.length;
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${spec.stats.lowColor}">${spec.formatValue(overallMin)}</div><div class="health-md-stat-label">Lowest</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${spec.stats.avgColor}">${spec.formatValue(overallAvg)}</div><div class="health-md-stat-label">${spec.label} Avg</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${spec.stats.highColor}">${spec.formatValue(overallMax)}</div><div class="health-md-stat-label">Highest</div></div>
-	`;
+  renderStatBoxes(statsEl, [
+    {
+      value: spec.formatValue(overallMin),
+      label: "Lowest",
+      color: spec.stats.lowColor
+    },
+    {
+      value: spec.formatValue(overallAvg),
+      label: `${spec.label} avg`,
+      color: spec.stats.avgColor
+    },
+    {
+      value: spec.formatValue(overallMax),
+      label: "Highest",
+      color: spec.stats.highColor
+    }
+  ]);
 }
 
 // src/visualizations/heart-range.ts
@@ -2942,11 +3116,18 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     0
   );
   const best = values[bestIdx];
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(total)}</div><div class="health-md-stat-label">Total ${meta.unit}</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${meta.formatValue(average)}</div><div class="health-md-stat-label">Daily Avg</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${meta.formatValue(best)}</div><div class="health-md-stat-label">Best (${(/* @__PURE__ */ new Date(days[bestIdx].date + "T00:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })})</div></div>
-	`;
+  const bestLabel = (/* @__PURE__ */ new Date(days[bestIdx].date + "T00:00:00")).toLocaleDateString(
+    "en-US",
+    { month: "short", day: "numeric" }
+  );
+  renderStatBoxes(statsEl, [
+    {
+      value: meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(total),
+      label: `Total ${meta.unit}`
+    },
+    { value: meta.formatValue(average), label: "Daily avg" },
+    { value: meta.formatValue(best), label: `Best (${bestLabel})` }
+  ]);
 };
 
 // src/visualizations/sleep-schedule.ts
@@ -3178,11 +3359,11 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     return abs.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
   const consistencyLabel = stdev < 0.5 ? "Very consistent" : stdev < 1 ? "Consistent" : stdev < 2 ? "Variable" : "Irregular";
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${offsetToHourStr(meanBedH)}</div><div class="health-md-stat-label">Avg Bedtime</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${offsetToHourStr(meanWakeH)}</div><div class="health-md-stat-label">Avg Wake</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${consistencyLabel}</div><div class="health-md-stat-label">\xB1${stdev.toFixed(1)}h stdev</div></div>
-	`;
+  renderStatBoxes(statsEl, [
+    { value: offsetToHourStr(meanBedH), label: "Avg bedtime" },
+    { value: offsetToHourStr(meanWakeH), label: "Avg wake" },
+    { value: consistencyLabel, label: `\xB1${stdev.toFixed(1)}h stdev` }
+  ]);
 };
 
 // src/visualizations/weekday-average.ts
@@ -3410,12 +3591,20 @@ var renderWeekdayAverage = (ctx, data, W, H, config, theme, statsEl, hits) => {
     0
   );
   const worstLabel = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][orderIdx[worstIdx]];
-  statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${meta.format(overallMean)}</div><div class="health-md-stat-label">Overall Mean</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${bestLabel}</div><div class="health-md-stat-label">Best (${avgs[maxIdx] != null ? meta.format(avgs[maxIdx]) : "\u2014"})</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${worstLabel}</div><div class="health-md-stat-label">Lowest (${avgs[worstIdx] != null ? meta.format(avgs[worstIdx]) : "\u2014"})</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${totalSamples}</div><div class="health-md-stat-label">Days Sampled</div></div>
-	`;
+  const bestValue = avgs[maxIdx];
+  const worstValue = avgs[worstIdx];
+  renderStatBoxes(statsEl, [
+    { value: meta.format(overallMean), label: "Overall mean" },
+    {
+      value: bestLabel,
+      label: `Best (${bestValue != null ? meta.format(bestValue) : "\u2014"})`
+    },
+    {
+      value: worstLabel,
+      label: `Lowest (${worstValue != null ? meta.format(worstValue) : "\u2014"})`
+    },
+    { value: String(totalSamples), label: "Days sampled" }
+  ]);
 };
 
 // src/visualizations/oxygen-range.ts
@@ -3922,14 +4111,19 @@ async function renderCodeBlock(plugin, source, el, ctx) {
   const height = (_b = config.height) != null ? _b : plugin.settings.defaultHeight;
   const container = el.createDiv({ cls: "health-md-container" });
   const canvas = container.createEl("canvas");
-  const tooltipEl = container.createDiv({ cls: "health-md-tooltip" });
-  tooltipEl.style.display = "none";
+  const tooltipEl = container.createDiv({ cls: "health-md-tooltip is-hidden" });
   const statsEl = container.createDiv({ cls: "health-md-stats" });
   const regions = [];
   const hits = { add: (r) => regions.push(r) };
   let pinned = null;
+  function showTooltip() {
+    tooltipEl.removeClass("is-hidden");
+  }
+  function hideTooltip() {
+    tooltipEl.addClass("is-hidden");
+  }
   function placeTooltip(x, y) {
-    tooltipEl.style.display = "";
+    showTooltip();
     const tw = tooltipEl.offsetWidth;
     const th = tooltipEl.offsetHeight;
     const cw = container.clientWidth;
@@ -3950,18 +4144,18 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     const y = e.clientY - rect.top;
     const region = findRegion(regions, x, y);
     if (region) {
-      canvas.style.cursor = "pointer";
+      canvas.addClass("health-md-canvas-pointer");
       renderTooltipContent(tooltipEl, region);
       placeTooltip(x, y);
     } else {
-      canvas.style.cursor = "";
-      tooltipEl.style.display = "none";
+      canvas.removeClass("health-md-canvas-pointer");
+      hideTooltip();
     }
   });
   canvas.addEventListener("mouseleave", () => {
     if (pinned) return;
-    canvas.style.cursor = "";
-    tooltipEl.style.display = "none";
+    canvas.removeClass("health-md-canvas-pointer");
+    hideTooltip();
   });
   canvas.addEventListener("click", (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -3974,7 +4168,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
       placeTooltip(x, y);
     } else if (pinned) {
       pinned = null;
-      tooltipEl.style.display = "none";
+      hideTooltip();
     }
   });
   const renderChild = new VizRenderChild(container);
@@ -3987,7 +4181,8 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     statsEl.empty();
     regions.length = 0;
     pinned = null;
-    tooltipEl.style.display = "none";
+    hideTooltip();
+    canvas.removeClass("health-md-canvas-pointer");
     const canvasCtx = setupCanvas(canvas, width, height);
     renderFn(canvasCtx, data, width, height, config, resolveTheme(plugin.settings), statsEl, hits);
   }
@@ -4195,7 +4390,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
       search.inputEl.addEventListener("click", () => folderSuggest.open());
     });
     new import_obsidian3.Setting(containerEl).setName("File pattern").setDesc(
-      "Glob pattern to match files (e.g. *.json, 2026-*.md, health-*.csv). Use * for all supported files."
+      "Glob pattern to match files (for example: *.json, 2026-*.md, health-*.csv); use * to include all supported files."
     ).addText(
       (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
         this.plugin.settings.filePattern = value.trim();
@@ -4205,9 +4400,9 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
       })
     );
     new import_obsidian3.Setting(containerEl).setName("Data format").setDesc(
-      "Auto-detect reads JSON, CSV, and Markdown/Bases by file extension. Markdown files must include YAML frontmatter (Bases-style)."
+      "Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter."
     ).addDropdown(
-      (dropdown) => dropdown.addOption("auto", "Auto-detect by extension").addOption("json", "JSON").addOption("csv", "CSV").addOption("markdown", "Markdown (YAML frontmatter required)").addOption("bases", "Obsidian Bases (YAML frontmatter)").setValue(this.plugin.settings.dataFormat).onChange(async (value) => {
+      (dropdown) => dropdown.addOption("auto", "Auto-detect by extension").addOption("json", "JSON").addOption("csv", "CSV").addOption("markdown", "Markdown (YAML frontmatter required)").addOption("bases", "Obsidian bases (YAML frontmatter)").setValue(this.plugin.settings.dataFormat).onChange(async (value) => {
         this.plugin.settings.dataFormat = value;
         this.plugin.dataLoader.invalidate();
         await this.plugin.saveSettings();
@@ -4239,7 +4434,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         }
       })
     );
-    containerEl.createEl("h3", { text: "Colors" });
+    new import_obsidian3.Setting(containerEl).setName("Colors").setHeading();
     const colorInputs = {};
     const applyScheme = async (schemeId) => {
       this.plugin.settings.colorScheme = schemeId;
@@ -4290,12 +4485,14 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
       input.type = "color";
       input.value = this.plugin.settings[key];
       colorInputs[key] = input;
-      input.addEventListener("change", async () => {
-        this.plugin.settings[key] = input.value;
-        this.plugin.settings.colorScheme = "custom";
-        if (schemeDropdown) schemeDropdown.value = "custom";
-        await this.plugin.saveSettings();
-        this.plugin.redrawAll();
+      input.addEventListener("change", () => {
+        void (async () => {
+          this.plugin.settings[key] = input.value;
+          this.plugin.settings.colorScheme = "custom";
+          if (schemeDropdown) schemeDropdown.value = "custom";
+          await this.plugin.saveSettings();
+          this.plugin.redrawAll();
+        })();
       });
     });
   }

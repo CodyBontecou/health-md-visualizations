@@ -254,7 +254,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("File pattern")
 			.setDesc(
-				"Glob pattern to match files (e.g. *.json, 2026-*.md, health-*.csv). Use * for all supported files."
+				"Glob pattern to match files (for example: *.json, 2026-*.md, health-*.csv); use * to include all supported files."
 			)
 			.addText((text) =>
 				text
@@ -271,7 +271,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Data format")
 			.setDesc(
-				"Auto-detect reads JSON, CSV, and Markdown/Bases by file extension. Markdown files must include YAML frontmatter (Bases-style)."
+				"Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter."
 			)
 			.addDropdown((dropdown) =>
 				dropdown
@@ -279,7 +279,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 					.addOption("json", "JSON")
 					.addOption("csv", "CSV")
 					.addOption("markdown", "Markdown (YAML frontmatter required)")
-					.addOption("bases", "Obsidian Bases (YAML frontmatter)")
+					.addOption("bases", "Obsidian bases (YAML frontmatter)")
 					.setValue(this.plugin.settings.dataFormat)
 					.onChange(async (value) => {
 						this.plugin.settings.dataFormat = value as HealthMdSettings["dataFormat"];
@@ -335,7 +335,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 					})
 			);
 
-		containerEl.createEl("h3", { text: "Colors" });
+		new Setting(containerEl).setName("Colors").setHeading();
 
 		// Color scheme preset picker
 		const colorInputs: Record<string, HTMLInputElement> = {};
@@ -401,13 +401,15 @@ class HealthMdSettingTab extends PluginSettingTab {
 			input.type = "color";
 			input.value = this.plugin.settings[key] as string;
 			colorInputs[key] = input;
-			input.addEventListener("change", async () => {
-				(this.plugin.settings[key] as string) = input.value;
-				// Switch to custom when the user manually changes a color
-				this.plugin.settings.colorScheme = "custom";
-				if (schemeDropdown) schemeDropdown.value = "custom";
-				await this.plugin.saveSettings();
-				this.plugin.redrawAll();
+			input.addEventListener("change", () => {
+				void (async () => {
+					(this.plugin.settings[key] as string) = input.value;
+					// Switch to custom when the user manually changes a color
+					this.plugin.settings.colorScheme = "custom";
+					if (schemeDropdown) schemeDropdown.value = "custom";
+					await this.plugin.saveSettings();
+					this.plugin.redrawAll();
+				})();
 			});
 		});
 	}

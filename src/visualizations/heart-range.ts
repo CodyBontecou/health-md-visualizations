@@ -32,7 +32,7 @@ function labelFor(m: HeartMetric): string {
 	return "Heart Rate";
 }
 
-function restingOverlay({ ctx, data, yFor, yMin, yMax, padL, padR, W }: RangeOverlayContext) {
+function restingOverlay(this: void, { ctx, data, yFor, yMin, yMax, padL, padR, W }: RangeOverlayContext) {
 	const vals = data
 		.map((d) => d.heart?.restingHeartRate)
 		.filter((v): v is number => v != null && v > 0);

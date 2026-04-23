@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 type Metric =
 	| "steps"
@@ -273,9 +274,19 @@ export const renderBarChart: RenderFn = (
 		0
 	);
 	const best = values[bestIdx];
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(total)}</div><div class="health-md-stat-label">Total ${meta.unit}</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${meta.formatValue(average)}</div><div class="health-md-stat-label">Daily Avg</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${meta.formatValue(best)}</div><div class="health-md-stat-label">Best (${new Date(days[bestIdx].date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })})</div></div>
-	`;
+	const bestLabel = new Date(days[bestIdx].date + "T00:00:00").toLocaleDateString(
+		"en-US",
+		{ month: "short", day: "numeric" }
+	);
+	renderStatBoxes(statsEl, [
+		{
+			value:
+				meta.aggregate === "sum"
+					? meta.formatTotal(total)
+					: meta.formatValue(total),
+			label: `Total ${meta.unit}`,
+		},
+		{ value: meta.formatValue(average), label: "Daily avg" },
+		{ value: meta.formatValue(best), label: `Best (${bestLabel})` },
+	]);
 };

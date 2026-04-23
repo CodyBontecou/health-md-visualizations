@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 const RING_COLORS = {
 	move: "#fa114f",
@@ -174,11 +175,23 @@ export const renderActivityRings: RenderFn = (
 			ctx.fillText(l.text, cx, startY + i * lineH);
 		});
 
-		statsEl.innerHTML = `
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.move}">${Math.round(values.move)}</div><div class="health-md-stat-label">Move · /${goals.move}</div></div>
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.exercise}">${Math.round(values.exercise)}</div><div class="health-md-stat-label">Exercise · /${goals.exercise}</div></div>
-			<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.stand}">${Math.round(values.stand)}</div><div class="health-md-stat-label">Stand · /${goals.stand}</div></div>
-		`;
+		renderStatBoxes(statsEl, [
+			{
+				value: String(Math.round(values.move)),
+				label: `Move / ${goals.move}`,
+				color: RING_COLORS.move,
+			},
+			{
+				value: String(Math.round(values.exercise)),
+				label: `Exercise / ${goals.exercise}`,
+				color: RING_COLORS.exercise,
+			},
+			{
+				value: String(Math.round(values.stand)),
+				label: `Stand / ${goals.stand}`,
+				color: RING_COLORS.stand,
+			},
+		]);
 		return;
 	}
 
@@ -234,11 +247,29 @@ export const renderActivityRings: RenderFn = (
 	const closedMove = days.filter((d) => extractValues(d).move >= goals.move).length;
 	const closedEx = days.filter((d) => extractValues(d).exercise >= goals.exercise).length;
 	const closedStand = days.filter((d) => extractValues(d).stand >= goals.stand).length;
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.move}">${closedMove}/${days.length}</div><div class="health-md-stat-label">Move Closed</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.exercise}">${closedEx}/${days.length}</div><div class="health-md-stat-label">Exercise Closed</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${RING_COLORS.stand}">${closedStand}/${days.length}</div><div class="health-md-stat-label">Stand Closed</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${Math.round(totalMove).toLocaleString()}</div><div class="health-md-stat-label">Total CAL</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${Math.round(totalEx)}</div><div class="health-md-stat-label">Total MIN</div></div>
-	`;
+	renderStatBoxes(statsEl, [
+		{
+			value: `${closedMove}/${days.length}`,
+			label: "Move closed",
+			color: RING_COLORS.move,
+		},
+		{
+			value: `${closedEx}/${days.length}`,
+			label: "Exercise closed",
+			color: RING_COLORS.exercise,
+		},
+		{
+			value: `${closedStand}/${days.length}`,
+			label: "Stand closed",
+			color: RING_COLORS.stand,
+		},
+		{
+			value: Math.round(totalMove).toLocaleString(),
+			label: "Total CAL",
+		},
+		{
+			value: String(Math.round(totalEx)),
+			label: "Total min",
+		},
+	]);
 };

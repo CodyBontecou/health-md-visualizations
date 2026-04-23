@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate, formatDuration } from "../canvas-utils";
+import { renderInlineStats } from "../dom-utils";
 
 export const renderSleepQualityBars: RenderFn = (
 	ctx: CanvasRenderingContext2D,
@@ -140,8 +141,18 @@ export const renderSleepQualityBars: RenderFn = (
 	const avgTotal = days.reduce((s, d) => s + d.sleep!.totalDuration, 0) / days.length;
 	const avgDeep = days.reduce((s, d) => s + (d.sleep!.deepSleep || 0), 0) / days.length;
 	const avgRem = days.reduce((s, d) => s + (d.sleep!.remSleep || 0), 0) / days.length;
-	statsEl.innerHTML =
-		`<span>Avg sleep <strong>${formatDuration(avgTotal)}</strong></span>` +
-		`<span>Avg deep <strong>${formatDuration(avgDeep)}</strong></span>` +
-		`<span>Avg REM <strong>${formatDuration(avgRem)}</strong></span>`;
+	renderInlineStats(statsEl, [
+		[
+			{ text: "Avg sleep " },
+			{ text: formatDuration(avgTotal), strong: true },
+		],
+		[
+			{ text: "Avg deep " },
+			{ text: formatDuration(avgDeep), strong: true },
+		],
+		[
+			{ text: "Avg REM " },
+			{ text: formatDuration(avgRem), strong: true },
+		],
+	]);
 };

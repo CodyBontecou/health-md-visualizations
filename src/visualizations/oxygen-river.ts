@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { lerp, hsl, formatDate } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 function getBloodOxygenValues(day: HealthDay): number[] {
 	if (day.vitals?.bloodOxygenSamples?.length) {
@@ -91,9 +92,9 @@ export const renderOxygenRiver: RenderFn = (
 
 	const avgO2 =
 		allSamples.reduce((s, v) => s + v.value, 0) / allSamples.length;
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#4488ff">${avgO2.toFixed(1)}%</div><div class="health-md-stat-label">Avg SpO2</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#6688cc">${minO2.toFixed(1)}%</div><div class="health-md-stat-label">Min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:#88aaee">${maxO2.toFixed(1)}%</div><div class="health-md-stat-label">Max</div></div>
-	`;
+	renderStatBoxes(statsEl, [
+		{ value: `${avgO2.toFixed(1)}%`, label: "Avg SpO2", color: "#4488ff" },
+		{ value: `${minO2.toFixed(1)}%`, label: "Min", color: "#6688cc" },
+		{ value: `${maxO2.toFixed(1)}%`, label: "Max", color: "#88aaee" },
+	]);
 };

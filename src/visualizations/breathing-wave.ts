@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { formatDate, hexToRgba } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 function getRespiratoryValues(day: HealthDay): number[] {
 	if (day.vitals?.respiratoryRateSamples?.length) {
@@ -66,7 +67,11 @@ export const renderBreathingWave: RenderFn = (
 		const x = (i / allVals.length) * W;
 		const t = (v - minR) / (maxR - minR || 1);
 		const y = H - 16 - t * (H - 32);
-		i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+		if (i === 0) {
+			ctx.moveTo(x, y);
+		} else {
+			ctx.lineTo(x, y);
+		}
 	});
 	ctx.strokeStyle = theme.colors.accent;
 	ctx.lineWidth = 1.5;
@@ -102,9 +107,9 @@ export const renderBreathingWave: RenderFn = (
 	const avg = (allVals.reduce((a, b) => a + b, 0) / allVals.length).toFixed(
 		1
 	);
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avg}</div><div class="health-md-stat-label">Avg br/min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.muted}">${minR.toFixed(1)}</div><div class="health-md-stat-label">Min</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${maxR.toFixed(1)}</div><div class="health-md-stat-label">Max</div></div>
-	`;
+	renderStatBoxes(statsEl, [
+		{ value: avg, label: "Avg br/min", color: theme.colors.accent },
+		{ value: minR.toFixed(1), label: "Min", color: theme.muted },
+		{ value: maxR.toFixed(1), label: "Max", color: theme.colors.accent },
+	]);
 };

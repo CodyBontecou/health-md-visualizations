@@ -527,20 +527,27 @@ export async function renderCodeBlock(
 	}
 
 	const defaultWidth = config.width ?? plugin.settings.defaultWidth;
-	const height = (config.height ?? plugin.settings.defaultHeight) as number;
+	const height = config.height ?? plugin.settings.defaultHeight;
 
 	const container = el.createDiv({ cls: "health-md-container" });
 	const canvas = container.createEl("canvas");
-	const tooltipEl = container.createDiv({ cls: "health-md-tooltip" });
-	tooltipEl.style.display = "none";
+	const tooltipEl = container.createDiv({ cls: "health-md-tooltip is-hidden" });
 	const statsEl = container.createDiv({ cls: "health-md-stats" });
 
 	const regions: HitRegion[] = [];
 	const hits: HitRegistry = { add: (r) => regions.push(r) };
 	let pinned: HitRegion | null = null;
 
+	function showTooltip(): void {
+		tooltipEl.removeClass("is-hidden");
+	}
+
+	function hideTooltip(): void {
+		tooltipEl.addClass("is-hidden");
+	}
+
 	function placeTooltip(x: number, y: number): void {
-		tooltipEl.style.display = "";
+		showTooltip();
 		const tw = tooltipEl.offsetWidth;
 		const th = tooltipEl.offsetHeight;
 		const cw = container.clientWidth;
@@ -562,19 +569,19 @@ export async function renderCodeBlock(
 		const y = e.clientY - rect.top;
 		const region = findRegion(regions, x, y);
 		if (region) {
-			canvas.style.cursor = "pointer";
+			canvas.addClass("health-md-canvas-pointer");
 			renderTooltipContent(tooltipEl, region);
 			placeTooltip(x, y);
 		} else {
-			canvas.style.cursor = "";
-			tooltipEl.style.display = "none";
+			canvas.removeClass("health-md-canvas-pointer");
+			hideTooltip();
 		}
 	});
 
 	canvas.addEventListener("mouseleave", () => {
 		if (pinned) return;
-		canvas.style.cursor = "";
-		tooltipEl.style.display = "none";
+		canvas.removeClass("health-md-canvas-pointer");
+		hideTooltip();
 	});
 
 	canvas.addEventListener("click", (e) => {
@@ -588,7 +595,7 @@ export async function renderCodeBlock(
 			placeTooltip(x, y);
 		} else if (pinned) {
 			pinned = null;
-			tooltipEl.style.display = "none";
+			hideTooltip();
 		}
 	});
 
@@ -599,11 +606,12 @@ export async function renderCodeBlock(
 		const width = Math.min(
 			container.clientWidth || defaultWidth,
 			defaultWidth
-		) as number;
+		);
 		statsEl.empty();
 		regions.length = 0;
 		pinned = null;
-		tooltipEl.style.display = "none";
+		hideTooltip();
+		canvas.removeClass("health-md-canvas-pointer");
 		const canvasCtx = setupCanvas(canvas, width, height);
 		renderFn(canvasCtx, data, width, height, config, resolveTheme(plugin.settings), statsEl, hits);
 	}

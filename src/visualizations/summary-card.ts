@@ -1,5 +1,6 @@
 import { HealthDay, VizConfig, ResolvedTheme, HtmlRenderFn } from "../types";
 import { hexToRgba } from "../canvas-utils";
+import { appendSvgFromMarkup } from "../dom-utils";
 
 type MetricId =
 	| "heart-rate"
@@ -187,7 +188,9 @@ export const renderSummaryCard: HtmlRenderFn = (
 	const compareWindow = String(config.compareWindow || "same-length");
 	const { current, prior, label: compareLabel } = splitWindows(data, compareWindow);
 
-	const currentVals = current.map(meta.extract).filter((v): v is number => v != null);
+	const currentVals = current
+		.map((day) => meta.extract(day))
+		.filter((v): v is number => v != null);
 	if (!currentVals.length) {
 		el.createEl("p", {
 			text: `No ${metricId} data in range.`,
@@ -195,7 +198,9 @@ export const renderSummaryCard: HtmlRenderFn = (
 		});
 		return;
 	}
-	const priorVals = prior.map(meta.extract).filter((v): v is number => v != null);
+	const priorVals = prior
+		.map((day) => meta.extract(day))
+		.filter((v): v is number => v != null);
 
 	const card = el.createDiv({ cls: "health-md-summary-card" });
 	card.style.setProperty("--hmd-summary-color", meta.color);
@@ -222,7 +227,7 @@ export const renderSummaryCard: HtmlRenderFn = (
 	const sparkHtml = buildSparkline(currentVals, meta.color, theme.isDark);
 	if (sparkHtml) {
 		const sparkWrap = card.createDiv({ cls: "health-md-summary-spark" });
-		sparkWrap.innerHTML = sparkHtml;
+		appendSvgFromMarkup(sparkWrap, sparkHtml);
 	}
 
 	if (priorVals.length) {
@@ -255,8 +260,12 @@ export const renderSummaryCard: HtmlRenderFn = (
 
 	const minFn = meta.min ?? ((d: HealthDay) => meta.extract(d));
 	const maxFn = meta.max ?? ((d: HealthDay) => meta.extract(d));
-	const mins = current.map(minFn).filter((v): v is number => v != null && v > 0);
-	const maxs = current.map(maxFn).filter((v): v is number => v != null && v > 0);
+	const mins = current
+		.map((day) => minFn(day))
+		.filter((v): v is number => v != null && v > 0);
+	const maxs = current
+		.map((day) => maxFn(day))
+		.filter((v): v is number => v != null && v > 0);
 	if (mins.length && maxs.length) {
 		const rangeEl = card.createDiv({ cls: "health-md-summary-meta" });
 		rangeEl.style.color = theme.muted;

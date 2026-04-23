@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate, formatDuration } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 interface Night {
 	date: string;
@@ -291,9 +292,9 @@ export const renderSleepSchedule: RenderFn = (
 
 	const consistencyLabel =
 		stdev < 0.5 ? "Very consistent" : stdev < 1 ? "Consistent" : stdev < 2 ? "Variable" : "Irregular";
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${offsetToHourStr(meanBedH)}</div><div class="health-md-stat-label">Avg Bedtime</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${offsetToHourStr(meanWakeH)}</div><div class="health-md-stat-label">Avg Wake</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${consistencyLabel}</div><div class="health-md-stat-label">±${stdev.toFixed(1)}h stdev</div></div>
-	`;
+	renderStatBoxes(statsEl, [
+		{ value: offsetToHourStr(meanBedH), label: "Avg bedtime" },
+		{ value: offsetToHourStr(meanWakeH), label: "Avg wake" },
+		{ value: consistencyLabel, label: `±${stdev.toFixed(1)}h stdev` },
+	]);
 };

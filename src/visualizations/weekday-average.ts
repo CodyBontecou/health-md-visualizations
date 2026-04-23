@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 type Metric =
 	| "steps"
@@ -265,15 +266,26 @@ export const renderWeekdayAverage: RenderFn = (
 
 	// Stats strip
 	const bestLabel = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][orderIdx[maxIdx]];
-	const worstIdx = avgs.reduce(
-		(best, v, i) => (v != null && (avgs[best] == null || v < (avgs[best] ?? Infinity)) ? i : best),
+	const worstIdx = avgs.reduce<number>(
+		(best, v, i) =>
+			v != null && (avgs[best] == null || v < (avgs[best] ?? Infinity))
+				? i
+				: best,
 		0
 	);
 	const worstLabel = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][orderIdx[worstIdx]];
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${meta.format(overallMean)}</div><div class="health-md-stat-label">Overall Mean</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${bestLabel}</div><div class="health-md-stat-label">Best (${avgs[maxIdx] != null ? meta.format(avgs[maxIdx]!) : "—"})</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${worstLabel}</div><div class="health-md-stat-label">Lowest (${avgs[worstIdx] != null ? meta.format(avgs[worstIdx]!) : "—"})</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value">${totalSamples}</div><div class="health-md-stat-label">Days Sampled</div></div>
-	`;
+	const bestValue = avgs[maxIdx];
+	const worstValue = avgs[worstIdx];
+	renderStatBoxes(statsEl, [
+		{ value: meta.format(overallMean), label: "Overall mean" },
+		{
+			value: bestLabel,
+			label: `Best (${bestValue != null ? meta.format(bestValue) : "—"})`,
+		},
+		{
+			value: worstLabel,
+			label: `Lowest (${worstValue != null ? meta.format(worstValue) : "—"})`,
+		},
+		{ value: String(totalSamples), label: "Days sampled" },
+	]);
 };

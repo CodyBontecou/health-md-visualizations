@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate } from "../canvas-utils";
+import { renderInlineStats } from "../dom-utils";
 
 export const renderHrvTrend: RenderFn = (
 	ctx: CanvasRenderingContext2D,
@@ -25,8 +26,10 @@ export const renderHrvTrend: RenderFn = (
 
 	// Compute per-day HRV value (prefer aggregate, else avg of samples)
 	const values = days.map((d) => {
-		if (d.heart!.hrv != null) return d.heart!.hrv!;
-		const samples = d.heart!.hrvSamples!;
+		const heart = d.heart;
+		if (!heart) return 0;
+		if (heart.hrv != null) return heart.hrv;
+		const samples = heart.hrvSamples ?? [];
 		return samples.reduce((s, x) => s + x.value, 0) / samples.length;
 	});
 
@@ -129,7 +132,18 @@ export const renderHrvTrend: RenderFn = (
 
 	// Stats strip
 	const avg = values.reduce((s, v) => s + v, 0) / values.length;
-	statsEl.innerHTML = `<span>Avg HRV <strong>${avg.toFixed(1)} ms</strong></span>` +
-		`<span>Min <strong>${minVal.toFixed(1)}</strong></span>` +
-		`<span>Max <strong>${maxVal.toFixed(1)}</strong></span>`;
+	renderInlineStats(statsEl, [
+		[
+			{ text: "Avg HRV " },
+			{ text: `${avg.toFixed(1)} ms`, strong: true },
+		],
+		[
+			{ text: "Min " },
+			{ text: minVal.toFixed(1), strong: true },
+		],
+		[
+			{ text: "Max " },
+			{ text: maxVal.toFixed(1), strong: true },
+		],
+	]);
 };

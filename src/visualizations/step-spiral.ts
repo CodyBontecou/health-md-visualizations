@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { lerp, hexToRgba, formatDate } from "../canvas-utils";
+import { renderStatBoxes } from "../dom-utils";
 
 export const renderStepSpiral: RenderFn = (
 	ctx: CanvasRenderingContext2D,
@@ -116,8 +117,16 @@ export const renderStepSpiral: RenderFn = (
 	});
 
 	const avgSteps = Math.round(totalSteps / days.length);
-	statsEl.innerHTML = `
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${avgSteps.toLocaleString()}</div><div class="health-md-stat-label">Avg/Day</div></div>
-		<div class="health-md-stat-box"><div class="health-md-stat-value" style="color:${theme.colors.accent}">${bestDay.activity!.steps.toLocaleString()}</div><div class="health-md-stat-label">Best Day</div></div>
-	`;
+	renderStatBoxes(statsEl, [
+		{
+			value: avgSteps.toLocaleString(),
+			label: "Avg/day",
+			color: theme.colors.accent,
+		},
+		{
+			value: bestDay.activity!.steps.toLocaleString(),
+			label: "Best day",
+			color: theme.colors.accent,
+		},
+	]);
 };

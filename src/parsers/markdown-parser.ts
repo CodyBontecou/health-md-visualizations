@@ -73,7 +73,29 @@ function getNum(fm: Record<string, unknown>, key: string): number | undefined {
 
 function getStr(fm: Record<string, unknown>, key: string): string | undefined {
 	const v = fm[key];
-	return typeof v === "string" ? v : v !== undefined ? String(v) : undefined;
+	if (typeof v === "string") return v;
+	if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
+		return String(v);
+	}
+	if (Array.isArray(v)) {
+		return v
+			.map((item) => {
+				if (
+					typeof item === "string" ||
+					typeof item === "number" ||
+					typeof item === "boolean" ||
+					typeof item === "bigint"
+				) {
+					return String(item);
+				}
+				return JSON.stringify(item);
+			})
+			.join(", ");
+	}
+	if (v !== undefined && v !== null) {
+		return JSON.stringify(v);
+	}
+	return undefined;
 }
 
 /**

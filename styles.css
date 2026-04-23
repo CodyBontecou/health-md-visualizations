@@ -19,6 +19,10 @@
 	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
 }
 
+.health-md-tooltip.is-hidden {
+	display: none;
+}
+
 .health-md-tooltip-title {
 	font-weight: 600;
 	margin-bottom: 6px;
@@ -55,10 +59,18 @@
 	width: 100%;
 }
 
+.health-md-canvas-pointer {
+	cursor: pointer;
+}
+
 .health-md-error {
 	color: var(--text-error);
 	font-style: italic;
 	padding: 8px;
+}
+
+.health-md-muted {
+	color: var(--text-muted);
 }
 
 /* Stats row */
