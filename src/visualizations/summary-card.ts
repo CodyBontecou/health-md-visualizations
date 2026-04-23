@@ -16,9 +16,9 @@ interface MetricMeta {
 	color: string;
 	unit: string;
 	decimals: number;
-	extract(day: HealthDay): number | null;
-	min?(day: HealthDay): number | null;
-	max?(day: HealthDay): number | null;
+	extract: (day: HealthDay) => number | null;
+	min?: (day: HealthDay) => number | null;
+	max?: (day: HealthDay) => number | null;
 }
 
 const METRICS: Record<MetricId, MetricMeta> = {

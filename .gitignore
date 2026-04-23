@@ -5,3 +5,4 @@ release/
 .dolt/
 *.db
 .beads-credential-key
+src/**/*.js

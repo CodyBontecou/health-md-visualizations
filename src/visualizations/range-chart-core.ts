@@ -18,7 +18,7 @@ export interface RangeWarnZone {
 export interface RangeOverlayContext {
 	ctx: CanvasRenderingContext2D;
 	data: HealthDay[];
-	yFor(v: number): number;
+	yFor: (v: number) => number;
 	yMin: number;
 	yMax: number;
 	padL: number;

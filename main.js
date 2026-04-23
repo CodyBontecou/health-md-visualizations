@@ -423,7 +423,7 @@ var import_obsidian2 = require("obsidian");
 
 // src/canvas-utils.ts
 function setupCanvas(canvas, w, h) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = activeWindow.devicePixelRatio || 1;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
   canvas.style.width = w + "px";
@@ -469,7 +469,7 @@ function hexToRgb(hex) {
 function resolveTheme(settings) {
   let isDark;
   if (settings.theme === "auto") {
-    isDark = document.body.classList.contains("theme-dark");
+    isDark = activeDocument.body.classList.contains("theme-dark");
   } else {
     isDark = settings.theme === "dark";
   }
@@ -514,7 +514,7 @@ function renderInlineStats(statsEl, stats) {
         row.createEl("strong", { text: part.text });
         return;
       }
-      row.appendChild(document.createTextNode(part.text));
+      row.appendChild(activeDocument.createTextNode(part.text));
     });
   });
 }
@@ -523,7 +523,7 @@ function appendSvgFromMarkup(container, svgMarkup) {
   const doc = parser.parseFromString(svgMarkup, "image/svg+xml");
   const svg = doc.documentElement;
   if (svg.tagName.toLowerCase() !== "svg") return;
-  container.appendChild(document.importNode(svg, true));
+  container.appendChild(activeDocument.importNode(svg, true));
 }
 
 // src/visualizations/heart-terrain.ts
@@ -729,7 +729,7 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const cellSize = Math.min(cellW, cellH);
   const actualH = rows * (cellSize + 6) - 6;
   if (actualH < H) {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = activeWindow.devicePixelRatio || 1;
     canvas.width = W * dpr;
     canvas.height = actualH * dpr;
     canvas.style.width = W + "px";
@@ -1335,7 +1335,7 @@ var renderSleepArchitecture = (ctx, data, W, H, _config, theme, _statsEl, hits) 
   const rightPad = 20;
   const topPad = 10;
   const totalHeight = topPad + nights.length * (stripeHeight + gap);
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = activeWindow.devicePixelRatio || 1;
   canvas.width = W * dpr;
   canvas.height = totalHeight * dpr;
   canvas.style.width = W + "px";
@@ -2596,7 +2596,7 @@ var renderActivityRings = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const cellH = cellW + dateLabelH;
   const neededH = rows * cellH + (rows - 1) * gap + 8;
   if (neededH > H) {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = activeWindow.devicePixelRatio || 1;
     canvas.width = W * dpr;
     canvas.height = neededH * dpr;
     canvas.style.width = W + "px";
@@ -3203,7 +3203,7 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const barAreaW = W - gutterW - rightPad;
   const neededH = padT + nights.length * (rowH + rowGap) + axisH + 8;
   if (neededH !== H) {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = activeWindow.devicePixelRatio || 1;
     canvas.width = W * dpr;
     canvas.height = neededH * dpr;
     canvas.style.width = W + "px";
@@ -4390,7 +4390,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
       search.inputEl.addEventListener("click", () => folderSuggest.open());
     });
     new import_obsidian3.Setting(containerEl).setName("File pattern").setDesc(
-      "Glob pattern to match files (for example: *.json, 2026-*.md, health-*.csv); use * to include all supported files."
+      "Glob pattern to match files (for example: *.json, 2026-*.md, health-*.CSV); use * to include all supported files."
     ).addText(
       (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
         this.plugin.settings.filePattern = value.trim();

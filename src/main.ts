@@ -165,7 +165,7 @@ export default class HealthMdPlugin extends Plugin {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
-			await this.loadData()
+			await this.loadData() as Partial<HealthMdSettings>
 		);
 	}
 
@@ -254,7 +254,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("File pattern")
 			.setDesc(
-				"Glob pattern to match files (for example: *.json, 2026-*.md, health-*.csv); use * to include all supported files."
+				"Glob pattern to match files (for example: *.json, 2026-*.md, health-*.CSV); use * to include all supported files."
 			)
 			.addText((text) =>
 				text

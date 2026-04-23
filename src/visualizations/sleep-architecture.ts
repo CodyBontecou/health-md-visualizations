@@ -85,7 +85,7 @@ export const renderSleepArchitecture: RenderFn = (
 	const totalHeight = topPad + nights.length * (stripeHeight + gap);
 
 	// Resize canvas to fit all nights
-	const dpr = window.devicePixelRatio || 1;
+	const dpr = activeWindow.devicePixelRatio || 1;
 	canvas.width = W * dpr;
 	canvas.height = totalHeight * dpr;
 	canvas.style.width = W + "px";

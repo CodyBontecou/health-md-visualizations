@@ -102,7 +102,7 @@ export const renderSleepSchedule: RenderFn = (
 
 	const neededH = padT + nights.length * (rowH + rowGap) + axisH + 8;
 	if (neededH !== H) {
-		const dpr = window.devicePixelRatio || 1;
+		const dpr = activeWindow.devicePixelRatio || 1;
 		canvas.width = W * dpr;
 		canvas.height = neededH * dpr;
 		canvas.style.width = W + "px";

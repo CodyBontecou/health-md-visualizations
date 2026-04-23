@@ -19,7 +19,7 @@ export const renderHeartTerrain: RenderFn = (
 		maxBPM = 0;
 
 	days.forEach((day) => {
-		const col: (number[] | null)[] = new Array(BUCKETS).fill(null);
+		const col: (number[] | null)[] = new Array<number[] | null>(BUCKETS).fill(null);
 		day.heart!.heartRateSamples.forEach((s) => {
 			const dt = new Date(s.timestamp);
 			const mins = dt.getHours() * 60 + dt.getMinutes();

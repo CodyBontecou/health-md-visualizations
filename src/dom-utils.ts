@@ -36,7 +36,7 @@ export function renderInlineStats(
 				row.createEl("strong", { text: part.text });
 				return;
 			}
-			row.appendChild(document.createTextNode(part.text));
+			row.appendChild(activeDocument.createTextNode(part.text));
 		});
 	});
 }
@@ -46,5 +46,5 @@ export function appendSvgFromMarkup(container: HTMLElement, svgMarkup: string): 
 	const doc = parser.parseFromString(svgMarkup, "image/svg+xml");
 	const svg = doc.documentElement;
 	if (svg.tagName.toLowerCase() !== "svg") return;
-	container.appendChild(document.importNode(svg, true));
+	container.appendChild(activeDocument.importNode(svg, true));
 }

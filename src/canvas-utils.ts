@@ -5,7 +5,7 @@ export function setupCanvas(
 	w: number,
 	h: number
 ): CanvasRenderingContext2D {
-	const dpr = window.devicePixelRatio || 1;
+	const dpr = activeWindow.devicePixelRatio || 1;
 	canvas.width = w * dpr;
 	canvas.height = h * dpr;
 	canvas.style.width = w + "px";
@@ -58,7 +58,7 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } {
 export function resolveTheme(settings: HealthMdSettings): ResolvedTheme {
 	let isDark: boolean;
 	if (settings.theme === "auto") {
-		isDark = document.body.classList.contains("theme-dark");
+		isDark = activeDocument.body.classList.contains("theme-dark");
 	} else {
 		isDark = settings.theme === "dark";
 	}

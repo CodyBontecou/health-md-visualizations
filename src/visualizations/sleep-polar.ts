@@ -84,7 +84,7 @@ export const renderSleepPolar: RenderFn = (
 	// Resize the canvas to actual content height BEFORE drawing (resizing clears the canvas)
 	const actualH = rows * (cellSize + 6) - 6;
 	if (actualH < H) {
-		const dpr = window.devicePixelRatio || 1;
+		const dpr = activeWindow.devicePixelRatio || 1;
 		canvas.width = W * dpr;
 		canvas.height = actualH * dpr;
 		canvas.style.width = W + "px";
