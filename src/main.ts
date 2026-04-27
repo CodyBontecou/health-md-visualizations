@@ -100,6 +100,9 @@ const DEFAULT_SETTINGS: HealthMdSettings = {
 	colorSleepRem: "#7c3aed",
 	colorSleepCore: "#2dd4bf",
 	colorSleepAwake: "#f59e0b",
+	mapTilesEnabled: true,
+	mapTileUrl: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+	mapTileAttribution: "© OpenStreetMap contributors © CARTO",
 };
 
 export default class HealthMdPlugin extends Plugin {
@@ -412,5 +415,82 @@ class HealthMdSettingTab extends PluginSettingTab {
 				})();
 			});
 		});
+
+		new Setting(containerEl).setName("Workouts").setHeading();
+
+		new Setting(containerEl)
+			.setName("Maximum heart rate")
+			.setDesc(
+				"Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age."
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("190")
+					.setValue(
+						this.plugin.settings.maxHeartRate != null
+							? String(this.plugin.settings.maxHeartRate)
+							: ""
+					)
+					.onChange(async (value) => {
+						const trimmed = value.trim();
+						if (!trimmed) {
+							this.plugin.settings.maxHeartRate = undefined;
+						} else {
+							const num = parseInt(trimmed, 10);
+							if (Number.isFinite(num) && num > 0) {
+								this.plugin.settings.maxHeartRate = num;
+							}
+						}
+						await this.plugin.saveSettings();
+						this.plugin.redrawAll();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Show map tiles")
+			.setDesc(
+				"Render workout maps with tile imagery (requires network). When off, the route is drawn as a polyline on a plain background."
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.mapTilesEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.mapTilesEnabled = value;
+						await this.plugin.saveSettings();
+						this.plugin.redrawAll();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Map tile URL")
+			.setDesc(
+				"Leaflet tile URL template. Replace with a different provider's URL if you have your own API key."
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl)
+					.setValue(this.plugin.settings.mapTileUrl)
+					.onChange(async (value) => {
+						this.plugin.settings.mapTileUrl =
+							value.trim() || DEFAULT_SETTINGS.mapTileUrl;
+						await this.plugin.saveSettings();
+						this.plugin.redrawAll();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Map attribution")
+			.setDesc("Attribution string shown on the map. Required by most tile providers.")
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution)
+					.setValue(this.plugin.settings.mapTileAttribution)
+					.onChange(async (value) => {
+						this.plugin.settings.mapTileAttribution =
+							value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
+						await this.plugin.saveSettings();
+						this.plugin.redrawAll();
+					})
+			);
 	}
 }

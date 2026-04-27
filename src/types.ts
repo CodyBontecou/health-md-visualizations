@@ -1,3 +1,72 @@
+export interface TimeSeriesSample {
+	timestamp: string;
+	value: number;
+}
+
+export interface WorkoutLap {
+	index: number;
+	duration: number;
+	distance?: number;
+	paceFormatted?: string;
+}
+
+export interface WorkoutSplit {
+	index: number;
+	duration: number;
+	distance: number;
+	paceFormatted?: string;
+	avgHeartRate?: number;
+}
+
+export interface RoutePoint {
+	timestamp: string;
+	latitude: number;
+	longitude: number;
+	altitude?: number;
+	speedMps?: number;
+	courseDegrees?: number;
+	horizontalAccuracyMeters?: number;
+}
+
+export interface WorkoutTimeSeries {
+	heartRate?: TimeSeriesSample[];
+	speed?: TimeSeriesSample[];
+	power?: TimeSeriesSample[];
+	cadence?: TimeSeriesSample[];
+	strideLength?: TimeSeriesSample[];
+	groundContactTime?: TimeSeriesSample[];
+	verticalOscillation?: TimeSeriesSample[];
+	altitude?: TimeSeriesSample[];
+}
+
+export interface WorkoutEntry {
+	type: string;
+	duration: number;
+	durationFormatted?: string;
+	calories?: number;
+	distance?: number;
+	distanceFormatted?: string;
+	startTime?: string;
+	avgPaceFormatted?: string;
+	avgSpeedFormatted?: string;
+	avgHeartRate?: number;
+	maxHeartRate?: number;
+	minHeartRate?: number;
+	avgRunningCadence?: number;
+	avgStrideLength?: number;
+	avgGroundContactTime?: number;
+	avgVerticalOscillation?: number;
+	avgCyclingCadence?: number;
+	avgPower?: number;
+	maxPower?: number;
+	elevationGainMeters?: number;
+	elevationLossMeters?: number;
+	laps?: WorkoutLap[];
+	splits?: WorkoutSplit[];
+	route?: RoutePoint[];
+	timeSeries?: WorkoutTimeSeries;
+}
+
 export interface HealthDay {
 	type: string;
 	date: string;
@@ -63,15 +132,7 @@ export interface HealthDay {
 		stairAscentSpeed?: number;
 		stairDescentSpeed?: number;
 	};
-	workouts?: Array<{
-		type: string;
-		duration: number;
-		durationFormatted?: string;
-		calories: number;
-		distance?: number;
-		distanceFormatted?: string;
-		startTime?: string;
-	}>;
+	workouts?: WorkoutEntry[];
 	hearing?: {
 		headphoneAudioLevel?: number;
 	};
@@ -115,6 +176,10 @@ export interface HealthMdSettings {
 	colorSleepRem: string;
 	colorSleepCore: string;
 	colorSleepAwake: string;
+	maxHeartRate?: number;
+	mapTilesEnabled: boolean;
+	mapTileUrl: string;
+	mapTileAttribution: string;
 }
 
 export interface ResolvedTheme {
@@ -123,6 +188,10 @@ export interface ResolvedTheme {
 	muted: string;
 	isDark: boolean;
 	colors: ColorPalette;
+	maxHeartRate?: number;
+	mapTilesEnabled: boolean;
+	mapTileUrl: string;
+	mapTileAttribution: string;
 }
 
 export interface HitRegionDetail {

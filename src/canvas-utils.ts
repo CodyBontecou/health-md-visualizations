@@ -80,5 +80,9 @@ export function resolveTheme(settings: HealthMdSettings): ResolvedTheme {
 				awake: settings.colorSleepAwake,
 			},
 		},
+		maxHeartRate: settings.maxHeartRate,
+		mapTilesEnabled: settings.mapTilesEnabled,
+		mapTileUrl: settings.mapTileUrl,
+		mapTileAttribution: settings.mapTileAttribution,
 	};
 }
