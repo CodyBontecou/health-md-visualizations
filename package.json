@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-health-md",
-	"version": "1.6.2",
+	"version": "1.7.0",
 	"description": "Obsidian plugin for Health.md visualizations",
 	"repository": {
 		"type": "git",

@@ -1,7 +1,7 @@
 {
 	"id": "health-md",
 	"name": "Health.md visualizations",
-	"version": "1.6.2",
+	"version": "1.7.0",
 	"minAppVersion": "1.4.10",
 	"description": "Render Apple Health data visualizations from JSON, CSV, or Markdown files, with custom date and time range filters.",
 	"author": "Cody Bontecou",
