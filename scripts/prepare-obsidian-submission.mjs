@@ -87,7 +87,7 @@ const outputDir = path.join(root, "release", "obsidian-submission", manifest.ver
 await fs.rm(outputDir, { recursive: true, force: true });
 await fs.mkdir(outputDir, { recursive: true });
 
-const releaseAssets = ["main.js", "manifest.json", "versions.json"];
+const releaseAssets = ["main.js", "manifest.json"];
 for (const optional of optionalReleaseAssets) {
 	if (await exists(path.join(root, optional))) releaseAssets.push(optional);
 }
@@ -117,11 +117,11 @@ const checklist = `# Obsidian Community Plugin Submission (${manifest.name})
 
 ## 1) Create a GitHub release
 - Tag: \`${manifest.version}\` (must match \`manifest.json\` version)
-- Attach these binary assets from this folder:
+- Attach only these supported assets from this folder:
   - \`main.js\`
   - \`manifest.json\`
-  - \`versions.json\`
   - \`styles.css\` (optional, include if present)
+- Do not attach \`versions.json\` to the GitHub release. Keep it in the repository root only.
 
 ## 2) Open PR in obsidianmd/obsidian-releases
 - Edit \`community-plugins.json\`
@@ -138,7 +138,7 @@ ${JSON.stringify(communityPluginEntry, null, 2)}
 - Repo is public and reachable
 - Root contains \`README.md\`, \`LICENSE\`, \`manifest.json\`
 - Release tag equals plugin version (${manifest.version})
-- Release includes required assets listed above
+- Release includes only the supported assets listed above
 - Plugin id is unique and does not contain \`obsidian\`
 `;
 

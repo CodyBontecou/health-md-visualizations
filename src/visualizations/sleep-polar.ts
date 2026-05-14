@@ -60,7 +60,7 @@ export const renderSleepPolar: RenderFn = (
 	H: number,
 	_config: VizConfig,
 	theme: ResolvedTheme,
-	statsEl: HTMLElement,
+	_statsEl: HTMLElement,
 	hits: HitRegistry
 ): void => {
 	const canvas = ctx.canvas;

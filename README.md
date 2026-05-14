@@ -37,7 +37,10 @@ npm run prepare:submission
 
 The command creates `release/obsidian-submission/<version>/` containing:
 
-- release assets (`main.js`, `manifest.json`, `versions.json`, and `styles.css` when present)
+- supported release assets (`main.js`, `manifest.json`, and `styles.css` when present)
+
+Keep `versions.json` in the repository root for Obsidian version compatibility metadata, but do not attach it to GitHub releases.
+Pushing a version tag runs the release workflow, uploads only supported assets, and generates GitHub artifact attestations.
 - `community-plugin-entry.json` (copy this object into `community-plugins.json`)
 - `SUBMISSION-CHECKLIST.md` (PR/release checklist)
 

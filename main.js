@@ -10277,7 +10277,7 @@ function getEffectiveStages(night) {
   if (stages.length > 0) return stages;
   return buildSyntheticStages(night);
 }
-var renderSleepPolar = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
   const canvas = ctx.canvas;
   const nights = data.filter(
     (d) => d.sleep && (d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)
