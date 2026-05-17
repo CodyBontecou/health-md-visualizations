@@ -1,1 +1,8 @@
-{}
+{
+  "userIgnoreFilters": [
+    ".beads/",
+    ".claude/",
+    "AGENTS.md",
+    "CLAUDE.md"
+  ]
+}
