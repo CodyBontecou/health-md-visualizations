@@ -169,5 +169,19 @@
     }
   },
   "active": "aab618ebcffffb76",
-  "lastOpenFiles": []
+  "lastOpenFiles": [
+    "examples/daily-dashboard.md",
+    "exports/Health/README.md",
+    "examples/apple-dashboard.md",
+    "scripts/generate-mock-health-data.mjs",
+    "exports/Health/2026-09-18.json",
+    "exports/Health/2026-07-06.json",
+    "exports/Health/2026-04-16.json",
+    "exports/Health/2026-03-12.json",
+    "exports/Health/2026-10-02.json",
+    "exports/Health/2026-03-04.json",
+    "exports/Health/2026-12-29.json",
+    "exports/Health/2026-10-14.json",
+    "exports/Health/2026-07-10.json"
+  ]
 }
