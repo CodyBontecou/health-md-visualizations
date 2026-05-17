@@ -1,0 +1,637 @@
+.health-md-container {
+	width: 100%;
+	margin: 8px 0;
+	position: relative;
+}
+
+.health-md-tooltip {
+	position: absolute;
+	pointer-events: none;
+	z-index: 100;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px 10px;
+	font-size: 0.82em;
+	min-width: 150px;
+	max-width: 240px;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+}
+
+.health-md-tooltip.is-hidden {
+	display: none;
+}
+
+.health-md-tooltip-title {
+	font-weight: 600;
+	margin-bottom: 6px;
+	color: var(--text-normal);
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding-bottom: 4px;
+}
+
+.health-md-tooltip-details {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.health-md-tooltip-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-tooltip-label {
+	color: var(--text-muted);
+}
+
+.health-md-tooltip-value {
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.health-md-container canvas {
+	display: block;
+	border-radius: 6px;
+	width: 100%;
+}
+
+.health-md-canvas-pointer {
+	cursor: pointer;
+}
+
+.health-md-error {
+	color: var(--text-error);
+	font-style: italic;
+	padding: 8px;
+}
+
+.health-md-muted {
+	color: var(--text-muted);
+}
+
+/* Stats row */
+.health-md-stats {
+	display: flex;
+	gap: 16px;
+	justify-content: center;
+	padding: 8px 0 4px;
+}
+
+.health-md-stat-box {
+	text-align: center;
+}
+
+.health-md-stat-value {
+	font-size: 1.3em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-stat-label {
+	font-size: 0.75em;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+/* Summary card */
+.health-md-summary-card {
+	padding: 14px 16px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: var(--background-primary);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.health-md-summary-pill {
+	font-size: 0.7em;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.health-md-summary-kpi {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	line-height: 1;
+}
+
+.health-md-summary-value {
+	font-size: 2.2em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+}
+
+.health-md-summary-unit {
+	font-size: 0.85em;
+	font-weight: 500;
+	letter-spacing: 0.05em;
+}
+
+.health-md-summary-spark {
+	width: 100%;
+	height: 40px;
+}
+
+.health-md-summary-spark-svg {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+.health-md-summary-trend {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	font-size: 0.85em;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-summary-arrow {
+	font-size: 0.9em;
+}
+
+.health-md-summary-delta {
+	font-weight: 600;
+}
+
+.health-md-summary-caption {
+	font-size: 0.85em;
+}
+
+.health-md-summary-meta {
+	font-size: 0.78em;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Trend tile */
+.health-md-trend-tile {
+	gap: 6px;
+}
+
+.health-md-trend-header {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+}
+
+.health-md-trend-name {
+	font-size: 0.95em;
+	font-weight: 600;
+}
+
+.health-md-trend-delta-row {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	line-height: 1.1;
+}
+
+.health-md-trend-arrow {
+	font-size: 1.6em;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.health-md-trend-pct {
+	font-size: 1.6em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-trend-abs {
+	font-size: 0.85em;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-trend-narrative {
+	font-size: 0.82em;
+	line-height: 1.35;
+}
+
+.health-md-trend-consistency {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.78em;
+}
+
+.health-md-trend-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	display: inline-block;
+}
+
+/* Intro stats grid */
+.health-md-intro-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+	padding: 16px;
+}
+
+.health-md-intro-stat {
+	text-align: center;
+}
+
+.health-md-intro-value {
+	font-size: 2em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-intro-label {
+	font-size: 0.8em;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+/* Workout detail visualizations (workout-map, future workout-* charts) */
+
+.health-md-workout-container {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.health-md-workout-header {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.health-md-workout-title {
+	font-weight: 600;
+	font-size: 1.05em;
+	color: var(--text-normal);
+}
+
+.health-md-workout-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+	gap: 8px;
+}
+
+.health-md-workout-stat {
+	background: var(--background-secondary);
+	border-radius: 6px;
+	padding: 6px 10px;
+}
+
+.health-md-workout-stat-label {
+	font-size: 0.72em;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--text-muted);
+}
+
+.health-md-workout-stat-value {
+	font-weight: 600;
+	font-size: 1em;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+}
+
+.health-md-workout-map {
+	width: 100%;
+	border-radius: 8px;
+	overflow: hidden;
+	position: relative;
+}
+
+.health-md-workout-map-canvas {
+	background: var(--background-secondary);
+}
+
+.health-md-workout-map-legend {
+	position: absolute;
+	bottom: 6px;
+	left: 6px;
+	background: rgba(0, 0, 0, 0.55);
+	color: #ffffff;
+	font-size: 0.72em;
+	padding: 3px 8px;
+	border-radius: 4px;
+	pointer-events: none;
+	z-index: 500;
+}
+
+.health-md-workout-empty {
+	color: var(--text-muted);
+	font-style: italic;
+	padding: 12px;
+	text-align: center;
+	background: var(--background-secondary);
+	border-radius: 6px;
+}
+
+/* Minimal Leaflet styles scoped to Health.md workout maps.
+   Keep this scoped and lint-friendly for Obsidian community plugin CSS checks. */
+
+.health-md-workout-map.leaflet-container {
+	overflow: hidden;
+	position: relative;
+	background: #dddddd;
+	outline-offset: 1px;
+	font-family: "Helvetica Neue", Arial, Helvetica, sans-serif;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	touch-action: pan-x pan-y;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.health-md-workout-map.leaflet-container a {
+	color: #0078a8;
+}
+
+.health-md-workout-map.leaflet-container .leaflet-marker-pane img,
+.health-md-workout-map.leaflet-container .leaflet-shadow-pane img,
+.health-md-workout-map.leaflet-container .leaflet-tile-pane img,
+.health-md-workout-map.leaflet-container img.leaflet-image-layer,
+.health-md-workout-map.leaflet-container .leaflet-tile {
+	max-width: none;
+	max-height: none;
+	width: auto;
+	padding: 0;
+}
+
+.health-md-workout-map .leaflet-pane,
+.health-md-workout-map .leaflet-layer,
+.health-md-workout-map .leaflet-pane > svg,
+.health-md-workout-map .leaflet-pane > canvas {
+	position: absolute;
+	left: 0;
+	top: 0;
+}
+
+.health-md-workout-map .leaflet-tile-container {
+	position: absolute;
+	left: 0;
+	top: 0;
+	pointer-events: none;
+}
+
+.health-md-workout-map .leaflet-tile {
+	position: absolute;
+	left: 0;
+	top: 0;
+	user-select: none;
+	-webkit-user-drag: none;
+	filter: inherit;
+	visibility: hidden;
+}
+
+.health-md-workout-map .leaflet-tile-loaded {
+	visibility: inherit;
+}
+
+.health-md-workout-map .leaflet-marker-icon,
+.health-md-workout-map .leaflet-marker-shadow,
+.health-md-workout-map .leaflet-image-layer {
+	position: absolute;
+	left: 0;
+	top: 0;
+	display: block;
+	user-select: none;
+	-webkit-user-drag: none;
+	pointer-events: none;
+}
+
+.health-md-workout-map .leaflet-tile-pane {
+	z-index: 200;
+}
+
+.health-md-workout-map .leaflet-overlay-pane {
+	z-index: 400;
+}
+
+.health-md-workout-map .leaflet-shadow-pane {
+	z-index: 500;
+}
+
+.health-md-workout-map .leaflet-marker-pane {
+	z-index: 600;
+}
+
+.health-md-workout-map .leaflet-tooltip-pane {
+	z-index: 650;
+}
+
+.health-md-workout-map .leaflet-popup-pane {
+	z-index: 700;
+}
+
+.health-md-workout-map .leaflet-map-pane canvas {
+	z-index: 100;
+}
+
+.health-md-workout-map .leaflet-map-pane svg {
+	z-index: 200;
+}
+
+.health-md-workout-map .leaflet-zoom-animated {
+	transform-origin: 0 0;
+}
+
+.health-md-workout-map svg.leaflet-zoom-animated {
+	will-change: transform;
+}
+
+.health-md-workout-map.leaflet-zoom-anim .leaflet-zoom-animated {
+	transition: transform 0.25s cubic-bezier(0, 0, 0.25, 1);
+}
+
+.health-md-workout-map.leaflet-zoom-anim .leaflet-tile,
+.health-md-workout-map.leaflet-pan-anim .leaflet-tile {
+	transition: none;
+}
+
+.health-md-workout-map.leaflet-zoom-anim .leaflet-zoom-hide {
+	visibility: hidden;
+}
+
+.health-md-workout-map.leaflet-grab {
+	cursor: grab;
+}
+
+.health-md-workout-map.leaflet-dragging,
+.health-md-workout-map.leaflet-dragging .leaflet-grab,
+.health-md-workout-map.leaflet-dragging .leaflet-grab .leaflet-interactive,
+.health-md-workout-map.leaflet-dragging .leaflet-marker-draggable {
+	cursor: grabbing;
+}
+
+.health-md-workout-map .leaflet-interactive {
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+.health-md-workout-map .leaflet-pane > svg path {
+	pointer-events: none;
+}
+
+.health-md-workout-map .leaflet-pane > svg path.leaflet-interactive,
+.health-md-workout-map svg.leaflet-image-layer.leaflet-interactive path {
+	pointer-events: auto;
+}
+
+.health-md-workout-map .leaflet-control {
+	position: relative;
+	z-index: 800;
+	pointer-events: auto;
+	float: left;
+	clear: both;
+	cursor: auto;
+}
+
+.health-md-workout-map .leaflet-top {
+	position: absolute;
+	top: 0;
+	z-index: 1000;
+	pointer-events: none;
+}
+
+.health-md-workout-map .leaflet-bottom {
+	position: absolute;
+	bottom: 0;
+	z-index: 1000;
+	pointer-events: none;
+}
+
+.health-md-workout-map .leaflet-left {
+	left: 0;
+}
+
+.health-md-workout-map .leaflet-right {
+	right: 0;
+}
+
+.health-md-workout-map .leaflet-right .leaflet-control {
+	float: right;
+	margin-right: 10px;
+}
+
+.health-md-workout-map .leaflet-top .leaflet-control {
+	margin-top: 10px;
+}
+
+.health-md-workout-map .leaflet-bottom .leaflet-control {
+	margin-bottom: 10px;
+}
+
+.health-md-workout-map .leaflet-left .leaflet-control {
+	margin-left: 10px;
+}
+
+.health-md-workout-map .leaflet-bar {
+	box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+}
+
+.health-md-workout-map .leaflet-bar a {
+	background-color: #ffffff;
+	border-bottom: 1px solid #cccccc;
+	width: 26px;
+	height: 26px;
+	line-height: 26px;
+	display: block;
+	text-align: center;
+	text-decoration: none;
+	color: #000000;
+	background-position: 50% 50%;
+	background-repeat: no-repeat;
+}
+
+.health-md-workout-map .leaflet-bar a:hover,
+.health-md-workout-map .leaflet-bar a:focus {
+	background-color: #f4f4f4;
+}
+
+.health-md-workout-map .leaflet-bar a:first-child {
+	border-top-left-radius: 4px;
+	border-top-right-radius: 4px;
+}
+
+.health-md-workout-map .leaflet-bar a:last-child {
+	border-bottom: none;
+	border-bottom-left-radius: 4px;
+	border-bottom-right-radius: 4px;
+}
+
+.health-md-workout-map .leaflet-bar a.leaflet-disabled {
+	cursor: default;
+	background-color: #f4f4f4;
+	color: #bbbbbb;
+}
+
+.health-md-workout-map.leaflet-touch .leaflet-bar a {
+	width: 30px;
+	height: 30px;
+	line-height: 30px;
+}
+
+.health-md-workout-map.leaflet-touch .leaflet-bar a:first-child {
+	border-top-left-radius: 2px;
+	border-top-right-radius: 2px;
+}
+
+.health-md-workout-map.leaflet-touch .leaflet-bar a:last-child {
+	border-bottom-left-radius: 2px;
+	border-bottom-right-radius: 2px;
+}
+
+.health-md-workout-map .leaflet-control-zoom-in,
+.health-md-workout-map .leaflet-control-zoom-out {
+	font: bold 18px "Lucida Console", Monaco, monospace;
+}
+
+.health-md-workout-map.leaflet-touch .leaflet-control-zoom-in,
+.health-md-workout-map.leaflet-touch .leaflet-control-zoom-out {
+	font-size: 22px;
+}
+
+.health-md-workout-map .leaflet-container .leaflet-control-attribution,
+.health-md-workout-map .leaflet-control-attribution {
+	background: rgba(255, 255, 255, 0.8);
+	margin: 0;
+	padding: 0 5px;
+	color: #333333;
+	line-height: 1.4;
+}
+
+.health-md-workout-map .leaflet-control-attribution a {
+	text-decoration: none;
+}
+
+.health-md-workout-map .leaflet-control-attribution a:hover,
+.health-md-workout-map .leaflet-control-attribution a:focus {
+	text-decoration: underline;
+}
+
+.health-md-workout-map .leaflet-attribution-flag {
+	display: inline;
+	vertical-align: baseline;
+	width: 1em;
+	height: 0.6669em;
+}
+
+.health-md-workout-map .leaflet-zoom-box {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 0;
+	height: 0;
+	box-sizing: border-box;
+	z-index: 800;
+	border: 2px dotted #3388ff;
+	background: rgba(255, 255, 255, 0.5);
+}
