@@ -76,35 +76,104 @@ The plugin watches your data folder and automatically refreshes its cache when f
 
 ## Visualization types
 
-Specify one of these as the `type:` field in your code block:
+Specify one of these as the `type:` field in your code block. The gallery below shows each renderer with a short description; see `examples/visualization-reference.md` for complete argument tables, defaults, and copy/paste examples.
 
-| Type | What it shows | Renderer-specific arguments |
-| --- | --- | --- |
-| `intro-stats` | HTML summary card — totals, averages, and highlights for the selected dataset. | — |
-| `summary-card` | Apple-style headline card with large KPI, sparkline, range, and comparison delta. | `metric`, `compareWindow` |
-| `trend-tile` | Apple Health Trends-style HTML card with direction arrow, percent delta, narrative, and two-period sparkline. | `metric`, `currentWindow`, `priorWindow` |
-| `activity-rings` | Apple's Move / Exercise / Stand rings; single-day large ring set or multi-day small multiples. | `moveGoal`, `exerciseGoal`, `standGoal` |
-| `vitals-rings` | Health.md radial activity/vitals rings: steps, calories, and heart-rate context per day. | — |
-| `bar-chart` | Apple-style vertical bars with latest day highlight, optional goal line, and optional average line. | `metric`, `goal`, `showAverage` |
-| `activity-heatmap` | GitHub-style activity calendar shaded by daily steps, calories, or distance. | `metric` |
-| `step-spiral` | Daily step counts arranged on a spiral. | — |
-| `weekday-average` | Seven bars showing a metric's average by weekday with an overall-mean line. | `metric`, `weekStart` |
-| `heart-terrain` | Heart-rate samples plotted as daily terrain / ridgeline rows over time. | — |
-| `heart-range` | Per-day min-to-max heart-rate capsule with an average dot. | `metric` |
-| `hrv-trend` | HRV trend line from daily HRV or HRV samples. | — |
-| `oxygen-river` | Blood oxygen samples as a flowing band. | — |
-| `oxygen-range` | Daily SpO₂ or respiratory min/max capsule with warning-zone shading. | `metric` |
-| `breathing-wave` | Respiratory-rate samples as a wave. | — |
-| `sleep-schedule` | Horizontal bedtime-to-wake bars against a sunset→night→sunrise backdrop. | `sleepGoal`, `windowStart`, `windowEnd` |
-| `sleep-quality-bars` | Stacked nightly bars for deep, core, REM, and awake time. | — |
-| `sleep-architecture` | Linear timeline of sleep stages with depth bands. | — |
-| `sleep-polar` | Polar clock view of sleep stages per night. | — |
-| `walking-symmetry` | Walking speed and asymmetry / gait metrics. | — |
-| `workout-log` | Workout timeline with duration bars and workout-type colors. | — |
-| `workout-heart-rate` | Heart-rate time series and optional zone bands for one workout. | `date`, `workout`, `maxHeartRate` |
-| `workout-map` | GPS route map for one outdoor workout, colored by speed or heart rate. | `date`, `workout`, `colorBy` |
+<table>
+<tr>
+<td width="46%"><a href="examples/images/visualizations/intro-stats.png"><img src="examples/images/visualizations/intro-stats.png" alt="intro-stats visualization" width="420"></a></td>
+<td width="54%"><p><strong><code>intro-stats</code></strong></p><p>HTML summary card — totals, averages, and highlights for the selected dataset.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/summary-card.png"><img src="examples/images/visualizations/summary-card.png" alt="summary-card visualization" width="420"></a></td>
+<td><p><strong><code>summary-card</code></strong></p><p>Apple-style headline card with large KPI, sparkline, range, and comparison delta.</p><p><strong>Extra arguments:</strong> <code>metric</code>, <code>compareWindow</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/trend-tile.png"><img src="examples/images/visualizations/trend-tile.png" alt="trend-tile visualization" width="420"></a></td>
+<td><p><strong><code>trend-tile</code></strong></p><p>Apple Health Trends-style HTML card with direction arrow, percent delta, narrative, and two-period sparkline.</p><p><strong>Extra arguments:</strong> <code>metric</code>, <code>currentWindow</code>, <code>priorWindow</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/activity-rings.png"><img src="examples/images/visualizations/activity-rings.png" alt="activity-rings visualization" width="420"></a></td>
+<td><p><strong><code>activity-rings</code></strong></p><p>Apple's Move / Exercise / Stand rings; single-day large ring set or multi-day small multiples.</p><p><strong>Extra arguments:</strong> <code>moveGoal</code>, <code>exerciseGoal</code>, <code>standGoal</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/vitals-rings.png"><img src="examples/images/visualizations/vitals-rings.png" alt="vitals-rings visualization" width="420"></a></td>
+<td><p><strong><code>vitals-rings</code></strong></p><p>Health.md radial activity/vitals rings: steps, calories, and heart-rate context per day.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/bar-chart.png"><img src="examples/images/visualizations/bar-chart.png" alt="bar-chart visualization" width="420"></a></td>
+<td><p><strong><code>bar-chart</code></strong></p><p>Apple-style vertical bars with latest day highlight, optional goal line, and optional average line.</p><p><strong>Extra arguments:</strong> <code>metric</code>, <code>goal</code>, <code>showAverage</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/activity-heatmap.png"><img src="examples/images/visualizations/activity-heatmap.png" alt="activity-heatmap visualization" width="420"></a></td>
+<td><p><strong><code>activity-heatmap</code></strong></p><p>GitHub-style activity calendar shaded by daily steps, calories, or distance.</p><p><strong>Extra arguments:</strong> <code>metric</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/step-spiral.png"><img src="examples/images/visualizations/step-spiral.png" alt="step-spiral visualization" width="420"></a></td>
+<td><p><strong><code>step-spiral</code></strong></p><p>Daily step counts arranged on a spiral, with older days near the center and newer days spiraling outward.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/weekday-average.png"><img src="examples/images/visualizations/weekday-average.png" alt="weekday-average visualization" width="420"></a></td>
+<td><p><strong><code>weekday-average</code></strong></p><p>Seven bars showing a metric's average by weekday with an overall-mean line.</p><p><strong>Extra arguments:</strong> <code>metric</code>, <code>weekStart</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/heart-terrain.png"><img src="examples/images/visualizations/heart-terrain.png" alt="heart-terrain visualization" width="420"></a></td>
+<td><p><strong><code>heart-terrain</code></strong></p><p>Heart-rate samples plotted as daily terrain / ridgeline rows over time.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/heart-range.png"><img src="examples/images/visualizations/heart-range.png" alt="heart-range visualization" width="420"></a></td>
+<td><p><strong><code>heart-range</code></strong></p><p>Per-day min-to-max heart-rate capsule with an average dot and optional resting-HR reference line.</p><p><strong>Extra arguments:</strong> <code>metric</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/hrv-trend.png"><img src="examples/images/visualizations/hrv-trend.png" alt="hrv-trend visualization" width="420"></a></td>
+<td><p><strong><code>hrv-trend</code></strong></p><p>HRV trend line from daily HRV or HRV samples.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/oxygen-river.png"><img src="examples/images/visualizations/oxygen-river.png" alt="oxygen-river visualization" width="420"></a></td>
+<td><p><strong><code>oxygen-river</code></strong></p><p>Blood oxygen samples as a flowing band with summary stats.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/oxygen-range.png"><img src="examples/images/visualizations/oxygen-range.png" alt="oxygen-range visualization" width="420"></a></td>
+<td><p><strong><code>oxygen-range</code></strong></p><p>Daily SpO₂ or respiratory min/max capsule with warning-zone shading.</p><p><strong>Extra arguments:</strong> <code>metric</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/breathing-wave.png"><img src="examples/images/visualizations/breathing-wave.png" alt="breathing-wave visualization" width="420"></a></td>
+<td><p><strong><code>breathing-wave</code></strong></p><p>Respiratory-rate samples as a wave.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/sleep-schedule.png"><img src="examples/images/visualizations/sleep-schedule.png" alt="sleep-schedule visualization" width="420"></a></td>
+<td><p><strong><code>sleep-schedule</code></strong></p><p>Horizontal bedtime-to-wake bars against a sunset→night→sunrise backdrop.</p><p><strong>Extra arguments:</strong> <code>sleepGoal</code>, <code>windowStart</code>, <code>windowEnd</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/sleep-quality-bars.png"><img src="examples/images/visualizations/sleep-quality-bars.png" alt="sleep-quality-bars visualization" width="420"></a></td>
+<td><p><strong><code>sleep-quality-bars</code></strong></p><p>Stacked nightly bars for deep, core, REM, and awake time.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/sleep-architecture.png"><img src="examples/images/visualizations/sleep-architecture.png" alt="sleep-architecture visualization" width="420"></a></td>
+<td><p><strong><code>sleep-architecture</code></strong></p><p>Linear timeline of sleep stages with depth bands.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/sleep-polar.png"><img src="examples/images/visualizations/sleep-polar.png" alt="sleep-polar visualization" width="420"></a></td>
+<td><p><strong><code>sleep-polar</code></strong></p><p>Polar clock view of sleep stages per night.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/walking-symmetry.png"><img src="examples/images/visualizations/walking-symmetry.png" alt="walking-symmetry visualization" width="420"></a></td>
+<td><p><strong><code>walking-symmetry</code></strong></p><p>Walking speed and asymmetry / gait metrics.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/workout-log.png"><img src="examples/images/visualizations/workout-log.png" alt="workout-log visualization" width="420"></a></td>
+<td><p><strong><code>workout-log</code></strong></p><p>Workout timeline with duration bars and workout-type colors.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/workout-heart-rate.png"><img src="examples/images/visualizations/workout-heart-rate.png" alt="workout-heart-rate visualization" width="420"></a></td>
+<td><p><strong><code>workout-heart-rate</code></strong></p><p>Heart-rate time series and optional zone bands for one workout.</p><p><strong>Extra arguments:</strong> <code>date</code>, <code>workout</code>, <code>maxHeartRate</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/workout-map.png"><img src="examples/images/visualizations/workout-map.png" alt="workout-map visualization" width="420"></a></td>
+<td><p><strong><code>workout-map</code></strong></p><p>GPS route map for one outdoor workout, colored by speed or heart rate.</p><p><strong>Extra arguments:</strong> <code>date</code>, <code>workout</code>, <code>colorBy</code>.</p></td>
+</tr>
+</table>
 
-All canvas chart types support hover tooltips and click-to-pin. The `intro-stats`, `summary-card`, `trend-tile`, and `workout-map` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering. See `examples/visualization-reference.md` for detailed argument tables and copy/paste examples for every type.
+All canvas chart types support hover tooltips and click-to-pin. The `intro-stats`, `summary-card`, `trend-tile`, and `workout-map` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
 
 ### Bundled examples
 
@@ -134,7 +203,7 @@ height: 400
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `type` | string | *(required)* | Visualization type — see the table above. |
+| `type` | string | *(required)* | Visualization type — see the gallery above. |
 | `width` | number | from settings | Canvas width in pixels (chart shrinks to container width). |
 | `height` | number | from settings | Canvas height in pixels. |
 | `from` | date or datetime | — | Start of the data window (inclusive). |

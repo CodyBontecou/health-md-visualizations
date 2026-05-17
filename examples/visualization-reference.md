@@ -158,11 +158,11 @@ last: 90
 Apple-style Move / Exercise / Stand rings. A single-day window renders one large
 ring set; a multi-day window renders a small-multiples grid with closure stats.
 
-| Argument | Values | Default | Effect |
-| --- | --- | --- | --- |
-| `moveGoal` | calories | `500` | Target for the red Move ring (`activity.activeCalories`). |
-| `exerciseGoal` | minutes | `30` | Target for the green Exercise ring (`activity.exerciseMinutes`). |
-| `standGoal` | hours | `12` | Target for the blue Stand ring (`activity.standHours`). |
+| Argument       | Values   | Default | Effect                                                           |
+| -------------- | -------- | ------- | ---------------------------------------------------------------- |
+| `moveGoal`     | calories | `500`   | Target for the red Move ring (`activity.activeCalories`).        |
+| `exerciseGoal` | minutes  | `30`    | Target for the green Exercise ring (`activity.exerciseMinutes`). |
+| `standGoal`    | hours    | `12`    | Target for the blue Stand ring (`activity.standHours`).          |
 
 ```health-viz
 # Seven daily ring sets with custom goals.
@@ -181,9 +181,9 @@ A Health.md original radial chart: steps, active calories, and resting/average
 heart-rate context for each day. Use it when you want activity and heart data in
 one compact visualization.
 
-| Argument | Values | Default | Effect |
-| --- | --- | --- | --- |
-| *(extra)* | — | — | No renderer-specific arguments. Use `last`, `from`, and `to` to control the window. |
+| Argument  | Values | Default | Effect                                                                              |
+| --------- | ------ | ------- | ----------------------------------------------------------------------------------- |
+| *(extra)* | —      | —       | No renderer-specific arguments. Use `last`, `from`, and `to` to control the window. |
 
 ```health-viz
 # Thirty days gives the ring chart enough history to show patterns.
