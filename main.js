@@ -9967,10 +9967,12 @@ var DataLoader = class {
       }
     }
     if (this.settings.dataFolder === "Health") {
-      const bundledFolder = this.vault.getAbstractFileByPath("exports/Health");
-      if (bundledFolder instanceof import_obsidian.TFolder) {
-        const files = this.getMatchingFiles(bundledFolder, pattern);
-        if (files.length > 0) return files;
+      for (const fallbackPath of ["examples/Health", "exports/Health"]) {
+        const bundledFolder = this.vault.getAbstractFileByPath(fallbackPath);
+        if (bundledFolder instanceof import_obsidian.TFolder) {
+          const files = this.getMatchingFiles(bundledFolder, pattern);
+          if (files.length > 0) return files;
+        }
       }
     }
     return [];

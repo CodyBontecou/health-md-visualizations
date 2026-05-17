@@ -109,7 +109,7 @@ Starter dashboards live in the `examples/` folder — copy any of them into your
 - `examples/weekly-overview.md` — rolling week-at-a-glance.
 - `examples/sleep-analysis.md` — sleep-focused drill-down.
 
-This repo also ships deterministic mock data in `exports/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31). When the default `Health/` folder is empty or missing, the plugin falls back to this bundled dataset so cloned examples render immediately. You can also set **Settings → Health.md Visualizations → Data folder** to `exports/Health` explicitly.
+This repo also ships deterministic mock data in `examples/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31). When the default `Health/` folder is empty or missing, the plugin falls back to this bundled dataset so cloned examples render immediately. You can also set **Settings → Health.md Visualizations → Data folder** to `examples/Health` explicitly.
 
 ## Embedding charts in notes
 

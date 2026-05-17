@@ -1,0 +1,19 @@
+{
+  "dataFolder": "examples/Health",
+  "filePattern": "*",
+  "dataFormat": "auto",
+  "theme": "auto",
+  "defaultWidth": 800,
+  "defaultHeight": 400,
+  "colorScheme": "default",
+  "colorAccent": "#2dd4bf",
+  "colorSecondary": "#f59e0b",
+  "colorHeart": "#ef4444",
+  "colorSleepDeep": "#312e81",
+  "colorSleepRem": "#7c3aed",
+  "colorSleepCore": "#2dd4bf",
+  "colorSleepAwake": "#f59e0b",
+  "mapTilesEnabled": true,
+  "mapTileUrl": "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  "mapTileAttribution": "© OpenStreetMap contributors © CARTO"
+}

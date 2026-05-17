@@ -2,6 +2,8 @@ node_modules/
 release/
 build/
 .playwright-cli/
+.DS_Store
+.obsidian/workspace.json
 
 # Beads / Dolt files (added by bd init)
 .dolt/

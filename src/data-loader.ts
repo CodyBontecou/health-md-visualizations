@@ -111,13 +111,15 @@ export class DataLoader {
 			}
 		}
 
-		// Cloned copies of this repository ship example data in exports/Health,
+		// Cloned copies of this repository ship example data in examples/Health,
 		// while the production default remains Health/ for app-generated exports.
 		if (this.settings.dataFolder === "Health") {
-			const bundledFolder = this.vault.getAbstractFileByPath("exports/Health");
-			if (bundledFolder instanceof TFolder) {
-				const files = this.getMatchingFiles(bundledFolder, pattern);
-				if (files.length > 0) return files;
+			for (const fallbackPath of ["examples/Health", "exports/Health"]) {
+				const bundledFolder = this.vault.getAbstractFileByPath(fallbackPath);
+				if (bundledFolder instanceof TFolder) {
+					const files = this.getMatchingFiles(bundledFolder, pattern);
+					if (files.length > 0) return files;
+				}
 			}
 		}
 
