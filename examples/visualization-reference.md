@@ -171,7 +171,7 @@ moveGoal: 650
 exerciseGoal: 45
 standGoal: 12
 to: 2026-05-17
-last: 7
+last: 1
 height: 260
 ```
 
