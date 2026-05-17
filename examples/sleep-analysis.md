@@ -1,7 +1,8 @@
 # Sleep Analysis Dashboard
 
 A focused view of sleep health over the past 30 days. Adjust `last` to zoom
-in or out.
+in or out. For all renderer-specific arguments, defaults, and accepted values,
+see `examples/visualization-reference.md`.
 
 ---
 

@@ -78,35 +78,42 @@ The plugin watches your data folder and automatically refreshes its cache when f
 
 Specify one of these as the `type:` field in your code block:
 
-| Type | What it shows |
-| --- | --- |
-| `heart-terrain` | Heart rate samples plotted as a terrain ridge over time. |
-| `sleep-polar` | Polar clock view of sleep stages per night. |
-| `sleep-architecture` | Linear timeline of sleep stages with depth bands. |
-| `step-spiral` | Daily step counts arranged on a spiral. |
-| `oxygen-river` | Blood oxygen samples as a flowing band. |
-| `breathing-wave` | Respiratory rate samples as a wave. |
-| `vitals-rings` | Concentric activity rings (steps, calories, heart rate) per day. |
-| `walking-symmetry` | Walking asymmetry and gait metrics. |
-| `intro-stats` | HTML summary card — totals, averages, and highlights for the dataset. |
-| `summary-card` | Apple-style headline card: large KPI, sparkline, week-over-week delta. Configure with `metric` (`heart-rate`, `steps`, `sleep-duration`, `active-calories`, `hrv`, `blood-oxygen`, `respiratory-rate`) and optional `compareWindow` (`same-length`, `week`, `month`). |
-| `activity-rings` | Apple's three concentric Move / Exercise / Stand rings. Single-day shows one large ring set; multi-day shows a small-multiples grid. Tune targets with `moveGoal`, `exerciseGoal`, `standGoal`. |
-| `heart-range` | Per-day min-to-max heart rate capsule with an average dot. `metric`: `heart-rate` (default), `resting`, or `walking`. |
-| `bar-chart` | Apple-style vertical bars with the latest day highlighted. `metric`: `steps`, `activeCalories`, `exerciseMinutes`, `distance`, `sleepHours`, `flightsClimbed`. Optional `goal` draws a dashed goal line; `showAverage` toggles the mean line. |
-| `sleep-schedule` | Horizontal bedtime-to-wake bars against a sunset→night→sunrise backdrop. `sleepGoal` (hours), `windowStart` / `windowEnd` (`HH:MM`). |
-| `weekday-average` | Seven bars showing a metric's average by day of week with an overall-mean dashed line. `metric`: `steps`, `activeCalories`, `exerciseMinutes`, `sleepHours`, `heartRate`, `hrv`. `weekStart`: `monday` (default) or `sunday`. |
-| `trend-tile` | Compact HTML card for the Apple Health Trends tab: arrow + percent delta + narrative + two-period sparkline. `metric`: `resting-heart-rate`, `hrv`, `steps`, `vo2max`, `walking-speed`, `sleep-duration`, `active-calories`. Optional `currentWindow` and `priorWindow` (days). |
-| `oxygen-range` | Per-day min/max capsule + average dot for SpO₂ or respiratory rate, with a warning-zone shade. `metric`: `blood-oxygen` (default) or `respiratory-rate`. |
+| Type | What it shows | Renderer-specific arguments |
+| --- | --- | --- |
+| `intro-stats` | HTML summary card — totals, averages, and highlights for the selected dataset. | — |
+| `summary-card` | Apple-style headline card with large KPI, sparkline, range, and comparison delta. | `metric`, `compareWindow` |
+| `trend-tile` | Apple Health Trends-style HTML card with direction arrow, percent delta, narrative, and two-period sparkline. | `metric`, `currentWindow`, `priorWindow` |
+| `activity-rings` | Apple's Move / Exercise / Stand rings; single-day large ring set or multi-day small multiples. | `moveGoal`, `exerciseGoal`, `standGoal` |
+| `vitals-rings` | Health.md radial activity/vitals rings: steps, calories, and heart-rate context per day. | — |
+| `bar-chart` | Apple-style vertical bars with latest day highlight, optional goal line, and optional average line. | `metric`, `goal`, `showAverage` |
+| `activity-heatmap` | GitHub-style activity calendar shaded by daily steps, calories, or distance. | `metric` |
+| `step-spiral` | Daily step counts arranged on a spiral. | — |
+| `weekday-average` | Seven bars showing a metric's average by weekday with an overall-mean line. | `metric`, `weekStart` |
+| `heart-terrain` | Heart-rate samples plotted as daily terrain / ridgeline rows over time. | — |
+| `heart-range` | Per-day min-to-max heart-rate capsule with an average dot. | `metric` |
+| `hrv-trend` | HRV trend line from daily HRV or HRV samples. | — |
+| `oxygen-river` | Blood oxygen samples as a flowing band. | — |
+| `oxygen-range` | Daily SpO₂ or respiratory min/max capsule with warning-zone shading. | `metric` |
+| `breathing-wave` | Respiratory-rate samples as a wave. | — |
+| `sleep-schedule` | Horizontal bedtime-to-wake bars against a sunset→night→sunrise backdrop. | `sleepGoal`, `windowStart`, `windowEnd` |
+| `sleep-quality-bars` | Stacked nightly bars for deep, core, REM, and awake time. | — |
+| `sleep-architecture` | Linear timeline of sleep stages with depth bands. | — |
+| `sleep-polar` | Polar clock view of sleep stages per night. | — |
+| `walking-symmetry` | Walking speed and asymmetry / gait metrics. | — |
+| `workout-log` | Workout timeline with duration bars and workout-type colors. | — |
+| `workout-heart-rate` | Heart-rate time series and optional zone bands for one workout. | `date`, `workout`, `maxHeartRate` |
+| `workout-map` | GPS route map for one outdoor workout, colored by speed or heart rate. | `date`, `workout`, `colorBy` |
 
-All chart types support hover tooltips and click-to-pin. The `intro-stats`, `summary-card`, and `trend-tile` types are HTML/SVG (no canvas) for sharper typography.
+All canvas chart types support hover tooltips and click-to-pin. The `intro-stats`, `summary-card`, `trend-tile`, and `workout-map` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering. See `examples/visualization-reference.md` for detailed argument tables and copy/paste examples for every type.
 
 ### Bundled examples
 
 Starter dashboards live in the `examples/` folder — copy any of them into your vault to see the code blocks render:
 
-- `examples/apple-dashboard.md` — full Apple Health-style summary using the eight Apple visualizations (summary cards, activity rings, heart range, bar chart, sleep schedule, weekday average, oxygen range, trend tiles).
+- `examples/visualization-reference.md` — comprehensive reference for every visualization, including supported arguments, defaults, metric values, and copy/paste blocks.
+- `examples/apple-dashboard.md` — full Apple Health-style summary using the Apple-inspired visualizations (summary cards, activity rings, heart range, bar chart, sleep schedule, weekday average, oxygen range, trend tiles).
 - `examples/daily-dashboard.md` — single-day overview for daily notes.
-- `examples/weekly-overview.md` — rolling week-at-a-glance.
+- `examples/weekly-overview.md` — rolling week-at-a-glance across activity, heart, respiratory, sleep, mobility, and workouts.
 - `examples/sleep-analysis.md` — sleep-focused drill-down.
 
 This repo also ships deterministic mock data in `examples/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31). When the default `Health/` folder is empty or missing, the plugin falls back to this bundled dataset so cloned examples render immediately. You can also set **Settings → Health.md Visualizations → Data folder** to `examples/Health` explicitly.
@@ -134,7 +141,7 @@ height: 400
 | `to` | date or datetime | — | End of the data window (inclusive). |
 | `last` | number | — | Number of calendar days back to include. |
 
-Individual visualization types may accept additional keys — values are passed through to the renderer as a free-form config object.
+Individual visualization types may accept additional keys — see `examples/visualization-reference.md` for every supported renderer-specific argument, default, and accepted value.
 
 ## Filtering by date or date+time
 

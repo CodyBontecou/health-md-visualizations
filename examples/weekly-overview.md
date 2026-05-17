@@ -1,7 +1,8 @@
 # Weekly Health Overview
 
 A rolling 7-day summary across all health domains. Change `last: 7` to any
-number of days you want.
+number of days you want. For exhaustive per-visualization arguments, defaults,
+and copy/paste variations, see `examples/visualization-reference.md`.
 
 > **Tip:** `last: N` always anchors to today, so this page stays current
 > without editing dates.

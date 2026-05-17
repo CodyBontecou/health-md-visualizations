@@ -1,7 +1,8 @@
 # Daily Health Dashboard
 
 A single-day deep-dive. Set `from` and `to` to the same date to focus on one day,
-or use a time window to zoom into a specific block of hours.
+or use a time window to zoom into a specific block of hours. For the complete
+argument reference for every visualization, see `examples/visualization-reference.md`.
 
 > **Tip:** Hover over any chart element to see details. Click to pin the tooltip.
 

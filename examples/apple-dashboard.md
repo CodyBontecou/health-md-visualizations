@@ -1,9 +1,10 @@
 # Apple Health Dashboard
 
 A complete Apple Health-inspired summary. Each section mirrors a card from
-Apple's own Summary tab, using the eight Apple-style visualizations bundled
-with this plugin. The whole page auto-anchors to today — adjust `last: N`
-values to widen or narrow any section's window.
+Apple's own Summary tab, using the Apple-style visualizations bundled with this
+plugin. The whole page auto-anchors to today — adjust `last: N` values to widen
+or narrow any section's window. For a full list of visualization arguments,
+metric ids, and defaults, see `examples/visualization-reference.md`.
 
 > **Tip:** Apple Health's Summary tab is a vertical feed on iPhone, so the
 > layout below stacks top-to-bottom. Side-by-side cards can be arranged with
