@@ -109,6 +109,8 @@ Starter dashboards live in the `examples/` folder — copy any of them into your
 - `examples/weekly-overview.md` — rolling week-at-a-glance.
 - `examples/sleep-analysis.md` — sleep-focused drill-down.
 
+This repo also ships deterministic mock data in `exports/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31). To preview the examples after cloning, set **Settings → Health.md Visualizations → Data folder** to `exports/Health`.
+
 ## Embedding charts in notes
 
 A code block requires a `type` and accepts any of the optional config keys below. Each entry is a `key: value` line. Lines starting with `#` are comments.
