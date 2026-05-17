@@ -48,15 +48,8 @@ export class DataLoader {
 			return this.cache;
 		}
 
-		const folder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
-		if (!(folder instanceof TFolder)) return [];
-
 		const pattern = this.settings.filePattern || "*";
-		const files = folder.children.filter((f): f is TFile => {
-			if (!(f instanceof TFile)) return false;
-			if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
-			return matchesGlob(f.name, pattern);
-		});
+		const files = this.getDataFiles(pattern);
 
 		const days: HealthDay[] = [];
 		for (const file of files) {
@@ -107,6 +100,36 @@ export class DataLoader {
 
 	invalidate(): void {
 		this.cache = null;
+	}
+
+	private getDataFiles(pattern: string): TFile[] {
+		const configuredFolder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
+		if (configuredFolder instanceof TFolder) {
+			const files = this.getMatchingFiles(configuredFolder, pattern);
+			if (files.length > 0 || this.settings.dataFolder !== "Health") {
+				return files;
+			}
+		}
+
+		// Cloned copies of this repository ship example data in exports/Health,
+		// while the production default remains Health/ for app-generated exports.
+		if (this.settings.dataFolder === "Health") {
+			const bundledFolder = this.vault.getAbstractFileByPath("exports/Health");
+			if (bundledFolder instanceof TFolder) {
+				const files = this.getMatchingFiles(bundledFolder, pattern);
+				if (files.length > 0) return files;
+			}
+		}
+
+		return [];
+	}
+
+	private getMatchingFiles(folder: TFolder, pattern: string): TFile[] {
+		return folder.children.filter((f): f is TFile => {
+			if (!(f instanceof TFile)) return false;
+			if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
+			return matchesGlob(f.name, pattern);
+		});
 	}
 }
 

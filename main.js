@@ -9912,14 +9912,8 @@ var DataLoader = class {
     if (this.cache && Date.now() - this.lastLoad < this.TTL) {
       return this.cache;
     }
-    const folder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
-    if (!(folder instanceof import_obsidian.TFolder)) return [];
     const pattern = this.settings.filePattern || "*";
-    const files = folder.children.filter((f) => {
-      if (!(f instanceof import_obsidian.TFile)) return false;
-      if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
-      return matchesGlob(f.name, pattern);
-    });
+    const files = this.getDataFiles(pattern);
     const days = [];
     for (const file of files) {
       const content = await this.vault.cachedRead(file);
@@ -9963,6 +9957,30 @@ var DataLoader = class {
   }
   invalidate() {
     this.cache = null;
+  }
+  getDataFiles(pattern) {
+    const configuredFolder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
+    if (configuredFolder instanceof import_obsidian.TFolder) {
+      const files = this.getMatchingFiles(configuredFolder, pattern);
+      if (files.length > 0 || this.settings.dataFolder !== "Health") {
+        return files;
+      }
+    }
+    if (this.settings.dataFolder === "Health") {
+      const bundledFolder = this.vault.getAbstractFileByPath("exports/Health");
+      if (bundledFolder instanceof import_obsidian.TFolder) {
+        const files = this.getMatchingFiles(bundledFolder, pattern);
+        if (files.length > 0) return files;
+      }
+    }
+    return [];
+  }
+  getMatchingFiles(folder, pattern) {
+    return folder.children.filter((f) => {
+      if (!(f instanceof import_obsidian.TFile)) return false;
+      if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
+      return matchesGlob(f.name, pattern);
+    });
   }
 };
 function mergeDays(a, b) {
