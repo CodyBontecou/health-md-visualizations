@@ -10,7 +10,13 @@ Download [Health.md](https://apps.apple.com/us/app/health-md/id6757763969) on th
 
 ## Installation
 
+Install Health.md from the Obsidian Community Plugins directory:
+
+[https://community.obsidian.md/plugins/health-md](https://community.obsidian.md/plugins/health-md)
+
 ### Manual
+
+If you prefer to install manually:
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/CodyBontecou/health-md-visualizations/releases).
 2. Copy them into `<your vault>/.obsidian/plugins/health-md/`.
