@@ -10,6 +10,7 @@ import {
 import { ColorSchemeId, HealthMdSettings } from "./types";
 import { DataLoader } from "./data-loader";
 import { renderCodeBlock } from "./renderer";
+import { openInsertVisualizationWizard } from "./insert-wizard";
 
 interface ColorScheme {
 	label: string;
@@ -157,9 +158,7 @@ export default class HealthMdPlugin extends Plugin {
 			id: "insert-health-chart",
 			name: "Insert health visualization",
 			editorCallback: (editor) => {
-				editor.replaceSelection(
-					"```health-viz\ntype: heart-terrain\n```\n"
-				);
+				openInsertVisualizationWizard(this.app, editor, this.settings);
 			},
 		});
 	}

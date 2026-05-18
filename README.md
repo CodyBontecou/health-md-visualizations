@@ -63,7 +63,7 @@ Pushing a version tag runs the release workflow, uploads only supported assets, 
 
 3. Switch to reading view (or live preview) and the chart renders.
 
-You can also run the **Insert health visualization** command from the command palette to drop a starter block at the cursor.
+You can also run the **Insert health visualization** command from the command palette to open an insertion wizard. Pick a visualization category and type, then fill in the date range, renderer-specific options, and optional size before the plugin inserts the `health-viz` block at the cursor.
 
 ## Settings
 
