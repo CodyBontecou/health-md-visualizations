@@ -6,7 +6,13 @@ build/
 .obsidian/workspace.json
 
 # Beads / Dolt files (added by bd init)
+.beads/
 .dolt/
 *.db
 .beads-credential-key
+
+# Local agent configuration
+.claude/
+AGENTS.md
+CLAUDE.md
 src/**/*.js
