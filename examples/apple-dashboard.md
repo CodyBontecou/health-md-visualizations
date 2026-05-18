@@ -51,7 +51,7 @@ right shows how hard your heart worked on each of those days.
 
 ```health-viz
 type: activity-rings
-last: 7
+last: 1
 height: 260
 ```
 

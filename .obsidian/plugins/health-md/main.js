@@ -9585,7 +9585,7 @@ __export(main_exports, {
   default: () => HealthMdPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/data-loader.ts
 var import_obsidian = require("obsidian");
@@ -9912,14 +9912,8 @@ var DataLoader = class {
     if (this.cache && Date.now() - this.lastLoad < this.TTL) {
       return this.cache;
     }
-    const folder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
-    if (!(folder instanceof import_obsidian.TFolder)) return [];
     const pattern = this.settings.filePattern || "*";
-    const files = folder.children.filter((f) => {
-      if (!(f instanceof import_obsidian.TFile)) return false;
-      if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
-      return matchesGlob(f.name, pattern);
-    });
+    const files = this.getDataFiles(pattern);
     const days = [];
     for (const file of files) {
       const content = await this.vault.cachedRead(file);
@@ -9963,6 +9957,32 @@ var DataLoader = class {
   }
   invalidate() {
     this.cache = null;
+  }
+  getDataFiles(pattern) {
+    const configuredFolder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
+    if (configuredFolder instanceof import_obsidian.TFolder) {
+      const files = this.getMatchingFiles(configuredFolder, pattern);
+      if (files.length > 0 || this.settings.dataFolder !== "Health") {
+        return files;
+      }
+    }
+    if (this.settings.dataFolder === "Health") {
+      for (const fallbackPath of ["examples/Health", "exports/Health"]) {
+        const bundledFolder = this.vault.getAbstractFileByPath(fallbackPath);
+        if (bundledFolder instanceof import_obsidian.TFolder) {
+          const files = this.getMatchingFiles(bundledFolder, pattern);
+          if (files.length > 0) return files;
+        }
+      }
+    }
+    return [];
+  }
+  getMatchingFiles(folder, pattern) {
+    return folder.children.filter((f) => {
+      if (!(f instanceof import_obsidian.TFile)) return false;
+      if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
+      return matchesGlob(f.name, pattern);
+    });
   }
 };
 function mergeDays(a, b) {
@@ -14332,6 +14352,904 @@ async function renderCodeBlock(plugin, source, el, ctx) {
   renderChild.setUnregisterDraw(plugin.registerDraw(draw));
 }
 
+// src/insert-wizard.ts
+var import_obsidian3 = require("obsidian");
+var DATE_OR_DATETIME_INPUT = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+var DATE_INPUT = /^\d{4}-\d{2}-\d{2}$/;
+var TIME_INPUT = /^\d{1,2}:\d{2}$/;
+var DATE_PLACEHOLDER = "YYYY-MM-DD";
+var DATE_OR_DATETIME_PLACEHOLDER = "YYYY-MM-DD or YYYY-MM-DDTHH:MM";
+var CATEGORIES = [
+  {
+    id: "all",
+    label: "All visualizations",
+    description: "Browse every Health.md chart and component."
+  },
+  {
+    id: "summary",
+    label: "Summary & cards",
+    description: "Dataset overviews, KPI cards, and trend tiles."
+  },
+  {
+    id: "activity",
+    label: "Activity",
+    description: "Move rings, bars, heatmaps, spirals, and weekday patterns."
+  },
+  {
+    id: "heart",
+    label: "Heart",
+    description: "Heart-rate terrain, daily ranges, and HRV trends."
+  },
+  {
+    id: "respiratory",
+    label: "Respiratory & oxygen",
+    description: "Blood oxygen and respiratory-rate charts."
+  },
+  {
+    id: "sleep",
+    label: "Sleep",
+    description: "Schedules, sleep stages, quality bars, and polar clocks."
+  },
+  {
+    id: "mobility",
+    label: "Mobility",
+    description: "Walking speed and asymmetry."
+  },
+  {
+    id: "workouts",
+    label: "Workouts",
+    description: "Workout logs, heart-rate series, and GPS route maps."
+  }
+];
+var SUMMARY_METRICS = [
+  { value: "heart-rate", label: "Heart rate" },
+  { value: "steps", label: "Steps" },
+  { value: "sleep-duration", label: "Sleep duration" },
+  { value: "active-calories", label: "Active calories" },
+  { value: "hrv", label: "HRV" },
+  { value: "blood-oxygen", label: "Blood oxygen" },
+  { value: "respiratory-rate", label: "Respiratory rate" }
+];
+var TREND_METRICS = [
+  { value: "resting-heart-rate", label: "Resting heart rate" },
+  { value: "hrv", label: "HRV" },
+  { value: "steps", label: "Steps" },
+  { value: "vo2max", label: "VO\u2082 max" },
+  { value: "walking-speed", label: "Walking speed" },
+  { value: "sleep-duration", label: "Sleep duration" },
+  { value: "active-calories", label: "Active calories" }
+];
+var BAR_METRICS = [
+  { value: "steps", label: "Steps" },
+  { value: "activeCalories", label: "Active calories" },
+  { value: "exerciseMinutes", label: "Exercise minutes" },
+  { value: "distance", label: "Walking/running distance" },
+  { value: "sleepHours", label: "Sleep hours" },
+  { value: "flightsClimbed", label: "Flights climbed" }
+];
+var ACTIVITY_HEATMAP_METRICS = [
+  { value: "steps", label: "Steps" },
+  { value: "calories", label: "Calories" },
+  { value: "distance", label: "Distance" }
+];
+var WEEKDAY_METRICS = [
+  { value: "steps", label: "Steps" },
+  { value: "activeCalories", label: "Active calories" },
+  { value: "exerciseMinutes", label: "Exercise minutes" },
+  { value: "sleepHours", label: "Sleep hours" },
+  { value: "heartRate", label: "Heart rate" },
+  { value: "hrv", label: "HRV" }
+];
+var HEART_RANGE_METRICS = [
+  { value: "heart-rate", label: "Heart min/max/average" },
+  { value: "resting", label: "Resting heart rate" },
+  { value: "walking", label: "Walking heart-rate average" }
+];
+var OXYGEN_RANGE_METRICS = [
+  { value: "blood-oxygen", label: "Blood oxygen" },
+  { value: "respiratory-rate", label: "Respiratory rate" }
+];
+var VISUALIZATIONS2 = [
+  {
+    type: "intro-stats",
+    label: "Intro stats",
+    category: "summary",
+    description: "Responsive dataset summary with totals, averages, sleep, and vitals.",
+    defaultLast: 30,
+    params: []
+  },
+  {
+    type: "summary-card",
+    label: "Summary card",
+    category: "summary",
+    description: "Apple-style KPI card with sparkline and prior-period comparison.",
+    defaultLast: 14,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose the headline KPI.",
+        options: SUMMARY_METRICS,
+        defaultValue: "heart-rate"
+      },
+      {
+        kind: "select",
+        key: "compareWindow",
+        label: "Comparison window",
+        desc: "How to compare the selected data window.",
+        options: [
+          { value: "same-length", label: "Same length" },
+          { value: "week", label: "Week over week" },
+          { value: "month", label: "Month over month" }
+        ],
+        defaultValue: "week"
+      }
+    ]
+  },
+  {
+    type: "trend-tile",
+    label: "Trend tile",
+    category: "summary",
+    description: "Trends-tab style card comparing current and prior windows.",
+    defaultLast: 60,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose the trend metric and preferred direction.",
+        options: TREND_METRICS,
+        defaultValue: "resting-heart-rate"
+      },
+      {
+        kind: "text",
+        key: "currentWindow",
+        label: "Current window",
+        desc: "Number of most-recent days in the current period.",
+        defaultValue: "30",
+        validation: "positive-integer"
+      },
+      {
+        kind: "text",
+        key: "priorWindow",
+        label: "Prior window",
+        desc: "Number of days before the current period used for comparison.",
+        defaultValue: "30",
+        validation: "positive-integer"
+      }
+    ]
+  },
+  {
+    type: "activity-rings",
+    label: "Activity rings",
+    category: "activity",
+    description: "Apple-style Move, Exercise, and Stand rings.",
+    defaultLast: 1,
+    defaultHeight: 260,
+    params: [
+      {
+        kind: "text",
+        key: "moveGoal",
+        label: "Move goal",
+        desc: "Target active calories for the Move ring.",
+        defaultValue: "500",
+        validation: "positive-number"
+      },
+      {
+        kind: "text",
+        key: "exerciseGoal",
+        label: "Exercise goal",
+        desc: "Target exercise minutes for the Exercise ring.",
+        defaultValue: "30",
+        validation: "positive-number"
+      },
+      {
+        kind: "text",
+        key: "standGoal",
+        label: "Stand goal",
+        desc: "Target stand hours for the Stand ring.",
+        defaultValue: "12",
+        validation: "positive-number"
+      }
+    ]
+  },
+  {
+    type: "vitals-rings",
+    label: "Vitals rings",
+    category: "activity",
+    description: "Radial daily rings for steps, active calories, and heart context.",
+    defaultLast: 30,
+    defaultHeight: 280,
+    params: []
+  },
+  {
+    type: "bar-chart",
+    label: "Bar chart",
+    category: "activity",
+    description: "Daily bars with optional goal and average lines.",
+    defaultLast: 7,
+    defaultHeight: 220,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose which daily value to render.",
+        options: BAR_METRICS,
+        defaultValue: "steps"
+      },
+      {
+        kind: "text",
+        key: "goal",
+        label: "Goal line",
+        desc: "Optional goal in the selected metric's units.",
+        placeholder: "10000",
+        optional: true,
+        validation: "positive-number"
+      },
+      {
+        kind: "toggle",
+        key: "showAverage",
+        label: "Show average line",
+        desc: "Draw a dashed average line across the bars.",
+        defaultValue: true
+      }
+    ]
+  },
+  {
+    type: "activity-heatmap",
+    label: "Activity heatmap",
+    category: "activity",
+    description: "GitHub-style calendar grid for activity intensity.",
+    defaultLast: 90,
+    defaultHeight: 180,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose what each day should shade by.",
+        options: ACTIVITY_HEATMAP_METRICS,
+        defaultValue: "steps"
+      }
+    ]
+  },
+  {
+    type: "step-spiral",
+    label: "Step spiral",
+    category: "activity",
+    description: "Radial step-count history, older days inside and newer days outside.",
+    defaultLast: 30,
+    defaultHeight: 300,
+    params: []
+  },
+  {
+    type: "weekday-average",
+    label: "Weekday average",
+    category: "activity",
+    description: "Average a metric by day of week.",
+    defaultLast: 56,
+    defaultHeight: 240,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose the value to bucket by weekday.",
+        options: WEEKDAY_METRICS,
+        defaultValue: "steps"
+      },
+      {
+        kind: "select",
+        key: "weekStart",
+        label: "Week starts on",
+        desc: "Controls bar order and x-axis labels.",
+        options: [
+          { value: "monday", label: "Monday" },
+          { value: "sunday", label: "Sunday" }
+        ],
+        defaultValue: "monday"
+      }
+    ]
+  },
+  {
+    type: "heart-terrain",
+    label: "Heart terrain",
+    category: "heart",
+    description: "Ridgeline heatmap for heart-rate samples or daily aggregates.",
+    defaultLast: 7,
+    defaultHeight: 220,
+    params: []
+  },
+  {
+    type: "heart-range",
+    label: "Heart range",
+    category: "heart",
+    description: "Daily min/max/average heart-rate capsules.",
+    defaultLast: 14,
+    defaultHeight: 220,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose the heart metric for the capsules.",
+        options: HEART_RANGE_METRICS,
+        defaultValue: "heart-rate"
+      }
+    ]
+  },
+  {
+    type: "hrv-trend",
+    label: "HRV trend",
+    category: "heart",
+    description: "Line chart of heart-rate variability.",
+    defaultLast: 30,
+    defaultHeight: 180,
+    params: []
+  },
+  {
+    type: "oxygen-river",
+    label: "Oxygen river",
+    category: "respiratory",
+    description: "Flowing band of blood oxygen samples across the selected window.",
+    defaultLast: 1,
+    defaultHeight: 120,
+    params: []
+  },
+  {
+    type: "oxygen-range",
+    label: "Oxygen range",
+    category: "respiratory",
+    description: "Daily blood oxygen or respiratory-rate min/max range.",
+    defaultLast: 14,
+    defaultHeight: 220,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose oxygen percentage or respiratory-rate data.",
+        options: OXYGEN_RANGE_METRICS,
+        defaultValue: "blood-oxygen"
+      }
+    ]
+  },
+  {
+    type: "breathing-wave",
+    label: "Breathing wave",
+    category: "respiratory",
+    description: "Respiratory-rate wave for overnight or recovery windows.",
+    defaultLast: 1,
+    defaultHeight: 120,
+    params: []
+  },
+  {
+    type: "sleep-schedule",
+    label: "Sleep schedule",
+    category: "sleep",
+    description: "Bedtime-to-wake bars against a sunset/night/sunrise backdrop.",
+    defaultLast: 14,
+    defaultHeight: 360,
+    params: [
+      {
+        kind: "text",
+        key: "sleepGoal",
+        label: "Sleep goal",
+        desc: "Target sleep duration in hours.",
+        defaultValue: "8",
+        validation: "positive-number"
+      },
+      {
+        kind: "text",
+        key: "windowStart",
+        label: "Window start",
+        desc: "Start of the x-axis window on each night's date.",
+        defaultValue: "18:00",
+        validation: "time"
+      },
+      {
+        kind: "text",
+        key: "windowEnd",
+        label: "Window end",
+        desc: "End of the x-axis window on the next day.",
+        defaultValue: "10:00",
+        validation: "time"
+      }
+    ]
+  },
+  {
+    type: "sleep-quality-bars",
+    label: "Sleep quality bars",
+    category: "sleep",
+    description: "Stacked nightly bars for deep, core, REM, and awake time.",
+    defaultLast: 30,
+    defaultHeight: 240,
+    params: []
+  },
+  {
+    type: "sleep-architecture",
+    label: "Sleep architecture",
+    category: "sleep",
+    description: "Linear sleep-stage timeline with one row per night.",
+    defaultLast: 7,
+    defaultHeight: 160,
+    params: []
+  },
+  {
+    type: "sleep-polar",
+    label: "Sleep polar",
+    category: "sleep",
+    description: "Clock-face sleep stages for bedtime and wake consistency.",
+    defaultLast: 14,
+    defaultHeight: 280,
+    params: []
+  },
+  {
+    type: "walking-symmetry",
+    label: "Walking symmetry",
+    category: "mobility",
+    description: "Walking speed and asymmetry in one trend view.",
+    defaultLast: 30,
+    defaultHeight: 180,
+    params: []
+  },
+  {
+    type: "workout-log",
+    label: "Workout log",
+    category: "workouts",
+    description: "Timeline of workouts in the filtered window.",
+    defaultLast: 30,
+    defaultHeight: 240,
+    params: []
+  },
+  {
+    type: "workout-heart-rate",
+    label: "Workout heart rate",
+    category: "workouts",
+    description: "Heart-rate time series for one selected workout.",
+    defaultLast: 30,
+    defaultHeight: 260,
+    params: [
+      {
+        kind: "text",
+        key: "date",
+        label: "Workout date",
+        desc: "Optional workout day to select, in YYYY-MM-DD format.",
+        placeholder: "2026-05-16",
+        optional: true,
+        validation: "date"
+      },
+      {
+        kind: "text",
+        key: "workout",
+        label: "Workout index",
+        desc: "Zero-based workout number on that day. 0 means first workout.",
+        defaultValue: "0",
+        validation: "non-negative-integer"
+      },
+      {
+        kind: "text",
+        key: "maxHeartRate",
+        label: "Max heart rate",
+        desc: "Optional BPM used to draw heart-rate zone bands.",
+        placeholder: "190",
+        optional: true,
+        validation: "positive-number"
+      }
+    ]
+  },
+  {
+    type: "workout-map",
+    label: "Workout map",
+    category: "workouts",
+    description: "GPS route map for one selected outdoor workout.",
+    defaultLast: 30,
+    defaultHeight: 360,
+    params: [
+      {
+        kind: "text",
+        key: "date",
+        label: "Workout date",
+        desc: "Optional workout day to select, in YYYY-MM-DD format.",
+        placeholder: "2026-05-16",
+        optional: true,
+        validation: "date"
+      },
+      {
+        kind: "text",
+        key: "workout",
+        label: "Workout index",
+        desc: "Zero-based workout number on that day. 0 means first workout.",
+        defaultValue: "0",
+        validation: "non-negative-integer"
+      },
+      {
+        kind: "select",
+        key: "colorBy",
+        label: "Route color",
+        desc: "Color route segments by speed or nearest heart-rate sample.",
+        options: [
+          { value: "speed", label: "Speed" },
+          { value: "hr", label: "Heart rate" }
+        ],
+        defaultValue: "speed"
+      }
+    ]
+  }
+];
+function openInsertVisualizationWizard(app, editor, settings) {
+  new VisualizationCategoryModal(app, (category) => {
+    new VisualizationTypeModal(app, category.id, (visualization) => {
+      new VisualizationConfigModal(app, editor, visualization, settings).open();
+    }).open();
+  }).open();
+}
+function categoryLabel(categoryId) {
+  var _a, _b;
+  return (_b = (_a = CATEGORIES.find((category) => category.id === categoryId)) == null ? void 0 : _a.label) != null ? _b : categoryId;
+}
+function normalizeLineValue(value) {
+  return value.replace(/[\r\n]/g, " ").trim();
+}
+function isPositiveNumber(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0;
+}
+function isInteger(value) {
+  return /^\d+$/.test(value.trim());
+}
+function paramSearchText(param) {
+  const optionText = param.kind === "select" ? param.options.map((option) => `${option.value} ${option.label}`).join(" ") : "";
+  return `${param.key} ${param.label} ${param.desc} ${optionText}`;
+}
+var VisualizationCategoryModal = class extends import_obsidian3.SuggestModal {
+  constructor(app, onPick) {
+    super(app);
+    this.onPick = onPick;
+    this.setPlaceholder("Choose a health visualization category\u2026");
+    this.setInstructions([
+      { command: "\u2191\u2193", purpose: "navigate" },
+      { command: "\u21B5", purpose: "choose category" },
+      { command: "esc", purpose: "cancel" }
+    ]);
+  }
+  getSuggestions(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return CATEGORIES;
+    return CATEGORIES.filter(
+      (category) => `${category.label} ${category.description}`.toLowerCase().includes(q)
+    );
+  }
+  renderSuggestion(category, el) {
+    el.createDiv({ cls: "suggestion-title", text: category.label });
+    el.createDiv({ cls: "suggestion-note", text: category.description });
+  }
+  onChooseSuggestion(category) {
+    this.close();
+    this.onPick(category);
+  }
+};
+var VisualizationTypeModal = class extends import_obsidian3.SuggestModal {
+  constructor(app, categoryId, onPick) {
+    var _a;
+    super(app);
+    this.categoryId = categoryId;
+    this.onPick = onPick;
+    const category = CATEGORIES.find((item) => item.id === categoryId);
+    this.setPlaceholder(
+      categoryId === "all" ? "Choose a health visualization\u2026" : `Choose a ${(_a = category == null ? void 0 : category.label.toLowerCase()) != null ? _a : "health"} visualization\u2026`
+    );
+    this.setInstructions([
+      { command: "\u2191\u2193", purpose: "navigate" },
+      { command: "\u21B5", purpose: "configure visualization" },
+      { command: "esc", purpose: "cancel" }
+    ]);
+  }
+  getSuggestions(query) {
+    const q = query.trim().toLowerCase();
+    const scoped = this.categoryId === "all" ? VISUALIZATIONS2 : VISUALIZATIONS2.filter((item) => item.category === this.categoryId);
+    if (!q) return scoped;
+    return scoped.filter((item) => {
+      const text = [
+        item.type,
+        item.label,
+        item.description,
+        categoryLabel(item.category),
+        ...item.params.map(paramSearchText)
+      ].join(" ").toLowerCase();
+      return text.includes(q);
+    });
+  }
+  renderSuggestion(item, el) {
+    el.createDiv({ cls: "suggestion-title", text: item.label });
+    el.createDiv({
+      cls: "suggestion-note",
+      text: `${item.type} \xB7 ${categoryLabel(item.category)}`
+    });
+    el.createDiv({ cls: "suggestion-note", text: item.description });
+  }
+  onChooseSuggestion(item) {
+    this.close();
+    this.onPick(item);
+  }
+};
+var VisualizationConfigModal = class extends import_obsidian3.Modal {
+  constructor(app, editor, option, settings) {
+    var _a;
+    super(app);
+    this.paramValues = {};
+    this.rangeMode = "last";
+    this.toDate = "";
+    this.singleDate = "";
+    this.fromDate = "";
+    this.customToDate = "";
+    this.width = "";
+    this.editor = editor;
+    this.option = option;
+    this.settings = settings;
+    this.lastDays = String(option.defaultLast);
+    this.height = option.defaultHeight != null ? String(option.defaultHeight) : "";
+    this.shouldRestoreSelection = true;
+    for (const param of option.params) {
+      if (param.kind === "toggle") {
+        this.paramValues[param.key] = param.defaultValue;
+      } else if (param.key === "maxHeartRate" && settings.maxHeartRate != null) {
+        this.paramValues[param.key] = String(settings.maxHeartRate);
+      } else {
+        this.paramValues[param.key] = (_a = param.defaultValue) != null ? _a : "";
+      }
+    }
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.setTitle(`Insert ${this.option.label}`);
+    contentEl.createEl("p", {
+      cls: "setting-item-description",
+      text: `${this.option.type} \xB7 ${categoryLabel(this.option.category)} \xB7 ${this.option.description}`
+    });
+    new import_obsidian3.Setting(contentEl).setName("Date range").setHeading();
+    let lastDaysSetting;
+    let toDateSetting;
+    let singleDateSetting;
+    let fromDateSetting;
+    let customToDateSetting;
+    const updateRangeVisibility = () => {
+      lastDaysSetting.settingEl.style.display = this.rangeMode === "last" ? "" : "none";
+      toDateSetting.settingEl.style.display = this.rangeMode === "last" ? "" : "none";
+      singleDateSetting.settingEl.style.display = this.rangeMode === "single" ? "" : "none";
+      fromDateSetting.settingEl.style.display = this.rangeMode === "custom" ? "" : "none";
+      customToDateSetting.settingEl.style.display = this.rangeMode === "custom" ? "" : "none";
+    };
+    new import_obsidian3.Setting(contentEl).setName("Range mode").setDesc("Choose whether this block follows a rolling window, one day, explicit boundaries, or all loaded data.").addDropdown(
+      (dropdown) => dropdown.addOption("last", "Rolling days").addOption("single", "Single day").addOption("custom", "Custom from/to").addOption("none", "All available data").setValue(this.rangeMode).onChange((value) => {
+        this.rangeMode = value;
+        updateRangeVisibility();
+      })
+    );
+    lastDaysSetting = new import_obsidian3.Setting(contentEl).setName("Last days").setDesc("Number of calendar days to include.").addText(
+      (text) => text.setPlaceholder(String(this.option.defaultLast)).setValue(this.lastDays).onChange((value) => {
+        this.lastDays = value;
+      })
+    );
+    toDateSetting = new import_obsidian3.Setting(contentEl).setName("Anchor to date").setDesc("Optional end date/datetime. Leave blank to end today.").addText(
+      (text) => text.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.toDate).onChange((value) => {
+        this.toDate = value;
+      })
+    );
+    singleDateSetting = new import_obsidian3.Setting(contentEl).setName("Day").setDesc("Date to use for both from and to.").addText(
+      (text) => text.setPlaceholder(DATE_PLACEHOLDER).setValue(this.singleDate).onChange((value) => {
+        this.singleDate = value;
+      })
+    );
+    fromDateSetting = new import_obsidian3.Setting(contentEl).setName("From").setDesc("Inclusive start date or datetime.").addText(
+      (text) => text.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.fromDate).onChange((value) => {
+        this.fromDate = value;
+      })
+    );
+    customToDateSetting = new import_obsidian3.Setting(contentEl).setName("To").setDesc("Inclusive end date or datetime.").addText(
+      (text) => text.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.customToDate).onChange((value) => {
+        this.customToDate = value;
+      })
+    );
+    if (this.option.params.length > 0) {
+      new import_obsidian3.Setting(contentEl).setName("Visualization options").setHeading();
+      this.renderParamSettings(contentEl);
+    } else {
+      contentEl.createEl("p", {
+        cls: "setting-item-description",
+        text: "This visualization does not need extra component parameters."
+      });
+    }
+    new import_obsidian3.Setting(contentEl).setName("Size").setHeading();
+    new import_obsidian3.Setting(contentEl).setName("Height").setDesc("Optional render height in pixels. Clear to use the plugin default.").addText(
+      (text) => text.setPlaceholder(String(this.settings.defaultHeight)).setValue(this.height).onChange((value) => {
+        this.height = value;
+      })
+    );
+    new import_obsidian3.Setting(contentEl).setName("Width").setDesc("Optional maximum render width in pixels.").addText(
+      (text) => text.setPlaceholder(String(this.settings.defaultWidth)).setValue(this.width).onChange((value) => {
+        this.width = value;
+      })
+    );
+    new import_obsidian3.Setting(contentEl).addButton(
+      (button) => button.setButtonText("Insert visualization").setCta().onClick(() => this.insertVisualization())
+    ).addButton(
+      (button) => button.setButtonText("Cancel").onClick(() => this.close())
+    );
+    updateRangeVisibility();
+  }
+  renderParamSettings(contentEl) {
+    for (const param of this.option.params) {
+      if (param.kind === "select") {
+        new import_obsidian3.Setting(contentEl).setName(param.label).setDesc(param.desc).addDropdown((dropdown) => {
+          var _a;
+          for (const option of param.options) {
+            dropdown.addOption(option.value, option.label);
+          }
+          dropdown.setValue(String((_a = this.paramValues[param.key]) != null ? _a : param.defaultValue)).onChange((value) => {
+            this.paramValues[param.key] = value;
+          });
+        });
+      } else if (param.kind === "toggle") {
+        new import_obsidian3.Setting(contentEl).setName(param.label).setDesc(param.desc).addToggle(
+          (toggle) => toggle.setValue(Boolean(this.paramValues[param.key])).onChange((value) => {
+            this.paramValues[param.key] = value;
+          })
+        );
+      } else {
+        new import_obsidian3.Setting(contentEl).setName(param.label).setDesc(param.desc).addText(
+          (text) => {
+            var _a, _b, _c;
+            return text.setPlaceholder((_b = (_a = param.placeholder) != null ? _a : param.defaultValue) != null ? _b : "").setValue(String((_c = this.paramValues[param.key]) != null ? _c : "")).onChange((value) => {
+              this.paramValues[param.key] = value;
+            });
+          }
+        );
+      }
+    }
+  }
+  insertVisualization() {
+    const block = this.buildBlock();
+    if (!block) return;
+    this.editor.replaceSelection(block);
+    new import_obsidian3.Notice(`Inserted ${this.option.label} visualization`);
+    this.close();
+  }
+  buildBlock() {
+    const paramLines = this.buildParamLines();
+    if (!paramLines) return null;
+    const dateLines = this.buildDateLines();
+    if (!dateLines) return null;
+    const sizeLines = this.buildSizeLines();
+    if (!sizeLines) return null;
+    const lines = [
+      `type: ${this.option.type}`,
+      ...paramLines,
+      ...dateLines,
+      ...sizeLines
+    ];
+    return `\`\`\`health-viz
+${lines.join("\n")}
+\`\`\`
+`;
+  }
+  buildParamLines() {
+    const lines = [];
+    for (const param of this.option.params) {
+      const rawValue = this.paramValues[param.key];
+      if (param.kind === "toggle") {
+        lines.push(`${param.key}: ${rawValue ? "true" : "false"}`);
+        continue;
+      }
+      const value = normalizeLineValue(String(rawValue != null ? rawValue : ""));
+      if (!value) {
+        if (param.optional) continue;
+        new import_obsidian3.Notice(`${param.label} is required.`);
+        return null;
+      }
+      if (param.kind === "text" && !this.validateTextValue(param, value)) {
+        return null;
+      }
+      lines.push(`${param.key}: ${value}`);
+    }
+    return lines;
+  }
+  buildDateLines() {
+    if (this.rangeMode === "none") return [];
+    if (this.rangeMode === "last") {
+      const last = normalizeLineValue(this.lastDays);
+      if (!isPositiveNumber(last)) {
+        new import_obsidian3.Notice("Last days must be a positive number.");
+        return null;
+      }
+      const to2 = normalizeLineValue(this.toDate);
+      if (to2 && !DATE_OR_DATETIME_INPUT.test(to2)) {
+        new import_obsidian3.Notice(`Anchor date must be ${DATE_OR_DATETIME_PLACEHOLDER}.`);
+        return null;
+      }
+      return to2 ? [`to: ${to2}`, `last: ${last}`] : [`last: ${last}`];
+    }
+    if (this.rangeMode === "single") {
+      const day = normalizeLineValue(this.singleDate);
+      if (!DATE_INPUT.test(day)) {
+        new import_obsidian3.Notice(`Single day must be ${DATE_PLACEHOLDER}.`);
+        return null;
+      }
+      return [`from: ${day}`, `to: ${day}`];
+    }
+    const from = normalizeLineValue(this.fromDate);
+    const to = normalizeLineValue(this.customToDate);
+    if (!from && !to) {
+      new import_obsidian3.Notice("Enter at least a from or to value, or choose another range mode.");
+      return null;
+    }
+    if (from && !DATE_OR_DATETIME_INPUT.test(from)) {
+      new import_obsidian3.Notice(`The from value must be ${DATE_OR_DATETIME_PLACEHOLDER}.`);
+      return null;
+    }
+    if (to && !DATE_OR_DATETIME_INPUT.test(to)) {
+      new import_obsidian3.Notice(`The to value must be ${DATE_OR_DATETIME_PLACEHOLDER}.`);
+      return null;
+    }
+    const lines = [];
+    if (from) lines.push(`from: ${from}`);
+    if (to) lines.push(`to: ${to}`);
+    return lines;
+  }
+  buildSizeLines() {
+    const lines = [];
+    const height = normalizeLineValue(this.height);
+    const width = normalizeLineValue(this.width);
+    if (height) {
+      if (!isPositiveNumber(height)) {
+        new import_obsidian3.Notice("Height must be a positive number.");
+        return null;
+      }
+      lines.push(`height: ${height}`);
+    }
+    if (width) {
+      if (!isPositiveNumber(width)) {
+        new import_obsidian3.Notice("Width must be a positive number.");
+        return null;
+      }
+      lines.push(`width: ${width}`);
+    }
+    return lines;
+  }
+  validateTextValue(param, value) {
+    if (!param.validation) return true;
+    if (param.validation === "positive-number") {
+      if (isPositiveNumber(value)) return true;
+      new import_obsidian3.Notice(`${param.label} must be a positive number.`);
+      return false;
+    }
+    if (param.validation === "positive-integer") {
+      if (isInteger(value) && Number(value) > 0) return true;
+      new import_obsidian3.Notice(`${param.label} must be a positive whole number.`);
+      return false;
+    }
+    if (param.validation === "non-negative-integer") {
+      if (isInteger(value)) return true;
+      new import_obsidian3.Notice(`${param.label} must be 0 or a positive whole number.`);
+      return false;
+    }
+    if (param.validation === "date") {
+      if (DATE_INPUT.test(value)) return true;
+      new import_obsidian3.Notice(`${param.label} must be YYYY-MM-DD.`);
+      return false;
+    }
+    if (param.validation === "time") {
+      if (TIME_INPUT.test(value)) return true;
+      new import_obsidian3.Notice(`${param.label} must be HH:MM.`);
+      return false;
+    }
+    return true;
+  }
+};
+
 // src/main.ts
 var COLOR_SCHEMES = {
   default: {
@@ -14414,7 +15332,7 @@ var DEFAULT_SETTINGS = {
   mapTileUrl: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
   mapTileAttribution: "\xA9 OpenStreetMap contributors \xA9 CARTO"
 };
-var HealthMdPlugin = class extends import_obsidian3.Plugin {
+var HealthMdPlugin = class extends import_obsidian4.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -14460,9 +15378,7 @@ var HealthMdPlugin = class extends import_obsidian3.Plugin {
       id: "insert-health-chart",
       name: "Insert health visualization",
       editorCallback: (editor) => {
-        editor.replaceSelection(
-          "```health-viz\ntype: heart-terrain\n```\n"
-        );
+        openInsertVisualizationWizard(this.app, editor, this.settings);
       }
     });
   }
@@ -14478,19 +15394,19 @@ var HealthMdPlugin = class extends import_obsidian3.Plugin {
   }
   refreshViews() {
     this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
-      if (leaf.view instanceof import_obsidian3.MarkdownView) {
+      if (leaf.view instanceof import_obsidian4.MarkdownView) {
         leaf.view.previewMode.rerender(true);
       }
     });
   }
 };
-var FolderInputSuggest = class extends import_obsidian3.AbstractInputSuggest {
+var FolderInputSuggest = class extends import_obsidian4.AbstractInputSuggest {
   constructor(app, inputEl) {
     super(app, inputEl);
     this.limit = 200;
   }
   getFolderPaths() {
-    return this.app.vault.getAllLoadedFiles().filter((f) => f instanceof import_obsidian3.TFolder).map((f) => f.path).filter((path) => path.length > 0 && path !== "/").sort((a, b) => a.localeCompare(b));
+    return this.app.vault.getAllLoadedFiles().filter((f) => f instanceof import_obsidian4.TFolder).map((f) => f.path).filter((path) => path.length > 0 && path !== "/").sort((a, b) => a.localeCompare(b));
   }
   getSuggestions(query) {
     const q = query.trim().toLowerCase();
@@ -14502,7 +15418,7 @@ var FolderInputSuggest = class extends import_obsidian3.AbstractInputSuggest {
     el.setText(value);
   }
 };
-var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
+var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -14518,7 +15434,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
       await this.plugin.saveSettings();
       this.plugin.refreshViews();
     };
-    new import_obsidian3.Setting(containerEl).setName("Data folder").setDesc(
+    new import_obsidian4.Setting(containerEl).setName("Data folder").setDesc(
       "Path to the folder containing health data files. Start typing to pick an existing folder."
     ).addSearch((search) => {
       search.setPlaceholder("Health").setValue(this.plugin.settings.dataFolder).onChange(async (value) => {
@@ -14531,7 +15447,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
       search.inputEl.addEventListener("focus", () => folderSuggest.open());
       search.inputEl.addEventListener("click", () => folderSuggest.open());
     });
-    new import_obsidian3.Setting(containerEl).setName("File pattern").setDesc(
+    new import_obsidian4.Setting(containerEl).setName("File pattern").setDesc(
       "Glob pattern to match files. Use * to include all supported files."
     ).addText(
       (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
@@ -14541,7 +15457,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         this.plugin.refreshViews();
       })
     );
-    new import_obsidian3.Setting(containerEl).setName("Data format").setDesc(
+    new import_obsidian4.Setting(containerEl).setName("Data format").setDesc(
       "Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter."
     ).addDropdown(
       (dropdown) => dropdown.addOption("auto", "Auto-detect by extension").addOption("json", "JSON").addOption("csv", "CSV").addOption("markdown", "Markdown (YAML frontmatter required)").addOption("bases", "Obsidian bases (YAML frontmatter)").setValue(this.plugin.settings.dataFormat).onChange(async (value) => {
@@ -14551,14 +15467,14 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         this.plugin.refreshViews();
       })
     );
-    new import_obsidian3.Setting(containerEl).setName("Theme").setDesc("Color theme for visualizations").addDropdown(
+    new import_obsidian4.Setting(containerEl).setName("Theme").setDesc("Color theme for visualizations").addDropdown(
       (dropdown) => dropdown.addOption("auto", "Auto (match Obsidian)").addOption("dark", "Dark").addOption("light", "Light").setValue(this.plugin.settings.theme).onChange(async (value) => {
         this.plugin.settings.theme = value;
         await this.plugin.saveSettings();
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian3.Setting(containerEl).setName("Default width").setDesc("Default canvas width in pixels").addText(
+    new import_obsidian4.Setting(containerEl).setName("Default width").setDesc("Default canvas width in pixels").addText(
       (text) => text.setValue(String(this.plugin.settings.defaultWidth)).onChange(async (value) => {
         const num = parseInt(value, 10);
         if (!isNaN(num) && num > 0) {
@@ -14567,7 +15483,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         }
       })
     );
-    new import_obsidian3.Setting(containerEl).setName("Default height").setDesc("Default canvas height in pixels").addText(
+    new import_obsidian4.Setting(containerEl).setName("Default height").setDesc("Default canvas height in pixels").addText(
       (text) => text.setValue(String(this.plugin.settings.defaultHeight)).onChange(async (value) => {
         const num = parseInt(value, 10);
         if (!isNaN(num) && num > 0) {
@@ -14576,7 +15492,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         }
       })
     );
-    new import_obsidian3.Setting(containerEl).setName("Colors").setHeading();
+    new import_obsidian4.Setting(containerEl).setName("Colors").setHeading();
     const colorInputs = {};
     const applyScheme = async (schemeId) => {
       this.plugin.settings.colorScheme = schemeId;
@@ -14601,7 +15517,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
       this.plugin.redrawAll();
     };
     let schemeDropdown;
-    new import_obsidian3.Setting(containerEl).setName("Color scheme").setDesc("Choose a preset palette or customize individual colors below").addDropdown((dropdown) => {
+    new import_obsidian4.Setting(containerEl).setName("Color scheme").setDesc("Choose a preset palette or customize individual colors below").addDropdown((dropdown) => {
       Object.keys(COLOR_SCHEMES).forEach((id) => {
         dropdown.addOption(id, COLOR_SCHEMES[id].label);
       });
@@ -14622,7 +15538,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
       { key: "colorSleepAwake", name: "Awake", desc: "Color for awake periods in sleep charts" }
     ];
     colorSettings.forEach(({ key, name, desc }) => {
-      const setting = new import_obsidian3.Setting(containerEl).setName(name).setDesc(desc);
+      const setting = new import_obsidian4.Setting(containerEl).setName(name).setDesc(desc);
       const input = setting.controlEl.createEl("input");
       input.type = "color";
       input.value = this.plugin.settings[key];
@@ -14637,8 +15553,8 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         })();
       });
     });
-    new import_obsidian3.Setting(containerEl).setName("Workouts").setHeading();
-    new import_obsidian3.Setting(containerEl).setName("Maximum heart rate").setDesc(
+    new import_obsidian4.Setting(containerEl).setName("Workouts").setHeading();
+    new import_obsidian4.Setting(containerEl).setName("Maximum heart rate").setDesc(
       "Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age."
     ).addText(
       (text) => text.setPlaceholder("190").setValue(
@@ -14657,7 +15573,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian3.Setting(containerEl).setName("Show map tiles").setDesc(
+    new import_obsidian4.Setting(containerEl).setName("Show map tiles").setDesc(
       "Render workout maps with tile imagery (requires network). When off, the route is drawn as a polyline on a plain background."
     ).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.mapTilesEnabled).onChange(async (value) => {
@@ -14666,7 +15582,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian3.Setting(containerEl).setName("Map tile URL").setDesc(
+    new import_obsidian4.Setting(containerEl).setName("Map tile URL").setDesc(
       "Leaflet tile URL template. Replace with a different provider's URL if you have your own API key."
     ).addText(
       (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl).setValue(this.plugin.settings.mapTileUrl).onChange(async (value) => {
@@ -14675,7 +15591,7 @@ var HealthMdSettingTab = class extends import_obsidian3.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian3.Setting(containerEl).setName("Map attribution").setDesc("Attribution string shown on the map. Required by most tile providers.").addText(
+    new import_obsidian4.Setting(containerEl).setName("Map attribution").setDesc("Attribution string shown on the map. Required by most tile providers.").addText(
       (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution).setValue(this.plugin.settings.mapTileAttribution).onChange(async (value) => {
         this.plugin.settings.mapTileAttribution = value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
         await this.plugin.saveSettings();
@@ -14692,5 +15608,3 @@ leaflet/dist/leaflet-src.js:
    * (c) 2010-2023 Vladimir Agafonkin, (c) 2010-2011 CloudMade
    *)
 */
-
-/* nosourcemap */
