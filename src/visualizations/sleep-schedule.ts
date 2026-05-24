@@ -10,27 +10,102 @@ interface Night {
 	totalSeconds: number;
 }
 
+type SleepWithTiming = NonNullable<HealthDay["sleep"]> & {
+	bedtimeISO?: string;
+	wakeTimeISO?: string;
+	sessionStart?: string;
+	sessionEnd?: string;
+};
+
+interface ClockTime {
+	h: number;
+	m: number;
+	s: number;
+}
+
+const DAY_MS = 86400000;
+
 function parseWindow(str: string): { h: number; m: number } {
-	const m = /^(\d{1,2}):(\d{2})$/.exec(str || "");
-	if (!m) return { h: 0, m: 0 };
-	return { h: Math.min(23, Number(m[1])), m: Math.min(59, Number(m[2])) };
+	const clock = parseClockTime(str);
+	if (!clock) return { h: 0, m: 0 };
+	return { h: clock.h, m: clock.m };
+}
+
+function parseClockTime(raw: string | undefined): ClockTime | null {
+	const value = raw?.trim();
+	if (!value) return null;
+
+	let m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+	if (m) {
+		const h = Number(m[1]);
+		const min = Number(m[2]);
+		const sec = Number(m[3] ?? 0);
+		if (h <= 23 && min <= 59 && sec <= 59) return { h, m: min, s: sec };
+		return null;
+	}
+
+	m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap])\.?m\.?$/i.exec(value);
+	if (m) {
+		let h = Number(m[1]);
+		const min = Number(m[2]);
+		const sec = Number(m[3] ?? 0);
+		if (h < 1 || h > 12 || min > 59 || sec > 59) return null;
+		const meridiem = m[4].toLowerCase();
+		if (meridiem === "p" && h !== 12) h += 12;
+		if (meridiem === "a" && h === 12) h = 0;
+		return { h, m: min, s: sec };
+	}
+
+	return null;
+}
+
+function clockMsOnDate(dateIso: string, clock: ClockTime): number {
+	return new Date(
+		`${dateIso}T${String(clock.h).padStart(2, "0")}:${String(clock.m).padStart(2, "0")}:${String(clock.s).padStart(2, "0")}`
+	).getTime();
+}
+
+function parseAbsoluteMs(raw: string | undefined): number {
+	if (!raw?.trim()) return NaN;
+	return Date.parse(raw.trim());
+}
+
+function resolveExplicitBedWake(night: HealthDay, sleep: SleepWithTiming): { bedMs: number; wakeMs: number } | null {
+	const bedRaw = sleep.bedtimeISO ?? sleep.sessionStart ?? sleep.bedtime;
+	const wakeRaw = sleep.wakeTimeISO ?? sleep.sessionEnd ?? sleep.wakeTime;
+	if (!bedRaw || !wakeRaw) return null;
+
+	const bedClock = parseClockTime(bedRaw);
+	const wakeClock = parseClockTime(wakeRaw);
+	let bedMs = bedClock ? clockMsOnDate(night.date, bedClock) : parseAbsoluteMs(bedRaw);
+	let wakeMs = wakeClock ? clockMsOnDate(night.date, wakeClock) : parseAbsoluteMs(wakeRaw);
+
+	if (!isFinite(bedMs) || !isFinite(wakeMs)) return null;
+	if (wakeMs <= bedMs && (bedClock || wakeClock)) wakeMs += DAY_MS;
+	if (wakeMs <= bedMs) return null;
+	return { bedMs, wakeMs };
+}
+
+function resolveStageBedWake(sleep: SleepWithTiming): { bedMs: number; wakeMs: number } | null {
+	const stages = sleep.sleepStages ?? [];
+	let bedMs = Infinity;
+	let wakeMs = -Infinity;
+
+	for (const stage of stages) {
+		const startMs = Date.parse(stage.startDate);
+		const endMs = Date.parse(stage.endDate);
+		if (isFinite(startMs) && startMs < bedMs) bedMs = startMs;
+		if (isFinite(endMs) && endMs > wakeMs) wakeMs = endMs;
+	}
+
+	if (!isFinite(bedMs) || !isFinite(wakeMs) || wakeMs <= bedMs) return null;
+	return { bedMs, wakeMs };
 }
 
 function resolveBedWake(night: HealthDay): { bedMs: number; wakeMs: number } | null {
 	const sleep = night.sleep;
-	if (!sleep || !sleep.bedtime || !sleep.wakeTime) return null;
-	const isTimeOnly = (s: string) => /^\d{1,2}:\d{2}$/.test(s);
-	let bedMs: number, wakeMs: number;
-	if (isTimeOnly(sleep.bedtime)) {
-		bedMs = new Date(`${night.date}T${sleep.bedtime}:00`).getTime();
-		wakeMs = new Date(`${night.date}T${sleep.wakeTime}:00`).getTime();
-		if (wakeMs <= bedMs) wakeMs += 86400000;
-	} else {
-		bedMs = Date.parse(sleep.bedtime);
-		wakeMs = Date.parse(sleep.wakeTime);
-	}
-	if (!isFinite(bedMs) || !isFinite(wakeMs) || wakeMs <= bedMs) return null;
-	return { bedMs, wakeMs };
+	if (!sleep) return null;
+	return resolveExplicitBedWake(night, sleep) ?? resolveStageBedWake(sleep);
 }
 
 function formatHour(ms: number): string {
@@ -68,7 +143,9 @@ export const renderSleepSchedule: RenderFn = (
 	const nights: Night[] = [];
 	for (const d of data) {
 		if (!d.sleep) continue;
-		if (!(d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)) continue;
+		const stageCount = d.sleep.sleepStages?.length ?? 0;
+		const totalDuration = d.sleep.totalDuration ?? 0;
+		if (!(stageCount > 0 || totalDuration > 0)) continue;
 		const bw = resolveBedWake(d);
 		if (!bw) continue;
 		nights.push({
@@ -76,7 +153,7 @@ export const renderSleepSchedule: RenderFn = (
 			day: d,
 			bedMs: bw.bedMs,
 			wakeMs: bw.wakeMs,
-			totalSeconds: d.sleep.totalDuration || (bw.wakeMs - bw.bedMs) / 1000,
+			totalSeconds: totalDuration || (bw.wakeMs - bw.bedMs) / 1000,
 		});
 	}
 
@@ -85,9 +162,11 @@ export const renderSleepSchedule: RenderFn = (
 
 	if (!nights.length) {
 		ctx.fillStyle = theme.muted;
-		ctx.font = "12px sans-serif";
 		ctx.textAlign = "center";
-		ctx.fillText("No sleep data", W / 2, H / 2);
+		ctx.font = "12px sans-serif";
+		ctx.fillText("No sleep schedule data", W / 2, H / 2 - 8);
+		ctx.font = "10px sans-serif";
+		ctx.fillText("Requires bedtime/wake or stage timestamps", W / 2, H / 2 + 10);
 		return;
 	}
 

@@ -12718,26 +12718,79 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
 };
 
 // src/visualizations/sleep-schedule.ts
+var DAY_MS = 864e5;
 function parseWindow(str) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(str || "");
-  if (!m) return { h: 0, m: 0 };
-  return { h: Math.min(23, Number(m[1])), m: Math.min(59, Number(m[2])) };
+  const clock = parseClockTime(str);
+  if (!clock) return { h: 0, m: 0 };
+  return { h: clock.h, m: clock.m };
 }
-function resolveBedWake(night) {
-  const sleep = night.sleep;
-  if (!sleep || !sleep.bedtime || !sleep.wakeTime) return null;
-  const isTimeOnly = (s) => /^\d{1,2}:\d{2}$/.test(s);
-  let bedMs, wakeMs;
-  if (isTimeOnly(sleep.bedtime)) {
-    bedMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.bedtime}:00`)).getTime();
-    wakeMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.wakeTime}:00`)).getTime();
-    if (wakeMs <= bedMs) wakeMs += 864e5;
-  } else {
-    bedMs = Date.parse(sleep.bedtime);
-    wakeMs = Date.parse(sleep.wakeTime);
+function parseClockTime(raw) {
+  var _a, _b;
+  const value = raw == null ? void 0 : raw.trim();
+  if (!value) return null;
+  let m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (m) {
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    const sec = Number((_a = m[3]) != null ? _a : 0);
+    if (h <= 23 && min <= 59 && sec <= 59) return { h, m: min, s: sec };
+    return null;
+  }
+  m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap])\.?m\.?$/i.exec(value);
+  if (m) {
+    let h = Number(m[1]);
+    const min = Number(m[2]);
+    const sec = Number((_b = m[3]) != null ? _b : 0);
+    if (h < 1 || h > 12 || min > 59 || sec > 59) return null;
+    const meridiem = m[4].toLowerCase();
+    if (meridiem === "p" && h !== 12) h += 12;
+    if (meridiem === "a" && h === 12) h = 0;
+    return { h, m: min, s: sec };
+  }
+  return null;
+}
+function clockMsOnDate(dateIso, clock) {
+  return (/* @__PURE__ */ new Date(
+    `${dateIso}T${String(clock.h).padStart(2, "0")}:${String(clock.m).padStart(2, "0")}:${String(clock.s).padStart(2, "0")}`
+  )).getTime();
+}
+function parseAbsoluteMs(raw) {
+  if (!(raw == null ? void 0 : raw.trim())) return NaN;
+  return Date.parse(raw.trim());
+}
+function resolveExplicitBedWake(night, sleep) {
+  var _a, _b, _c, _d;
+  const bedRaw = (_b = (_a = sleep.bedtimeISO) != null ? _a : sleep.sessionStart) != null ? _b : sleep.bedtime;
+  const wakeRaw = (_d = (_c = sleep.wakeTimeISO) != null ? _c : sleep.sessionEnd) != null ? _d : sleep.wakeTime;
+  if (!bedRaw || !wakeRaw) return null;
+  const bedClock = parseClockTime(bedRaw);
+  const wakeClock = parseClockTime(wakeRaw);
+  let bedMs = bedClock ? clockMsOnDate(night.date, bedClock) : parseAbsoluteMs(bedRaw);
+  let wakeMs = wakeClock ? clockMsOnDate(night.date, wakeClock) : parseAbsoluteMs(wakeRaw);
+  if (!isFinite(bedMs) || !isFinite(wakeMs)) return null;
+  if (wakeMs <= bedMs && (bedClock || wakeClock)) wakeMs += DAY_MS;
+  if (wakeMs <= bedMs) return null;
+  return { bedMs, wakeMs };
+}
+function resolveStageBedWake(sleep) {
+  var _a;
+  const stages = (_a = sleep.sleepStages) != null ? _a : [];
+  let bedMs = Infinity;
+  let wakeMs = -Infinity;
+  for (const stage of stages) {
+    const startMs = Date.parse(stage.startDate);
+    const endMs = Date.parse(stage.endDate);
+    if (isFinite(startMs) && startMs < bedMs) bedMs = startMs;
+    if (isFinite(endMs) && endMs > wakeMs) wakeMs = endMs;
   }
   if (!isFinite(bedMs) || !isFinite(wakeMs) || wakeMs <= bedMs) return null;
   return { bedMs, wakeMs };
+}
+function resolveBedWake(night) {
+  var _a;
+  const sleep = night.sleep;
+  if (!sleep) return null;
+  return (_a = resolveExplicitBedWake(night, sleep)) != null ? _a : resolveStageBedWake(sleep);
 }
 function formatHour(ms) {
   return new Date(ms).toLocaleTimeString("en-US", {
@@ -12753,6 +12806,7 @@ function hourLabel(h) {
   return `${hr - 12}P`;
 }
 var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a, _b, _c;
   const canvas = ctx.canvas;
   const sleepGoalHours = Number(config.sleepGoal) || 8;
   const windowStart = parseWindow(String(config.windowStart || "18:00"));
@@ -12760,7 +12814,9 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const nights = [];
   for (const d of data) {
     if (!d.sleep) continue;
-    if (!(d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)) continue;
+    const stageCount = (_b = (_a = d.sleep.sleepStages) == null ? void 0 : _a.length) != null ? _b : 0;
+    const totalDuration = (_c = d.sleep.totalDuration) != null ? _c : 0;
+    if (!(stageCount > 0 || totalDuration > 0)) continue;
     const bw = resolveBedWake(d);
     if (!bw) continue;
     nights.push({
@@ -12768,16 +12824,18 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
       day: d,
       bedMs: bw.bedMs,
       wakeMs: bw.wakeMs,
-      totalSeconds: d.sleep.totalDuration || (bw.wakeMs - bw.bedMs) / 1e3
+      totalSeconds: totalDuration || (bw.wakeMs - bw.bedMs) / 1e3
     });
   }
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   if (!nights.length) {
     ctx.fillStyle = theme.muted;
-    ctx.font = "12px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("No sleep data", W / 2, H / 2);
+    ctx.font = "12px sans-serif";
+    ctx.fillText("No sleep schedule data", W / 2, H / 2 - 8);
+    ctx.font = "10px sans-serif";
+    ctx.fillText("Requires bedtime/wake or stage timestamps", W / 2, H / 2 + 10);
     return;
   }
   const rowH = 26;

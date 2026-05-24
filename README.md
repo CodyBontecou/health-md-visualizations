@@ -130,7 +130,7 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 </tr>
 <tr>
 <td><a href="examples/images/visualizations/sleep-schedule.png"><img src="examples/images/visualizations/sleep-schedule.png" alt="sleep-schedule visualization" width="420"></a></td>
-<td><p><strong><code>sleep-schedule</code></strong></p><p>Horizontal bedtime-to-wake bars against a sunset→night→sunrise backdrop.</p><p><strong>Extra arguments:</strong> <code>sleepGoal</code>, <code>windowStart</code>, <code>windowEnd</code>.</p></td>
+<td><p><strong><code>sleep-schedule</code></strong></p><p>Horizontal bedtime-to-wake bars against a sunset→night→sunrise backdrop. Requires bedtime/wake timing or stage timestamps; 24-hour and 12-hour times are supported.</p><p><strong>Extra arguments:</strong> <code>sleepGoal</code>, <code>windowStart</code>, <code>windowEnd</code>.</p></td>
 </tr>
 <tr>
 <td><a href="examples/images/visualizations/sleep-quality-bars.png"><img src="examples/images/visualizations/sleep-quality-bars.png" alt="sleep-quality-bars visualization" width="420"></a></td>

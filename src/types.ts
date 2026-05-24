@@ -122,7 +122,9 @@ export interface HealthDay {
 		awakeTime?: number;
 		awakeTimeFormatted?: string;
 		bedtime: string;
+		bedtimeISO?: string;
 		wakeTime: string;
+		wakeTimeISO?: string;
 	};
 	mobility?: {
 		walkingSpeed: number;
