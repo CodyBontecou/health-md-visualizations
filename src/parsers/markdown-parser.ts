@@ -98,6 +98,22 @@ function getStr(fm: Record<string, unknown>, key: string): string | undefined {
 	return undefined;
 }
 
+function getFirstNum(fm: Record<string, unknown>, ...keys: string[]): number | undefined {
+	for (const key of keys) {
+		const value = getNum(fm, key);
+		if (value !== undefined) return value;
+	}
+	return undefined;
+}
+
+function getFirstStr(fm: Record<string, unknown>, ...keys: string[]): string | undefined {
+	for (const key of keys) {
+		const value = getStr(fm, key);
+		if (value !== undefined) return value;
+	}
+	return undefined;
+}
+
 /**
  * Parse a Markdown or Bases file into a HealthDay.
  * Supports both:
@@ -179,32 +195,93 @@ export function parseMarkdown(content: string): HealthDay | null {
 	}
 
 	// --- Sleep ---
-	// Bases uses hours; JSON uses seconds. Detect which.
-	const sleepHours = getNum(fm, "sleep_total_hours");
-	const sleepSeconds = getNum(fm, "sleep_total_duration");
+	// Bases commonly uses *_hours; JSON-style frontmatter commonly uses seconds.
+	// Accept several aliases so sleep-schedule can find timing fields exported by
+	// different daily-note/Bases templates.
+	const sleepHours = getFirstNum(
+		fm,
+		"sleep_total_hours",
+		"sleepTotalHours",
+		"sleep_hours"
+	);
+	const sleepSeconds = getFirstNum(
+		fm,
+		"sleep_total_duration",
+		"sleepTotalDuration",
+		"sleep_total_seconds",
+		"sleepTotalSeconds",
+		"totalDuration",
+		"total_duration"
+	);
 	const sleepTotal = sleepHours !== undefined
 		? sleepHours * 3600
 		: sleepSeconds;
 	if (sleepTotal !== undefined) {
-		const deepH = getNum(fm, "sleep_deep_hours");
-		const remH = getNum(fm, "sleep_rem_hours");
-		const coreH = getNum(fm, "sleep_core_hours");
-		const awakeH = getNum(fm, "sleep_awake_hours");
+		const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
+		const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
+		const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours");
+		const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
 		day.sleep = {
 			sleepStages: [],
 			totalDuration: sleepTotal,
-			deepSleep: deepH !== undefined ? deepH * 3600 : (getNum(fm, "sleep_deep") ?? 0),
-			remSleep: remH !== undefined ? remH * 3600 : (getNum(fm, "sleep_rem") ?? 0),
-			coreSleep: coreH !== undefined ? coreH * 3600 : (getNum(fm, "sleep_core") ?? 0),
-			awakeTime: awakeH !== undefined ? awakeH * 3600 : getNum(fm, "sleep_awake"),
+			deepSleep: deepH !== undefined
+				? deepH * 3600
+				: (getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep") ?? 0),
+			remSleep: remH !== undefined
+				? remH * 3600
+				: (getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep") ?? 0),
+			coreSleep: coreH !== undefined
+				? coreH * 3600
+				: (getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep") ?? 0),
+			awakeTime: awakeH !== undefined
+				? awakeH * 3600
+				: getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time"),
 			bedtime:
-				getStr(fm, "sleep_bedtime") ??
-				getStr(fm, "bedtime") ??
-				"",
+				getFirstStr(
+					fm,
+					"sleep_bedtime",
+					"sleepBedtime",
+					"bedtime",
+					"bedTime",
+					"sleep_start",
+					"sleep_start_time",
+					"sleep_session_start"
+				) ?? "",
+			bedtimeISO:
+				getFirstStr(
+					fm,
+					"sleep_bedtime_iso",
+					"sleepBedtimeISO",
+					"bedtimeISO",
+					"bed_time_iso",
+					"sleep_start_iso",
+					"sleep_session_start_iso"
+				),
 			wakeTime:
-				getStr(fm, "sleep_wake") ??
-				getStr(fm, "wake_time") ??
-				"",
+				getFirstStr(
+					fm,
+					"sleep_wake",
+					"sleepWake",
+					"sleep_wake_time",
+					"wake_time",
+					"wakeTime",
+					"wake",
+					"sleep_end",
+					"sleep_end_time",
+					"sleep_session_end"
+				) ?? "",
+			wakeTimeISO:
+				getFirstStr(
+					fm,
+					"sleep_wake_iso",
+					"sleepWakeISO",
+					"sleep_wake_time_iso",
+					"wake_time_iso",
+					"wakeTimeISO",
+					"wake_iso",
+					"sleep_end_iso",
+					"sleep_session_end_iso"
+				),
 		};
 	}
 

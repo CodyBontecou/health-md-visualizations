@@ -9794,8 +9794,22 @@ function getStr(fm, key) {
   }
   return void 0;
 }
+function getFirstNum(fm, ...keys) {
+  for (const key of keys) {
+    const value = getNum2(fm, key);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
+function getFirstStr(fm, ...keys) {
+  for (const key of keys) {
+    const value = getStr(fm, key);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
 function parseMarkdown(content) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
   const fm = parseFrontmatter(content);
   if (!fm) return null;
   const date = getStr(fm, "date");
@@ -9831,27 +9845,80 @@ function parseMarkdown(content) {
       hrv: hrvVal
     };
   }
-  const sleepHours = getNum2(fm, "sleep_total_hours");
-  const sleepSeconds = getNum2(fm, "sleep_total_duration");
+  const sleepHours = getFirstNum(
+    fm,
+    "sleep_total_hours",
+    "sleepTotalHours",
+    "sleep_hours"
+  );
+  const sleepSeconds = getFirstNum(
+    fm,
+    "sleep_total_duration",
+    "sleepTotalDuration",
+    "sleep_total_seconds",
+    "sleepTotalSeconds",
+    "totalDuration",
+    "total_duration"
+  );
   const sleepTotal = sleepHours !== void 0 ? sleepHours * 3600 : sleepSeconds;
   if (sleepTotal !== void 0) {
-    const deepH = getNum2(fm, "sleep_deep_hours");
-    const remH = getNum2(fm, "sleep_rem_hours");
-    const coreH = getNum2(fm, "sleep_core_hours");
-    const awakeH = getNum2(fm, "sleep_awake_hours");
+    const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
+    const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
+    const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours");
+    const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
     day.sleep = {
       sleepStages: [],
       totalDuration: sleepTotal,
-      deepSleep: deepH !== void 0 ? deepH * 3600 : (_s = getNum2(fm, "sleep_deep")) != null ? _s : 0,
-      remSleep: remH !== void 0 ? remH * 3600 : (_t = getNum2(fm, "sleep_rem")) != null ? _t : 0,
-      coreSleep: coreH !== void 0 ? coreH * 3600 : (_u = getNum2(fm, "sleep_core")) != null ? _u : 0,
-      awakeTime: awakeH !== void 0 ? awakeH * 3600 : getNum2(fm, "sleep_awake"),
-      bedtime: (_w = (_v = getStr(fm, "sleep_bedtime")) != null ? _v : getStr(fm, "bedtime")) != null ? _w : "",
-      wakeTime: (_y = (_x = getStr(fm, "sleep_wake")) != null ? _x : getStr(fm, "wake_time")) != null ? _y : ""
+      deepSleep: deepH !== void 0 ? deepH * 3600 : (_s = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _s : 0,
+      remSleep: remH !== void 0 ? remH * 3600 : (_t = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _t : 0,
+      coreSleep: coreH !== void 0 ? coreH * 3600 : (_u = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep")) != null ? _u : 0,
+      awakeTime: awakeH !== void 0 ? awakeH * 3600 : getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time"),
+      bedtime: (_v = getFirstStr(
+        fm,
+        "sleep_bedtime",
+        "sleepBedtime",
+        "bedtime",
+        "bedTime",
+        "sleep_start",
+        "sleep_start_time",
+        "sleep_session_start"
+      )) != null ? _v : "",
+      bedtimeISO: getFirstStr(
+        fm,
+        "sleep_bedtime_iso",
+        "sleepBedtimeISO",
+        "bedtimeISO",
+        "bed_time_iso",
+        "sleep_start_iso",
+        "sleep_session_start_iso"
+      ),
+      wakeTime: (_w = getFirstStr(
+        fm,
+        "sleep_wake",
+        "sleepWake",
+        "sleep_wake_time",
+        "wake_time",
+        "wakeTime",
+        "wake",
+        "sleep_end",
+        "sleep_end_time",
+        "sleep_session_end"
+      )) != null ? _w : "",
+      wakeTimeISO: getFirstStr(
+        fm,
+        "sleep_wake_iso",
+        "sleepWakeISO",
+        "sleep_wake_time_iso",
+        "wake_time_iso",
+        "wakeTimeISO",
+        "wake_iso",
+        "sleep_end_iso",
+        "sleep_session_end_iso"
+      )
     };
   }
-  const respRate = (_z = getNum2(fm, "respiratory_rate")) != null ? _z : getNum2(fm, "vitals_respiratory_rate");
-  const bloodOx = (_B = (_A = getNum2(fm, "blood_oxygen")) != null ? _A : getNum2(fm, "blood_oxygen_avg")) != null ? _B : getNum2(fm, "vitals_blood_oxygen");
+  const respRate = (_x = getNum2(fm, "respiratory_rate")) != null ? _x : getNum2(fm, "vitals_respiratory_rate");
+  const bloodOx = (_z = (_y = getNum2(fm, "blood_oxygen")) != null ? _y : getNum2(fm, "blood_oxygen_avg")) != null ? _z : getNum2(fm, "vitals_blood_oxygen");
   if (respRate !== void 0 || bloodOx !== void 0) {
     day.vitals = {
       respiratoryRate: respRate,
@@ -9859,16 +9926,16 @@ function parseMarkdown(content) {
       bloodOxygenAvg: bloodOx
     };
   }
-  const walkSpeed = (_C = getNum2(fm, "walking_speed")) != null ? _C : getNum2(fm, "mobility_walking_speed");
+  const walkSpeed = (_A = getNum2(fm, "walking_speed")) != null ? _A : getNum2(fm, "mobility_walking_speed");
   if (walkSpeed !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_F = (_E = (_D = getNum2(fm, "walking_asymmetry_percentage")) != null ? _D : getNum2(fm, "walking_asymmetry_percent")) != null ? _E : getNum2(fm, "walking_asymmetry")) != null ? _F : 0,
+      walkingAsymmetryPercentage: (_D = (_C = (_B = getNum2(fm, "walking_asymmetry_percentage")) != null ? _B : getNum2(fm, "walking_asymmetry_percent")) != null ? _C : getNum2(fm, "walking_asymmetry")) != null ? _D : 0,
       walkingStepLength: getNum2(fm, "walking_step_length"),
       walkingDoubleSupportPercentage: getNum2(fm, "walking_double_support_percentage")
     };
   }
-  const headphone = (_G = getNum2(fm, "headphone_audio_level")) != null ? _G : getNum2(fm, "hearing_headphone_audio_level");
+  const headphone = (_E = getNum2(fm, "headphone_audio_level")) != null ? _E : getNum2(fm, "hearing_headphone_audio_level");
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }

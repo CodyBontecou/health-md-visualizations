@@ -439,7 +439,8 @@ height: 120
 Horizontal bedtime-to-wake bars against a sunset → night → sunrise backdrop.
 The inner band represents time asleep relative to the in-bed window, and bar
 color indicates how close the night was to the sleep goal. This view needs
-sleep timing: `sleep_bedtime` + `sleep_wake` / `bedtime` + `wakeTime`, ISO
+sleep timing: `sleep_bedtime` + `sleep_wake` (or Health.md camelCase
+`sleepBedtime` + `sleepWake`), `bedtime` + `wakeTime`/`wake_time`, ISO
 variants, or stage timestamps. 24-hour and 12-hour times are accepted.
 
 | Argument | Values | Default | Effect |
