@@ -123,6 +123,17 @@ function hourLabel(h: number): string {
 	return `${hr - 12}P`;
 }
 
+function localDateIso(ms: number): string {
+	const d = new Date(ms);
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function addDaysIso(dateIso: string, days: number): string {
+	const d = new Date(`${dateIso}T00:00:00`);
+	d.setDate(d.getDate() + days);
+	return localDateIso(d.getTime());
+}
+
 export const renderSleepSchedule: RenderFn = (
 	ctx: CanvasRenderingContext2D,
 	data: HealthDay[],
@@ -202,8 +213,48 @@ export const renderSleepSchedule: RenderFn = (
 		return { startMs, endMs };
 	}
 
+	function windowBoundsForNight(night: Night): { startMs: number; endMs: number } {
+		// Health.md app exports sleep for the date the night ends on, so absolute
+		// bedtime/wake timestamps can be on the previous evening → current morning.
+		// The sample vault historically used the bedtime date instead. Pick the
+		// overnight window that overlaps the actual sleep interval best so both
+		// date conventions render bars instead of clamping everything to x=0.
+		const bedDate = localDateIso(night.bedMs);
+		const wakeDate = localDateIso(night.wakeMs);
+		const candidates = Array.from(new Set([
+			addDaysIso(night.date, -1),
+			night.date,
+			addDaysIso(night.date, 1),
+			addDaysIso(bedDate, -1),
+			bedDate,
+			addDaysIso(bedDate, 1),
+			addDaysIso(wakeDate, -1),
+			wakeDate,
+		]));
+
+		let best = windowBoundsFor(night.date);
+		let bestOverlap = -1;
+		let bestDistance = Infinity;
+		for (const dateIso of candidates) {
+			const bounds = windowBoundsFor(dateIso);
+			const overlap = Math.max(
+				0,
+				Math.min(night.wakeMs, bounds.endMs) - Math.max(night.bedMs, bounds.startMs)
+			);
+			const distance = Math.abs(night.bedMs - bounds.startMs);
+			if (overlap > bestOverlap || (overlap === bestOverlap && distance < bestDistance)) {
+				best = bounds;
+				bestOverlap = overlap;
+				bestDistance = distance;
+			}
+		}
+		return best;
+	}
+
+	const nightBounds = nights.map(windowBoundsForNight);
+
 	// Draw x-axis hour labels (uniform because all rows share the same window shape)
-	const sampleBounds = windowBoundsFor(nights[0].date);
+	const sampleBounds = nightBounds[0];
 	const windowSpan = sampleBounds.endMs - sampleBounds.startMs;
 	const windowHours = windowSpan / 3600000;
 
@@ -247,8 +298,8 @@ export const renderSleepSchedule: RenderFn = (
 	// Horizontal dashed goal line: draw a vertical span corresponding to sleepGoal hours,
 	// anchored at the mean bedtime across the set for visual reference.
 	const meanBedOffset =
-		nights.reduce((s, nn) => {
-			const wb = windowBoundsFor(nn.date);
+		nights.reduce((s, nn, i) => {
+			const wb = nightBounds[i];
 			return s + (nn.bedMs - wb.startMs);
 		}, 0) / nights.length;
 	const goalSpan = sleepGoalHours * 3600000;
@@ -275,7 +326,7 @@ export const renderSleepSchedule: RenderFn = (
 
 	// Bars per night
 	nights.forEach((n, i) => {
-		const wb = windowBoundsFor(n.date);
+		const wb = nightBounds[i];
 		const y = padT + i * (rowH + rowGap);
 
 		// Gutter label: weekday + date
@@ -350,12 +401,12 @@ export const renderSleepSchedule: RenderFn = (
 	});
 
 	// Stats: average bedtime, average wake, schedule consistency (stdev of bedtime offset)
-	const bedOffsets = nights.map((n) => {
-		const wb = windowBoundsFor(n.date);
+	const bedOffsets = nights.map((n, i) => {
+		const wb = nightBounds[i];
 		return (n.bedMs - wb.startMs) / 3600000; // hours from windowStart
 	});
-	const wakeOffsets = nights.map((n) => {
-		const wb = windowBoundsFor(n.date);
+	const wakeOffsets = nights.map((n, i) => {
+		const wb = nightBounds[i];
 		return (n.wakeMs - wb.startMs) / 3600000;
 	});
 	const meanBedH = bedOffsets.reduce((s, v) => s + v, 0) / bedOffsets.length;
@@ -365,7 +416,7 @@ export const renderSleepSchedule: RenderFn = (
 	const stdev = Math.sqrt(variance);
 
 	function offsetToHourStr(offsetH: number): string {
-		const abs = new Date(windowBoundsFor(nights[0].date).startMs + offsetH * 3600000);
+		const abs = new Date(nightBounds[0].startMs + offsetH * 3600000);
 		return abs.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 	}
 

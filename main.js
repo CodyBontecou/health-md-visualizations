@@ -12872,6 +12872,15 @@ function hourLabel(h) {
   if (hr < 12) return `${hr}A`;
   return `${hr - 12}P`;
 }
+function localDateIso(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function addDaysIso(dateIso, days) {
+  const d = /* @__PURE__ */ new Date(`${dateIso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return localDateIso(d.getTime());
+}
 var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
   var _a, _b, _c;
   const canvas = ctx.canvas;
@@ -12932,7 +12941,39 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     if (endMs <= startMs) endMs += 864e5;
     return { startMs, endMs };
   }
-  const sampleBounds = windowBoundsFor(nights[0].date);
+  function windowBoundsForNight(night) {
+    const bedDate = localDateIso(night.bedMs);
+    const wakeDate = localDateIso(night.wakeMs);
+    const candidates = Array.from(/* @__PURE__ */ new Set([
+      addDaysIso(night.date, -1),
+      night.date,
+      addDaysIso(night.date, 1),
+      addDaysIso(bedDate, -1),
+      bedDate,
+      addDaysIso(bedDate, 1),
+      addDaysIso(wakeDate, -1),
+      wakeDate
+    ]));
+    let best = windowBoundsFor(night.date);
+    let bestOverlap = -1;
+    let bestDistance = Infinity;
+    for (const dateIso of candidates) {
+      const bounds = windowBoundsFor(dateIso);
+      const overlap = Math.max(
+        0,
+        Math.min(night.wakeMs, bounds.endMs) - Math.max(night.bedMs, bounds.startMs)
+      );
+      const distance = Math.abs(night.bedMs - bounds.startMs);
+      if (overlap > bestOverlap || overlap === bestOverlap && distance < bestDistance) {
+        best = bounds;
+        bestOverlap = overlap;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+  const nightBounds = nights.map(windowBoundsForNight);
+  const sampleBounds = nightBounds[0];
   const windowSpan = sampleBounds.endMs - sampleBounds.startMs;
   const windowHours = windowSpan / 36e5;
   const plotTop = padT;
@@ -12967,8 +13008,8 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.textBaseline = "top";
     ctx.fillText(hourLabel(h), x, plotTop + plotH + 4);
   }
-  const meanBedOffset = nights.reduce((s, nn) => {
-    const wb = windowBoundsFor(nn.date);
+  const meanBedOffset = nights.reduce((s, nn, i) => {
+    const wb = nightBounds[i];
     return s + (nn.bedMs - wb.startMs);
   }, 0) / nights.length;
   const goalSpan = sleepGoalHours * 36e5;
@@ -12993,7 +13034,7 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 14);
   }
   nights.forEach((n, i) => {
-    const wb = windowBoundsFor(n.date);
+    const wb = nightBounds[i];
     const y = padT + i * (rowH + rowGap);
     const d = /* @__PURE__ */ new Date(n.date + "T00:00:00");
     const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
@@ -13054,12 +13095,12 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
       payload: n.day
     });
   });
-  const bedOffsets = nights.map((n) => {
-    const wb = windowBoundsFor(n.date);
+  const bedOffsets = nights.map((n, i) => {
+    const wb = nightBounds[i];
     return (n.bedMs - wb.startMs) / 36e5;
   });
-  const wakeOffsets = nights.map((n) => {
-    const wb = windowBoundsFor(n.date);
+  const wakeOffsets = nights.map((n, i) => {
+    const wb = nightBounds[i];
     return (n.wakeMs - wb.startMs) / 36e5;
   });
   const meanBedH = bedOffsets.reduce((s, v) => s + v, 0) / bedOffsets.length;
@@ -13067,7 +13108,7 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const variance = bedOffsets.reduce((s, v) => s + (v - meanBedH) ** 2, 0) / bedOffsets.length;
   const stdev = Math.sqrt(variance);
   function offsetToHourStr(offsetH) {
-    const abs = new Date(windowBoundsFor(nights[0].date).startMs + offsetH * 36e5);
+    const abs = new Date(nightBounds[0].startMs + offsetH * 36e5);
     return abs.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
   const consistencyLabel = stdev < 0.5 ? "Very consistent" : stdev < 1 ? "Consistent" : stdev < 2 ? "Variable" : "Irregular";
