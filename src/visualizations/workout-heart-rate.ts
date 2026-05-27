@@ -109,8 +109,9 @@ export const renderWorkoutHeartRate: RenderFn = (
 	let minBpm = Infinity;
 	let maxBpm = -Infinity;
 	let lastT = -Infinity;
+	const workoutStart = workout.startTimeISO ?? workout.startTime;
 	for (const s of samples) {
-		const t = elapsedSeconds(workout.startTime, s.timestamp);
+		const t = elapsedSeconds(workoutStart, s.timestamp);
 		const v = s.value;
 		if (!Number.isFinite(t) || !Number.isFinite(v)) continue;
 		if (t < 0) continue;

@@ -47,6 +47,8 @@ export interface WorkoutEntry {
 	distance?: number;
 	distanceFormatted?: string;
 	startTime?: string;
+	startTimeISO?: string;
+	endTimeISO?: string;
 	avgPaceFormatted?: string;
 	avgSpeedFormatted?: string;
 	avgHeartRate?: number;

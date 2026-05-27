@@ -13519,7 +13519,7 @@ function resolveMaxHeartRate(config, theme) {
   return theme.maxHeartRate;
 }
 var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => {
-  var _a, _b;
+  var _a, _b, _c;
   const picked = pickWorkout(data, config);
   if (!picked) {
     drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No workout found");
@@ -13566,8 +13566,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   let minBpm = Infinity;
   let maxBpm = -Infinity;
   let lastT = -Infinity;
+  const workoutStart = (_c = workout.startTimeISO) != null ? _c : workout.startTime;
   for (const s of samples) {
-    const t = elapsedSeconds(workout.startTime, s.timestamp);
+    const t = elapsedSeconds(workoutStart, s.timestamp);
     const v = s.value;
     if (!Number.isFinite(t) || !Number.isFinite(v)) continue;
     if (t < 0) continue;
