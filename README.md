@@ -154,7 +154,7 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 </tr>
 <tr>
 <td><a href="examples/images/visualizations/workout-heart-rate.png"><img src="examples/images/visualizations/workout-heart-rate.png" alt="workout-heart-rate visualization" width="420"></a></td>
-<td><p><strong><code>workout-heart-rate</code></strong></p><p>Heart-rate time series and optional zone bands for one workout.</p><p><strong>Extra arguments:</strong> <code>date</code>, <code>workout</code>, <code>maxHeartRate</code>.</p></td>
+<td><p><strong><code>workout-heart-rate</code></strong></p><p>Heart-rate time series and optional zone bands for one workout. Falls back to daily samples in the workout window, then to a min/avg/max summary chart.</p><p><strong>Extra arguments:</strong> <code>date</code>, <code>workout</code>, <code>maxHeartRate</code>.</p></td>
 </tr>
 <tr>
 <td><a href="examples/images/visualizations/workout-map.png"><img src="examples/images/visualizations/workout-map.png" alt="workout-map visualization" width="420"></a></td>

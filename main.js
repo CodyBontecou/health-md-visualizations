@@ -13518,8 +13518,172 @@ function resolveMaxHeartRate(config, theme) {
   }
   return theme.maxHeartRate;
 }
-var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => {
+function resolveWorkoutEndMs(picked) {
+  var _a;
+  const { workout } = picked;
+  if (workout.endTimeISO) {
+    const endMs = Date.parse(workout.endTimeISO);
+    if (Number.isFinite(endMs)) return endMs;
+  }
+  const start = (_a = workout.startTimeISO) != null ? _a : workout.startTime;
+  const startMs = start ? Date.parse(start) : NaN;
+  if (Number.isFinite(startMs) && Number.isFinite(workout.duration)) {
+    return startMs + workout.duration * 1e3;
+  }
+  return NaN;
+}
+function dailySamplesForWorkout(picked) {
   var _a, _b, _c;
+  const dailySamples = (_b = (_a = picked.day.heart) == null ? void 0 : _a.heartRateSamples) != null ? _b : [];
+  if (!dailySamples.length) return [];
+  const start = (_c = picked.workout.startTimeISO) != null ? _c : picked.workout.startTime;
+  const startMs = start ? Date.parse(start) : NaN;
+  const endMs = resolveWorkoutEndMs(picked);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return [];
+  }
+  const edgeToleranceMs = 6e4;
+  return dailySamples.filter((sample) => {
+    const sampleMs = Date.parse(sample.timestamp);
+    return Number.isFinite(sampleMs) && Number.isFinite(sample.value) && sampleMs >= startMs - edgeToleranceMs && sampleMs <= endMs + edgeToleranceMs;
+  }).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+}
+function heartRateSampleSources(picked) {
+  var _a, _b;
+  const sources = [];
+  const workoutSamples = (_b = (_a = picked.workout.timeSeries) == null ? void 0 : _a.heartRate) != null ? _b : [];
+  if (workoutSamples.length) {
+    sources.push({ samples: workoutSamples, source: "workout" });
+  }
+  const dailySamples = dailySamplesForWorkout(picked);
+  if (dailySamples.length) {
+    sources.push({ samples: dailySamples, source: "daily" });
+  }
+  return sources;
+}
+function elapsedPoints(samples, workoutStart) {
+  return samples.map((sample) => ({
+    t: elapsedSeconds(workoutStart, sample.timestamp),
+    v: sample.value
+  })).filter((point) => Number.isFinite(point.t) && Number.isFinite(point.v) && point.t >= 0).sort((a, b) => a.t - b.t);
+}
+function medianGapSeconds(pts) {
+  const gaps = [];
+  for (let i = 1; i < pts.length; i++) {
+    const gap = pts[i].t - pts[i - 1].t;
+    if (gap > 0) gaps.push(gap);
+  }
+  if (!gaps.length) return 0;
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)];
+}
+function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
+  const values = [stats.lo, stats.avg, stats.hi].filter(
+    (value) => typeof value === "number" && Number.isFinite(value)
+  );
+  if (!values.length) {
+    drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No heart rate data for this workout");
+    return;
+  }
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const padL = 44;
+  const padR = 18;
+  const padT = 46;
+  const padB = 34;
+  const plotW = W - padL - padR;
+  const plotH = Math.max(24, H - padT - padB);
+  const axisY = padT + plotH * 0.58;
+  let xMin = Math.max(0, Math.floor(Math.min(...values) - 8));
+  let xMax = Math.ceil(Math.max(...values) + 8);
+  if (maxHr) {
+    xMin = Math.min(xMin, Math.floor(maxHr * ZONES[0].loFrac));
+    xMax = Math.max(xMax, Math.ceil(maxHr));
+  }
+  if (xMax - xMin < 20) xMax = xMin + 20;
+  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW;
+  ctx.fillStyle = theme.fg;
+  ctx.font = "600 13px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("Workout heart-rate summary", padL, 12);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "11px sans-serif";
+  ctx.fillText("Detailed heart-rate samples were not included in this export.", padL, 29);
+  if (maxHr) {
+    for (const z of ZONES) {
+      const lo = maxHr * z.loFrac;
+      const hi = maxHr * z.hiFrac;
+      if (hi <= xMin || lo >= xMax) continue;
+      const x0 = xFor(Math.max(lo, xMin));
+      const x1 = xFor(Math.min(hi, xMax));
+      ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 40 : 70}%,0.12)`;
+      ctx.fillRect(x0, padT, x1 - x0, plotH);
+      ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 70 : 40}%,0.58)`;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(z.label, (x0 + x1) / 2, padT + 4);
+    }
+  }
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "9px sans-serif";
+  ctx.lineWidth = 1;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const xRange = xMax - xMin;
+  const xStep = xRange <= 40 ? 10 : xRange <= 100 ? 20 : 40;
+  const tickStart = Math.ceil(xMin / xStep) * xStep;
+  for (let bpm = tickStart; bpm <= xMax; bpm += xStep) {
+    const x = xFor(bpm);
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + plotH);
+    ctx.stroke();
+    ctx.fillText(String(bpm), x, padT + plotH + 6);
+  }
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.14);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(padL, axisY);
+  ctx.lineTo(padL + plotW, axisY);
+  ctx.stroke();
+  if (stats.lo != null && stats.hi != null) {
+    ctx.strokeStyle = hexToRgba(theme.colors.heart, 0.72);
+    ctx.lineWidth = 9;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(xFor(stats.lo), axisY);
+    ctx.lineTo(xFor(stats.hi), axisY);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+  }
+  const markers = [
+    { value: stats.lo, label: "MIN", color: "#4488ff", yOffset: 22 },
+    { value: stats.avg, label: "AVG", color: theme.colors.heart, yOffset: -28 },
+    { value: stats.hi, label: "MAX", color: "#ff4444", yOffset: 22 }
+  ];
+  for (const marker of markers) {
+    if (marker.value == null || !Number.isFinite(marker.value)) continue;
+    const x = xFor(marker.value);
+    ctx.fillStyle = marker.color;
+    ctx.beginPath();
+    ctx.arc(x, axisY, marker.label === "AVG" ? 6 : 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = marker.color;
+    ctx.font = "700 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = marker.yOffset < 0 ? "bottom" : "top";
+    ctx.fillText(`${Math.round(marker.value)} BPM`, x, axisY + marker.yOffset);
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textBaseline = marker.yOffset < 0 ? "bottom" : "top";
+    ctx.fillText(marker.label, x, axisY + marker.yOffset + (marker.yOffset < 0 ? -13 : 14));
+  }
+}
+var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a;
   const picked = pickWorkout(data, config);
   if (!picked) {
     drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No workout found");
@@ -13527,8 +13691,20 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     return;
   }
   const { workout } = picked;
-  const samples = (_b = (_a = workout.timeSeries) == null ? void 0 : _a.heartRate) != null ? _b : [];
-  if (!samples.length) {
+  const maxHr = resolveMaxHeartRate(config, theme);
+  const workoutStart = (_a = workout.startTimeISO) != null ? _a : workout.startTime;
+  const sources = heartRateSampleSources(picked);
+  let pts = [];
+  let sampleSource = null;
+  for (const source of sources) {
+    const candidate = elapsedPoints(source.samples, workoutStart);
+    if (candidate.length) {
+      pts = candidate;
+      sampleSource = source.source;
+      break;
+    }
+  }
+  if (!pts.length) {
     const avg5 = workout.avgHeartRate;
     const lo2 = workout.minHeartRate;
     const hi2 = workout.maxHeartRate;
@@ -13544,14 +13720,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       statsEl.empty();
       return;
     }
-    drawEmptyState(
-      ctx,
-      W,
-      H,
-      theme.bg,
-      theme.muted,
-      "No per-second heart rate samples \u2014 showing summary"
-    );
+    drawSummaryFallback(ctx, W, H, theme, { lo: lo2, avg: avg5, hi: hi2 }, maxHr);
     const boxes = [];
     if (lo2 != null) boxes.push({ value: String(lo2), label: "Min", color: "#4488ff" });
     if (avg5 != null)
@@ -13560,34 +13729,18 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     renderStatBoxes(statsEl, boxes);
     return;
   }
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, W, H);
-  const pts = [];
   let minBpm = Infinity;
   let maxBpm = -Infinity;
-  let lastT = -Infinity;
-  const workoutStart = (_c = workout.startTimeISO) != null ? _c : workout.startTime;
-  for (const s of samples) {
-    const t = elapsedSeconds(workoutStart, s.timestamp);
-    const v = s.value;
-    if (!Number.isFinite(t) || !Number.isFinite(v)) continue;
-    if (t < 0) continue;
-    if (t < lastT) continue;
-    lastT = t;
-    pts.push({ t, v });
-    if (v < minBpm) minBpm = v;
-    if (v > maxBpm) maxBpm = v;
+  for (const p of pts) {
+    if (p.v < minBpm) minBpm = p.v;
+    if (p.v > maxBpm) maxBpm = p.v;
   }
-  if (!pts.length) {
-    drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No usable heart rate samples");
-    statsEl.empty();
-    return;
-  }
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
   const tMax = Math.max(workout.duration || 0, pts[pts.length - 1].t);
   const tMin = 0;
   let yMin = Math.max(0, Math.floor(minBpm - 5));
   let yMax = Math.ceil(maxBpm + 5);
-  const maxHr = resolveMaxHeartRate(config, theme);
   if (maxHr) {
     yMin = Math.min(yMin, Math.floor(maxHr * ZONES[0].loFrac));
     yMax = Math.max(yMax, Math.ceil(maxHr));
@@ -13653,7 +13806,8 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   ctx.lineCap = "round";
   ctx.beginPath();
   let prevT = -Infinity;
-  const GAP_THRESHOLD = 60;
+  const medianGap = medianGapSeconds(pts);
+  const GAP_THRESHOLD = Math.max(60, medianGap ? medianGap * 2.5 : 60);
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
     const x = xFor(p.t);
@@ -13666,6 +13820,14 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     prevT = p.t;
   }
   ctx.stroke();
+  if (pts.length <= 120 || sampleSource === "daily") {
+    ctx.fillStyle = theme.colors.heart;
+    for (const p of pts) {
+      ctx.beginPath();
+      ctx.arc(xFor(p.t), yFor(p.v), sampleSource === "daily" ? 2.5 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   const STRIDE = 4;
   for (let x = padL; x < padL + plotW; x += STRIDE) {
     const tCenter = tMin + (x + STRIDE / 2 - padL) / plotW * (tMax - tMin);
@@ -13688,6 +13850,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     if (maxHr) {
       const z = zoneFor(p.v, maxHr);
       details.push({ label: "Zone", value: z ? z.label : "below Z1" });
+    }
+    if (sampleSource === "daily") {
+      details.push({ label: "Source", value: "daily samples" });
     }
     hits.add({
       shape: "rect",
@@ -13714,6 +13879,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       { text: "Max HR " },
       { text: `${maxHr} BPM`, strong: true }
     ]);
+  }
+  if (sampleSource === "daily") {
+    rows.push([{ text: "Source: daily heart-rate samples within workout time" }]);
   }
   renderInlineStats(statsEl, rows);
 };
@@ -14975,7 +15143,7 @@ var VISUALIZATIONS2 = [
     type: "workout-heart-rate",
     label: "Workout heart rate",
     category: "workouts",
-    description: "Heart-rate time series for one selected workout.",
+    description: "Heart-rate time series or summary for one selected workout.",
     defaultLast: 30,
     defaultHeight: 260,
     params: [

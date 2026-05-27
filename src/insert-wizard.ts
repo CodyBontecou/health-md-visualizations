@@ -536,7 +536,7 @@ const VISUALIZATIONS: VisualizationOption[] = [
 		type: "workout-heart-rate",
 		label: "Workout heart rate",
 		category: "workouts",
-		description: "Heart-rate time series for one selected workout.",
+		description: "Heart-rate time series or summary for one selected workout.",
 		defaultLast: 30,
 		defaultHeight: 260,
 		params: [

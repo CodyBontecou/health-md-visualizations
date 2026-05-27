@@ -560,8 +560,10 @@ height: 240
 ### `workout-heart-rate`
 
 Heart-rate time series for one selected workout, including optional heart-rate
-zone bands. If the workout lacks per-sample heart-rate data, the renderer falls
-back to min/average/max summary stats when available.
+zone bands. The renderer first uses per-workout `timeSeries.heartRate`; when that
+is missing it tries daily `heart.heartRateSamples` that fall inside the workout
+start/end time. If no sample series is available, it renders a visible
+min/average/max summary chart when those stats are present.
 
 | Argument | Values | Default | Effect |
 | --- | --- | --- | --- |
