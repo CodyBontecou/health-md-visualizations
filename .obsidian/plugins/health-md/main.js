@@ -9794,8 +9794,22 @@ function getStr(fm, key) {
   }
   return void 0;
 }
+function getFirstNum(fm, ...keys) {
+  for (const key of keys) {
+    const value = getNum2(fm, key);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
+function getFirstStr(fm, ...keys) {
+  for (const key of keys) {
+    const value = getStr(fm, key);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
 function parseMarkdown(content) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
   const fm = parseFrontmatter(content);
   if (!fm) return null;
   const date = getStr(fm, "date");
@@ -9831,27 +9845,80 @@ function parseMarkdown(content) {
       hrv: hrvVal
     };
   }
-  const sleepHours = getNum2(fm, "sleep_total_hours");
-  const sleepSeconds = getNum2(fm, "sleep_total_duration");
+  const sleepHours = getFirstNum(
+    fm,
+    "sleep_total_hours",
+    "sleepTotalHours",
+    "sleep_hours"
+  );
+  const sleepSeconds = getFirstNum(
+    fm,
+    "sleep_total_duration",
+    "sleepTotalDuration",
+    "sleep_total_seconds",
+    "sleepTotalSeconds",
+    "totalDuration",
+    "total_duration"
+  );
   const sleepTotal = sleepHours !== void 0 ? sleepHours * 3600 : sleepSeconds;
   if (sleepTotal !== void 0) {
-    const deepH = getNum2(fm, "sleep_deep_hours");
-    const remH = getNum2(fm, "sleep_rem_hours");
-    const coreH = getNum2(fm, "sleep_core_hours");
-    const awakeH = getNum2(fm, "sleep_awake_hours");
+    const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
+    const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
+    const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours");
+    const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
     day.sleep = {
       sleepStages: [],
       totalDuration: sleepTotal,
-      deepSleep: deepH !== void 0 ? deepH * 3600 : (_s = getNum2(fm, "sleep_deep")) != null ? _s : 0,
-      remSleep: remH !== void 0 ? remH * 3600 : (_t = getNum2(fm, "sleep_rem")) != null ? _t : 0,
-      coreSleep: coreH !== void 0 ? coreH * 3600 : (_u = getNum2(fm, "sleep_core")) != null ? _u : 0,
-      awakeTime: awakeH !== void 0 ? awakeH * 3600 : getNum2(fm, "sleep_awake"),
-      bedtime: (_w = (_v = getStr(fm, "sleep_bedtime")) != null ? _v : getStr(fm, "bedtime")) != null ? _w : "",
-      wakeTime: (_y = (_x = getStr(fm, "sleep_wake")) != null ? _x : getStr(fm, "wake_time")) != null ? _y : ""
+      deepSleep: deepH !== void 0 ? deepH * 3600 : (_s = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _s : 0,
+      remSleep: remH !== void 0 ? remH * 3600 : (_t = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _t : 0,
+      coreSleep: coreH !== void 0 ? coreH * 3600 : (_u = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep")) != null ? _u : 0,
+      awakeTime: awakeH !== void 0 ? awakeH * 3600 : getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time"),
+      bedtime: (_v = getFirstStr(
+        fm,
+        "sleep_bedtime",
+        "sleepBedtime",
+        "bedtime",
+        "bedTime",
+        "sleep_start",
+        "sleep_start_time",
+        "sleep_session_start"
+      )) != null ? _v : "",
+      bedtimeISO: getFirstStr(
+        fm,
+        "sleep_bedtime_iso",
+        "sleepBedtimeISO",
+        "bedtimeISO",
+        "bed_time_iso",
+        "sleep_start_iso",
+        "sleep_session_start_iso"
+      ),
+      wakeTime: (_w = getFirstStr(
+        fm,
+        "sleep_wake",
+        "sleepWake",
+        "sleep_wake_time",
+        "wake_time",
+        "wakeTime",
+        "wake",
+        "sleep_end",
+        "sleep_end_time",
+        "sleep_session_end"
+      )) != null ? _w : "",
+      wakeTimeISO: getFirstStr(
+        fm,
+        "sleep_wake_iso",
+        "sleepWakeISO",
+        "sleep_wake_time_iso",
+        "wake_time_iso",
+        "wakeTimeISO",
+        "wake_iso",
+        "sleep_end_iso",
+        "sleep_session_end_iso"
+      )
     };
   }
-  const respRate = (_z = getNum2(fm, "respiratory_rate")) != null ? _z : getNum2(fm, "vitals_respiratory_rate");
-  const bloodOx = (_B = (_A = getNum2(fm, "blood_oxygen")) != null ? _A : getNum2(fm, "blood_oxygen_avg")) != null ? _B : getNum2(fm, "vitals_blood_oxygen");
+  const respRate = (_x = getNum2(fm, "respiratory_rate")) != null ? _x : getNum2(fm, "vitals_respiratory_rate");
+  const bloodOx = (_z = (_y = getNum2(fm, "blood_oxygen")) != null ? _y : getNum2(fm, "blood_oxygen_avg")) != null ? _z : getNum2(fm, "vitals_blood_oxygen");
   if (respRate !== void 0 || bloodOx !== void 0) {
     day.vitals = {
       respiratoryRate: respRate,
@@ -9859,16 +9926,16 @@ function parseMarkdown(content) {
       bloodOxygenAvg: bloodOx
     };
   }
-  const walkSpeed = (_C = getNum2(fm, "walking_speed")) != null ? _C : getNum2(fm, "mobility_walking_speed");
+  const walkSpeed = (_A = getNum2(fm, "walking_speed")) != null ? _A : getNum2(fm, "mobility_walking_speed");
   if (walkSpeed !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_F = (_E = (_D = getNum2(fm, "walking_asymmetry_percentage")) != null ? _D : getNum2(fm, "walking_asymmetry_percent")) != null ? _E : getNum2(fm, "walking_asymmetry")) != null ? _F : 0,
+      walkingAsymmetryPercentage: (_D = (_C = (_B = getNum2(fm, "walking_asymmetry_percentage")) != null ? _B : getNum2(fm, "walking_asymmetry_percent")) != null ? _C : getNum2(fm, "walking_asymmetry")) != null ? _D : 0,
       walkingStepLength: getNum2(fm, "walking_step_length"),
       walkingDoubleSupportPercentage: getNum2(fm, "walking_double_support_percentage")
     };
   }
-  const headphone = (_G = getNum2(fm, "headphone_audio_level")) != null ? _G : getNum2(fm, "hearing_headphone_audio_level");
+  const headphone = (_E = getNum2(fm, "headphone_audio_level")) != null ? _E : getNum2(fm, "hearing_headphone_audio_level");
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }
@@ -12718,26 +12785,79 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
 };
 
 // src/visualizations/sleep-schedule.ts
+var DAY_MS = 864e5;
 function parseWindow(str) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(str || "");
-  if (!m) return { h: 0, m: 0 };
-  return { h: Math.min(23, Number(m[1])), m: Math.min(59, Number(m[2])) };
+  const clock = parseClockTime(str);
+  if (!clock) return { h: 0, m: 0 };
+  return { h: clock.h, m: clock.m };
 }
-function resolveBedWake(night) {
-  const sleep = night.sleep;
-  if (!sleep || !sleep.bedtime || !sleep.wakeTime) return null;
-  const isTimeOnly = (s) => /^\d{1,2}:\d{2}$/.test(s);
-  let bedMs, wakeMs;
-  if (isTimeOnly(sleep.bedtime)) {
-    bedMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.bedtime}:00`)).getTime();
-    wakeMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.wakeTime}:00`)).getTime();
-    if (wakeMs <= bedMs) wakeMs += 864e5;
-  } else {
-    bedMs = Date.parse(sleep.bedtime);
-    wakeMs = Date.parse(sleep.wakeTime);
+function parseClockTime(raw) {
+  var _a, _b;
+  const value = raw == null ? void 0 : raw.trim();
+  if (!value) return null;
+  let m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (m) {
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    const sec = Number((_a = m[3]) != null ? _a : 0);
+    if (h <= 23 && min <= 59 && sec <= 59) return { h, m: min, s: sec };
+    return null;
+  }
+  m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap])\.?m\.?$/i.exec(value);
+  if (m) {
+    let h = Number(m[1]);
+    const min = Number(m[2]);
+    const sec = Number((_b = m[3]) != null ? _b : 0);
+    if (h < 1 || h > 12 || min > 59 || sec > 59) return null;
+    const meridiem = m[4].toLowerCase();
+    if (meridiem === "p" && h !== 12) h += 12;
+    if (meridiem === "a" && h === 12) h = 0;
+    return { h, m: min, s: sec };
+  }
+  return null;
+}
+function clockMsOnDate(dateIso, clock) {
+  return (/* @__PURE__ */ new Date(
+    `${dateIso}T${String(clock.h).padStart(2, "0")}:${String(clock.m).padStart(2, "0")}:${String(clock.s).padStart(2, "0")}`
+  )).getTime();
+}
+function parseAbsoluteMs(raw) {
+  if (!(raw == null ? void 0 : raw.trim())) return NaN;
+  return Date.parse(raw.trim());
+}
+function resolveExplicitBedWake(night, sleep) {
+  var _a, _b, _c, _d;
+  const bedRaw = (_b = (_a = sleep.bedtimeISO) != null ? _a : sleep.sessionStart) != null ? _b : sleep.bedtime;
+  const wakeRaw = (_d = (_c = sleep.wakeTimeISO) != null ? _c : sleep.sessionEnd) != null ? _d : sleep.wakeTime;
+  if (!bedRaw || !wakeRaw) return null;
+  const bedClock = parseClockTime(bedRaw);
+  const wakeClock = parseClockTime(wakeRaw);
+  let bedMs = bedClock ? clockMsOnDate(night.date, bedClock) : parseAbsoluteMs(bedRaw);
+  let wakeMs = wakeClock ? clockMsOnDate(night.date, wakeClock) : parseAbsoluteMs(wakeRaw);
+  if (!isFinite(bedMs) || !isFinite(wakeMs)) return null;
+  if (wakeMs <= bedMs && (bedClock || wakeClock)) wakeMs += DAY_MS;
+  if (wakeMs <= bedMs) return null;
+  return { bedMs, wakeMs };
+}
+function resolveStageBedWake(sleep) {
+  var _a;
+  const stages = (_a = sleep.sleepStages) != null ? _a : [];
+  let bedMs = Infinity;
+  let wakeMs = -Infinity;
+  for (const stage of stages) {
+    const startMs = Date.parse(stage.startDate);
+    const endMs = Date.parse(stage.endDate);
+    if (isFinite(startMs) && startMs < bedMs) bedMs = startMs;
+    if (isFinite(endMs) && endMs > wakeMs) wakeMs = endMs;
   }
   if (!isFinite(bedMs) || !isFinite(wakeMs) || wakeMs <= bedMs) return null;
   return { bedMs, wakeMs };
+}
+function resolveBedWake(night) {
+  var _a;
+  const sleep = night.sleep;
+  if (!sleep) return null;
+  return (_a = resolveExplicitBedWake(night, sleep)) != null ? _a : resolveStageBedWake(sleep);
 }
 function formatHour(ms) {
   return new Date(ms).toLocaleTimeString("en-US", {
@@ -12752,7 +12872,17 @@ function hourLabel(h) {
   if (hr < 12) return `${hr}A`;
   return `${hr - 12}P`;
 }
+function localDateIso(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function addDaysIso(dateIso, days) {
+  const d = /* @__PURE__ */ new Date(`${dateIso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return localDateIso(d.getTime());
+}
 var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a, _b, _c;
   const canvas = ctx.canvas;
   const sleepGoalHours = Number(config.sleepGoal) || 8;
   const windowStart = parseWindow(String(config.windowStart || "18:00"));
@@ -12760,7 +12890,9 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const nights = [];
   for (const d of data) {
     if (!d.sleep) continue;
-    if (!(d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)) continue;
+    const stageCount = (_b = (_a = d.sleep.sleepStages) == null ? void 0 : _a.length) != null ? _b : 0;
+    const totalDuration = (_c = d.sleep.totalDuration) != null ? _c : 0;
+    if (!(stageCount > 0 || totalDuration > 0)) continue;
     const bw = resolveBedWake(d);
     if (!bw) continue;
     nights.push({
@@ -12768,16 +12900,18 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
       day: d,
       bedMs: bw.bedMs,
       wakeMs: bw.wakeMs,
-      totalSeconds: d.sleep.totalDuration || (bw.wakeMs - bw.bedMs) / 1e3
+      totalSeconds: totalDuration || (bw.wakeMs - bw.bedMs) / 1e3
     });
   }
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   if (!nights.length) {
     ctx.fillStyle = theme.muted;
-    ctx.font = "12px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("No sleep data", W / 2, H / 2);
+    ctx.font = "12px sans-serif";
+    ctx.fillText("No sleep schedule data", W / 2, H / 2 - 8);
+    ctx.font = "10px sans-serif";
+    ctx.fillText("Requires bedtime/wake or stage timestamps", W / 2, H / 2 + 10);
     return;
   }
   const rowH = 26;
@@ -12807,7 +12941,39 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     if (endMs <= startMs) endMs += 864e5;
     return { startMs, endMs };
   }
-  const sampleBounds = windowBoundsFor(nights[0].date);
+  function windowBoundsForNight(night) {
+    const bedDate = localDateIso(night.bedMs);
+    const wakeDate = localDateIso(night.wakeMs);
+    const candidates = Array.from(/* @__PURE__ */ new Set([
+      addDaysIso(night.date, -1),
+      night.date,
+      addDaysIso(night.date, 1),
+      addDaysIso(bedDate, -1),
+      bedDate,
+      addDaysIso(bedDate, 1),
+      addDaysIso(wakeDate, -1),
+      wakeDate
+    ]));
+    let best = windowBoundsFor(night.date);
+    let bestOverlap = -1;
+    let bestDistance = Infinity;
+    for (const dateIso of candidates) {
+      const bounds = windowBoundsFor(dateIso);
+      const overlap = Math.max(
+        0,
+        Math.min(night.wakeMs, bounds.endMs) - Math.max(night.bedMs, bounds.startMs)
+      );
+      const distance = Math.abs(night.bedMs - bounds.startMs);
+      if (overlap > bestOverlap || overlap === bestOverlap && distance < bestDistance) {
+        best = bounds;
+        bestOverlap = overlap;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+  const nightBounds = nights.map(windowBoundsForNight);
+  const sampleBounds = nightBounds[0];
   const windowSpan = sampleBounds.endMs - sampleBounds.startMs;
   const windowHours = windowSpan / 36e5;
   const plotTop = padT;
@@ -12842,8 +13008,8 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.textBaseline = "top";
     ctx.fillText(hourLabel(h), x, plotTop + plotH + 4);
   }
-  const meanBedOffset = nights.reduce((s, nn) => {
-    const wb = windowBoundsFor(nn.date);
+  const meanBedOffset = nights.reduce((s, nn, i) => {
+    const wb = nightBounds[i];
     return s + (nn.bedMs - wb.startMs);
   }, 0) / nights.length;
   const goalSpan = sleepGoalHours * 36e5;
@@ -12868,7 +13034,7 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 14);
   }
   nights.forEach((n, i) => {
-    const wb = windowBoundsFor(n.date);
+    const wb = nightBounds[i];
     const y = padT + i * (rowH + rowGap);
     const d = /* @__PURE__ */ new Date(n.date + "T00:00:00");
     const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
@@ -12929,12 +13095,12 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
       payload: n.day
     });
   });
-  const bedOffsets = nights.map((n) => {
-    const wb = windowBoundsFor(n.date);
+  const bedOffsets = nights.map((n, i) => {
+    const wb = nightBounds[i];
     return (n.bedMs - wb.startMs) / 36e5;
   });
-  const wakeOffsets = nights.map((n) => {
-    const wb = windowBoundsFor(n.date);
+  const wakeOffsets = nights.map((n, i) => {
+    const wb = nightBounds[i];
     return (n.wakeMs - wb.startMs) / 36e5;
   });
   const meanBedH = bedOffsets.reduce((s, v) => s + v, 0) / bedOffsets.length;
@@ -12942,7 +13108,7 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const variance = bedOffsets.reduce((s, v) => s + (v - meanBedH) ** 2, 0) / bedOffsets.length;
   const stdev = Math.sqrt(variance);
   function offsetToHourStr(offsetH) {
-    const abs = new Date(windowBoundsFor(nights[0].date).startMs + offsetH * 36e5);
+    const abs = new Date(nightBounds[0].startMs + offsetH * 36e5);
     return abs.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
   const consistencyLabel = stdev < 0.5 ? "Very consistent" : stdev < 1 ? "Consistent" : stdev < 2 ? "Variable" : "Irregular";
@@ -13352,8 +13518,172 @@ function resolveMaxHeartRate(config, theme) {
   }
   return theme.maxHeartRate;
 }
-var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => {
+function resolveWorkoutEndMs(picked) {
+  var _a;
+  const { workout } = picked;
+  if (workout.endTimeISO) {
+    const endMs = Date.parse(workout.endTimeISO);
+    if (Number.isFinite(endMs)) return endMs;
+  }
+  const start = (_a = workout.startTimeISO) != null ? _a : workout.startTime;
+  const startMs = start ? Date.parse(start) : NaN;
+  if (Number.isFinite(startMs) && Number.isFinite(workout.duration)) {
+    return startMs + workout.duration * 1e3;
+  }
+  return NaN;
+}
+function dailySamplesForWorkout(picked) {
+  var _a, _b, _c;
+  const dailySamples = (_b = (_a = picked.day.heart) == null ? void 0 : _a.heartRateSamples) != null ? _b : [];
+  if (!dailySamples.length) return [];
+  const start = (_c = picked.workout.startTimeISO) != null ? _c : picked.workout.startTime;
+  const startMs = start ? Date.parse(start) : NaN;
+  const endMs = resolveWorkoutEndMs(picked);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return [];
+  }
+  const edgeToleranceMs = 6e4;
+  return dailySamples.filter((sample) => {
+    const sampleMs = Date.parse(sample.timestamp);
+    return Number.isFinite(sampleMs) && Number.isFinite(sample.value) && sampleMs >= startMs - edgeToleranceMs && sampleMs <= endMs + edgeToleranceMs;
+  }).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+}
+function heartRateSampleSources(picked) {
   var _a, _b;
+  const sources = [];
+  const workoutSamples = (_b = (_a = picked.workout.timeSeries) == null ? void 0 : _a.heartRate) != null ? _b : [];
+  if (workoutSamples.length) {
+    sources.push({ samples: workoutSamples, source: "workout" });
+  }
+  const dailySamples = dailySamplesForWorkout(picked);
+  if (dailySamples.length) {
+    sources.push({ samples: dailySamples, source: "daily" });
+  }
+  return sources;
+}
+function elapsedPoints(samples, workoutStart) {
+  return samples.map((sample) => ({
+    t: elapsedSeconds(workoutStart, sample.timestamp),
+    v: sample.value
+  })).filter((point) => Number.isFinite(point.t) && Number.isFinite(point.v) && point.t >= 0).sort((a, b) => a.t - b.t);
+}
+function medianGapSeconds(pts) {
+  const gaps = [];
+  for (let i = 1; i < pts.length; i++) {
+    const gap = pts[i].t - pts[i - 1].t;
+    if (gap > 0) gaps.push(gap);
+  }
+  if (!gaps.length) return 0;
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)];
+}
+function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
+  const values = [stats.lo, stats.avg, stats.hi].filter(
+    (value) => typeof value === "number" && Number.isFinite(value)
+  );
+  if (!values.length) {
+    drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No heart rate data for this workout");
+    return;
+  }
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const padL = 44;
+  const padR = 18;
+  const padT = 46;
+  const padB = 34;
+  const plotW = W - padL - padR;
+  const plotH = Math.max(24, H - padT - padB);
+  const axisY = padT + plotH * 0.58;
+  let xMin = Math.max(0, Math.floor(Math.min(...values) - 8));
+  let xMax = Math.ceil(Math.max(...values) + 8);
+  if (maxHr) {
+    xMin = Math.min(xMin, Math.floor(maxHr * ZONES[0].loFrac));
+    xMax = Math.max(xMax, Math.ceil(maxHr));
+  }
+  if (xMax - xMin < 20) xMax = xMin + 20;
+  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW;
+  ctx.fillStyle = theme.fg;
+  ctx.font = "600 13px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("Workout heart-rate summary", padL, 12);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "11px sans-serif";
+  ctx.fillText("Detailed heart-rate samples were not included in this export.", padL, 29);
+  if (maxHr) {
+    for (const z of ZONES) {
+      const lo = maxHr * z.loFrac;
+      const hi = maxHr * z.hiFrac;
+      if (hi <= xMin || lo >= xMax) continue;
+      const x0 = xFor(Math.max(lo, xMin));
+      const x1 = xFor(Math.min(hi, xMax));
+      ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 40 : 70}%,0.12)`;
+      ctx.fillRect(x0, padT, x1 - x0, plotH);
+      ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 70 : 40}%,0.58)`;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(z.label, (x0 + x1) / 2, padT + 4);
+    }
+  }
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "9px sans-serif";
+  ctx.lineWidth = 1;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const xRange = xMax - xMin;
+  const xStep = xRange <= 40 ? 10 : xRange <= 100 ? 20 : 40;
+  const tickStart = Math.ceil(xMin / xStep) * xStep;
+  for (let bpm = tickStart; bpm <= xMax; bpm += xStep) {
+    const x = xFor(bpm);
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + plotH);
+    ctx.stroke();
+    ctx.fillText(String(bpm), x, padT + plotH + 6);
+  }
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.14);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(padL, axisY);
+  ctx.lineTo(padL + plotW, axisY);
+  ctx.stroke();
+  if (stats.lo != null && stats.hi != null) {
+    ctx.strokeStyle = hexToRgba(theme.colors.heart, 0.72);
+    ctx.lineWidth = 9;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(xFor(stats.lo), axisY);
+    ctx.lineTo(xFor(stats.hi), axisY);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+  }
+  const markers = [
+    { value: stats.lo, label: "MIN", color: "#4488ff", yOffset: 22 },
+    { value: stats.avg, label: "AVG", color: theme.colors.heart, yOffset: -28 },
+    { value: stats.hi, label: "MAX", color: "#ff4444", yOffset: 22 }
+  ];
+  for (const marker of markers) {
+    if (marker.value == null || !Number.isFinite(marker.value)) continue;
+    const x = xFor(marker.value);
+    ctx.fillStyle = marker.color;
+    ctx.beginPath();
+    ctx.arc(x, axisY, marker.label === "AVG" ? 6 : 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = marker.color;
+    ctx.font = "700 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = marker.yOffset < 0 ? "bottom" : "top";
+    ctx.fillText(`${Math.round(marker.value)} BPM`, x, axisY + marker.yOffset);
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textBaseline = marker.yOffset < 0 ? "bottom" : "top";
+    ctx.fillText(marker.label, x, axisY + marker.yOffset + (marker.yOffset < 0 ? -13 : 14));
+  }
+}
+var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a;
   const picked = pickWorkout(data, config);
   if (!picked) {
     drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No workout found");
@@ -13361,8 +13691,20 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     return;
   }
   const { workout } = picked;
-  const samples = (_b = (_a = workout.timeSeries) == null ? void 0 : _a.heartRate) != null ? _b : [];
-  if (!samples.length) {
+  const maxHr = resolveMaxHeartRate(config, theme);
+  const workoutStart = (_a = workout.startTimeISO) != null ? _a : workout.startTime;
+  const sources = heartRateSampleSources(picked);
+  let pts = [];
+  let sampleSource = null;
+  for (const source of sources) {
+    const candidate = elapsedPoints(source.samples, workoutStart);
+    if (candidate.length) {
+      pts = candidate;
+      sampleSource = source.source;
+      break;
+    }
+  }
+  if (!pts.length) {
     const avg5 = workout.avgHeartRate;
     const lo2 = workout.minHeartRate;
     const hi2 = workout.maxHeartRate;
@@ -13378,14 +13720,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       statsEl.empty();
       return;
     }
-    drawEmptyState(
-      ctx,
-      W,
-      H,
-      theme.bg,
-      theme.muted,
-      "No per-second heart rate samples \u2014 showing summary"
-    );
+    drawSummaryFallback(ctx, W, H, theme, { lo: lo2, avg: avg5, hi: hi2 }, maxHr);
     const boxes = [];
     if (lo2 != null) boxes.push({ value: String(lo2), label: "Min", color: "#4488ff" });
     if (avg5 != null)
@@ -13394,33 +13729,18 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     renderStatBoxes(statsEl, boxes);
     return;
   }
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, W, H);
-  const pts = [];
   let minBpm = Infinity;
   let maxBpm = -Infinity;
-  let lastT = -Infinity;
-  for (const s of samples) {
-    const t = elapsedSeconds(workout.startTime, s.timestamp);
-    const v = s.value;
-    if (!Number.isFinite(t) || !Number.isFinite(v)) continue;
-    if (t < 0) continue;
-    if (t < lastT) continue;
-    lastT = t;
-    pts.push({ t, v });
-    if (v < minBpm) minBpm = v;
-    if (v > maxBpm) maxBpm = v;
+  for (const p of pts) {
+    if (p.v < minBpm) minBpm = p.v;
+    if (p.v > maxBpm) maxBpm = p.v;
   }
-  if (!pts.length) {
-    drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No usable heart rate samples");
-    statsEl.empty();
-    return;
-  }
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
   const tMax = Math.max(workout.duration || 0, pts[pts.length - 1].t);
   const tMin = 0;
   let yMin = Math.max(0, Math.floor(minBpm - 5));
   let yMax = Math.ceil(maxBpm + 5);
-  const maxHr = resolveMaxHeartRate(config, theme);
   if (maxHr) {
     yMin = Math.min(yMin, Math.floor(maxHr * ZONES[0].loFrac));
     yMax = Math.max(yMax, Math.ceil(maxHr));
@@ -13486,7 +13806,8 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   ctx.lineCap = "round";
   ctx.beginPath();
   let prevT = -Infinity;
-  const GAP_THRESHOLD = 60;
+  const medianGap = medianGapSeconds(pts);
+  const GAP_THRESHOLD = Math.max(60, medianGap ? medianGap * 2.5 : 60);
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
     const x = xFor(p.t);
@@ -13499,6 +13820,14 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     prevT = p.t;
   }
   ctx.stroke();
+  if (pts.length <= 120 || sampleSource === "daily") {
+    ctx.fillStyle = theme.colors.heart;
+    for (const p of pts) {
+      ctx.beginPath();
+      ctx.arc(xFor(p.t), yFor(p.v), sampleSource === "daily" ? 2.5 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   const STRIDE = 4;
   for (let x = padL; x < padL + plotW; x += STRIDE) {
     const tCenter = tMin + (x + STRIDE / 2 - padL) / plotW * (tMax - tMin);
@@ -13521,6 +13850,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     if (maxHr) {
       const z = zoneFor(p.v, maxHr);
       details.push({ label: "Zone", value: z ? z.label : "below Z1" });
+    }
+    if (sampleSource === "daily") {
+      details.push({ label: "Source", value: "daily samples" });
     }
     hits.add({
       shape: "rect",
@@ -13547,6 +13879,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       { text: "Max HR " },
       { text: `${maxHr} BPM`, strong: true }
     ]);
+  }
+  if (sampleSource === "daily") {
+    rows.push([{ text: "Source: daily heart-rate samples within workout time" }]);
   }
   renderInlineStats(statsEl, rows);
 };
@@ -14808,7 +15143,7 @@ var VISUALIZATIONS2 = [
     type: "workout-heart-rate",
     label: "Workout heart rate",
     category: "workouts",
-    description: "Heart-rate time series for one selected workout.",
+    description: "Heart-rate time series or summary for one selected workout.",
     defaultLast: 30,
     defaultHeight: 260,
     params: [
