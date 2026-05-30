@@ -14617,10 +14617,12 @@ async function openFileByPath(app, path) {
   const normalized = (0, import_obsidian2.normalizePath)(path);
   const file = app.vault.getAbstractFileByPath(normalized);
   if (!(file instanceof import_obsidian2.TFile)) {
-    new import_obsidian2.Notice(`Health.md: file not found: ${normalized}`);
+    new import_obsidian2.Notice(`Health.md: file not found in this vault: ${normalized}`);
     return false;
   }
-  await app.workspace.getLeaf(false).openFile(file);
+  const leaf = app.workspace.getLeaf(false);
+  await leaf.openFile(file, { active: true });
+  app.workspace.setActiveLeaf(leaf, { focus: true });
   return true;
 }
 async function openSourceFile(plugin, target) {

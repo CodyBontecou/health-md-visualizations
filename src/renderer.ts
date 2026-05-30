@@ -573,10 +573,16 @@ async function openFileByPath(app: App, path: string): Promise<boolean> {
 	const normalized = normalizePath(path);
 	const file = app.vault.getAbstractFileByPath(normalized);
 	if (!(file instanceof TFile)) {
-		new Notice(`Health.md: file not found: ${normalized}`);
+		new Notice(`Health.md: file not found in this vault: ${normalized}`);
 		return false;
 	}
-	await app.workspace.getLeaf(false).openFile(file);
+
+	// Source paths are vault-relative TFile paths. Opening them through the
+	// workspace keeps navigation inside the current Obsidian window instead of
+	// delegating to the OS/browser for files that live in the vault.
+	const leaf = app.workspace.getLeaf(false);
+	await leaf.openFile(file, { active: true });
+	app.workspace.setActiveLeaf(leaf, { focus: true });
 	return true;
 }
 
