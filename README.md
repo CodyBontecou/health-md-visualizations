@@ -60,6 +60,7 @@ Open **Settings → Health.md Visualizations**:
 | **Theme** | `auto` matches Obsidian, or force `dark` / `light`. |
 | **Default width** | Default canvas width in pixels (charts shrink to container width). |
 | **Default height** | Default canvas height in pixels. |
+| **Data point click action** | What clicking a hoverable canvas point does: pin the tooltip, open the source health data file, or open the matching Daily Note. |
 
 The plugin watches your data folder and automatically refreshes its cache when files are added, modified, or deleted.
 
@@ -162,7 +163,7 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 </tr>
 </table>
 
-All canvas chart types support hover tooltips and click-to-pin. The `intro-stats`, `summary-card`, `trend-tile`, and `workout-map` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
+All canvas chart types support hover tooltips. Click behavior is configurable: keep the default click-to-pin tooltip behavior, open the source health data file for a point, or open the matching Daily Note. The `intro-stats`, `summary-card`, `trend-tile`, and `workout-map` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
 
 ### Bundled examples
 
@@ -198,6 +199,7 @@ height: 400
 | `from` | date or datetime | — | Start of the data window (inclusive). |
 | `to` | date or datetime | — | End of the data window (inclusive). |
 | `last` | number | — | Number of calendar days back to include. |
+| `clickAction` | `pin`, `source`, `daily` | from settings | Optional per-chart override for data point clicks: pin tooltip, open source data file, or open matching Daily Note. |
 
 Individual visualization types may accept additional keys — see `examples/visualization-reference.md` for every supported renderer-specific argument, default, and accepted value.
 

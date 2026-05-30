@@ -72,6 +72,8 @@ export interface WorkoutEntry {
 export interface HealthDay {
 	type: string;
 	date: string;
+	/** Vault-relative paths for files that contributed this day. Added at load time. */
+	sourcePaths?: string[];
 	units?: string;
 	activity?: {
 		steps: number;
@@ -150,6 +152,7 @@ export interface VizConfig {
 }
 
 export type DataFormat = "auto" | "json" | "csv" | "markdown" | "bases";
+export type DataPointClickAction = "pin" | "source" | "daily";
 
 export interface ColorPalette {
 	accent: string;
@@ -181,6 +184,7 @@ export interface HealthMdSettings {
 	colorSleepCore: string;
 	colorSleepAwake: string;
 	maxHeartRate?: number;
+	dataPointClickAction: DataPointClickAction;
 	mapTilesEnabled: boolean;
 	mapTileUrl: string;
 	mapTileAttribution: string;

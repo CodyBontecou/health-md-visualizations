@@ -185,7 +185,7 @@ export const renderSleepArchitecture: RenderFn = (
 						value: formatDuration(stage.durationSeconds),
 					},
 				],
-				payload: stage,
+				payload: { day: night, stage },
 			});
 		});
 	});

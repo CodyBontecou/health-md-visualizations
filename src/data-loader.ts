@@ -60,18 +60,18 @@ export class DataLoader {
 				switch (format) {
 					case "json": {
 						const day = parseJSON(content);
-						if (day) days.push(day);
+						if (day) days.push(withSourcePath(day, file.path));
 						break;
 					}
 					case "csv": {
 						const csvDays = parseCSV(content);
-						days.push(...csvDays);
+						days.push(...csvDays.map((day) => withSourcePath(day, file.path)));
 						break;
 					}
 					case "markdown":
 					case "bases": {
 						const day = parseMarkdown(content);
-						if (day) days.push(day);
+						if (day) days.push(withSourcePath(day, file.path));
 						break;
 					}
 				}
@@ -127,12 +127,29 @@ export class DataLoader {
 	}
 
 	private getMatchingFiles(folder: TFolder, pattern: string): TFile[] {
-		return folder.children.filter((f): f is TFile => {
-			if (!(f instanceof TFile)) return false;
-			if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
-			return matchesGlob(f.name, pattern);
-		});
+		return folder.children
+			.filter((f): f is TFile => {
+				if (!(f instanceof TFile)) return false;
+				if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
+				return matchesGlob(f.name, pattern);
+			})
+			.sort((a, b) => a.path.localeCompare(b.path));
 	}
+}
+
+function mergeSourcePaths(...pathLists: Array<string[] | undefined>): string[] | undefined {
+	const paths = new Set<string>();
+	for (const list of pathLists) {
+		list?.forEach((path) => paths.add(path));
+	}
+	return paths.size ? Array.from(paths).sort((a, b) => a.localeCompare(b)) : undefined;
+}
+
+function withSourcePath(day: HealthDay, path: string): HealthDay {
+	return {
+		...day,
+		sourcePaths: mergeSourcePaths(day.sourcePaths, [path]),
+	};
 }
 
 /** Merge two HealthDay objects for the same date, preferring non-null fields */
@@ -140,6 +157,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 	return {
 		type: "health-data",
 		date: a.date,
+		sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths),
 		units: a.units ?? b.units,
 		activity: a.activity ?? b.activity,
 		heart: a.heart ?? b.heart,

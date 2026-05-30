@@ -1,6 +1,14 @@
-import { MarkdownPostProcessorContext, MarkdownRenderChild } from "obsidian";
+import {
+	App,
+	MarkdownPostProcessorContext,
+	MarkdownRenderChild,
+	Notice,
+	TFile,
+	moment,
+	normalizePath,
+} from "obsidian";
 import type HealthMdPlugin from "./main";
-import { HealthDay, HitRegion, HitRegistry, VizConfig } from "./types";
+import { DataPointClickAction, HealthDay, HitRegion, HitRegistry, VizConfig } from "./types";
 import { setupCanvas, resolveTheme, formatDuration } from "./canvas-utils";
 import { HTML_VISUALIZATIONS, VISUALIZATIONS } from "./visualizations";
 
@@ -434,6 +442,184 @@ function renderTooltipContent(
 	});
 }
 
+interface DailyNotesOptions {
+	folder?: string;
+	format?: string;
+}
+
+interface DailyNotesPlugin {
+	enabled?: boolean;
+	instance?: {
+		options?: DailyNotesOptions;
+	};
+}
+
+interface AppWithInternalPlugins extends App {
+	internalPlugins?: {
+		getPluginById?: (id: string) => DailyNotesPlugin | undefined;
+		plugins?: Record<string, DailyNotesPlugin | undefined>;
+	};
+}
+
+interface RegionNavigationTarget {
+	dates: string[];
+	sourcePaths: string[];
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function normalizeDataPointClickAction(value: unknown): DataPointClickAction | null {
+	if (typeof value !== "string") return null;
+	switch (value.trim().toLowerCase()) {
+		case "pin":
+		case "tooltip":
+		case "pin-tooltip":
+			return "pin";
+		case "source":
+		case "source-file":
+		case "data-file":
+		case "open-source":
+		case "open-source-file":
+			return "source";
+		case "daily":
+		case "daily-note":
+		case "open-daily":
+		case "open-daily-note":
+			return "daily";
+		default:
+			return null;
+	}
+}
+
+function collectPayloadNavigation(
+	payload: unknown,
+	dates: Set<string>,
+	sourcePaths: Set<string>
+): void {
+	if (typeof payload === "string") {
+		if (ISO_DATE.test(payload)) dates.add(payload);
+		return;
+	}
+
+	if (Array.isArray(payload)) {
+		payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
+		return;
+	}
+
+	if (!isRecord(payload)) return;
+
+	const date = payload.date;
+	if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
+
+	const paths = payload.sourcePaths;
+	if (Array.isArray(paths)) {
+		paths.forEach((path) => {
+			if (typeof path === "string" && path) sourcePaths.add(path);
+		});
+	}
+
+	// Some chart regions wrap the HealthDay in a parent object so they can keep
+	// point-specific payload details (for example a sleep stage or workout sample).
+	if ("day" in payload) {
+		collectPayloadNavigation(payload.day, dates, sourcePaths);
+	}
+}
+
+function getRegionNavigationTarget(
+	region: HitRegion,
+	dataByDate: Map<string, HealthDay>
+): RegionNavigationTarget {
+	const dates = new Set<string>();
+	const sourcePaths = new Set<string>();
+	collectPayloadNavigation(region.payload, dates, sourcePaths);
+
+	for (const date of dates) {
+		dataByDate.get(date)?.sourcePaths?.forEach((path) => sourcePaths.add(path));
+	}
+
+	return {
+		dates: Array.from(dates).sort((a, b) => a.localeCompare(b)),
+		sourcePaths: Array.from(sourcePaths).sort((a, b) => a.localeCompare(b)),
+	};
+}
+
+function getDailyNotesOptions(app: App): Required<DailyNotesOptions> {
+	const internalPlugins = (app as AppWithInternalPlugins).internalPlugins;
+	const dailyNotes =
+		internalPlugins?.getPluginById?.("daily-notes") ??
+		internalPlugins?.plugins?.["daily-notes"];
+	const options = dailyNotes?.enabled ? dailyNotes.instance?.options : undefined;
+	return {
+		folder: options?.folder ?? "",
+		format: options?.format ?? "YYYY-MM-DD",
+	};
+}
+
+function getDailyNotePath(app: App, date: string): string | null {
+	const dailyDate = moment(date, "YYYY-MM-DD", true);
+	if (!dailyDate.isValid()) return null;
+
+	const { folder, format } = getDailyNotesOptions(app);
+	let notePath = dailyDate.format(format || "YYYY-MM-DD");
+	if (!notePath.toLowerCase().endsWith(".md")) notePath += ".md";
+	return normalizePath(folder ? `${folder}/${notePath}` : notePath);
+}
+
+async function openFileByPath(app: App, path: string): Promise<boolean> {
+	const normalized = normalizePath(path);
+	const file = app.vault.getAbstractFileByPath(normalized);
+	if (!(file instanceof TFile)) {
+		new Notice(`Health.md: file not found: ${normalized}`);
+		return false;
+	}
+	await app.workspace.getLeaf(false).openFile(file);
+	return true;
+}
+
+async function openSourceFile(
+	plugin: HealthMdPlugin,
+	target: RegionNavigationTarget
+): Promise<boolean> {
+	if (!target.sourcePaths.length) {
+		new Notice("Health.md: no source file found for this data point.");
+		return false;
+	}
+	if (target.sourcePaths.length > 1) {
+		new Notice(
+			`Health.md: this point maps to ${target.sourcePaths.length} source files; click a single-day point to open one file.`
+		);
+		return false;
+	}
+	return openFileByPath(plugin.app, target.sourcePaths[0]);
+}
+
+async function openDailyNote(
+	plugin: HealthMdPlugin,
+	target: RegionNavigationTarget
+): Promise<boolean> {
+	if (!target.dates.length) {
+		new Notice("Health.md: no date found for this data point.");
+		return false;
+	}
+	if (target.dates.length > 1) {
+		new Notice(
+			`Health.md: this point represents ${target.dates.length} dates; click a single-day point to open a Daily Note.`
+		);
+		return false;
+	}
+
+	const path = getDailyNotePath(plugin.app, target.dates[0]);
+	if (!path) {
+		new Notice(`Health.md: invalid date for Daily Note: ${target.dates[0]}`);
+		return false;
+	}
+	return openFileByPath(plugin.app, path);
+}
+
 class VizRenderChild extends MarkdownRenderChild {
 	private observer: ResizeObserver | null = null;
 	private unregisterDraw: (() => void) | null = null;
@@ -526,6 +712,12 @@ export async function renderCodeBlock(
 		return;
 	}
 
+	const clickAction =
+		normalizeDataPointClickAction(config.clickAction ?? config.onClick) ??
+		normalizeDataPointClickAction(plugin.settings.dataPointClickAction) ??
+		"pin";
+	const dataByDate = new Map(data.map((day) => [day.date, day]));
+
 	const defaultWidth = config.width ?? plugin.settings.defaultWidth;
 	const height = config.height ?? plugin.settings.defaultHeight;
 
@@ -584,15 +776,38 @@ export async function renderCodeBlock(
 		hideTooltip();
 	});
 
+	function pinTooltip(region: HitRegion, x: number, y: number): void {
+		pinned = region;
+		renderTooltipContent(tooltipEl, region);
+		placeTooltip(x, y);
+	}
+
 	canvas.addEventListener("click", (e) => {
 		const rect = canvas.getBoundingClientRect();
 		const x = e.clientX - rect.left;
 		const y = e.clientY - rect.top;
 		const region = findRegion(regions, x, y);
 		if (region) {
-			pinned = region;
-			renderTooltipContent(tooltipEl, region);
-			placeTooltip(x, y);
+			if (clickAction === "pin") {
+				pinTooltip(region, x, y);
+				return;
+			}
+
+			pinned = null;
+			hideTooltip();
+			const target = getRegionNavigationTarget(region, dataByDate);
+			void (clickAction === "source"
+				? openSourceFile(plugin, target)
+				: openDailyNote(plugin, target)
+			)
+				.then((opened) => {
+					if (!opened) pinTooltip(region, x, y);
+				})
+				.catch((error: unknown) => {
+					console.error("Health.md: failed to open data point target", error);
+					new Notice("Health.md: failed to open data point target.");
+					pinTooltip(region, x, y);
+				});
 		} else if (pinned) {
 			pinned = null;
 			hideTooltip();

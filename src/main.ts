@@ -7,7 +7,7 @@ import {
 	Setting,
 	TFolder,
 } from "obsidian";
-import { ColorSchemeId, HealthMdSettings } from "./types";
+import { ColorSchemeId, DataPointClickAction, HealthMdSettings } from "./types";
 import { DataLoader } from "./data-loader";
 import { renderCodeBlock } from "./renderer";
 import { openInsertVisualizationWizard } from "./insert-wizard";
@@ -101,10 +101,17 @@ const DEFAULT_SETTINGS: HealthMdSettings = {
 	colorSleepRem: "#7c3aed",
 	colorSleepCore: "#2dd4bf",
 	colorSleepAwake: "#f59e0b",
+	dataPointClickAction: "pin",
 	mapTilesEnabled: true,
 	mapTileUrl: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
 	mapTileAttribution: "© OpenStreetMap contributors © CARTO",
 };
+
+const DATA_POINT_CLICK_ACTIONS: DataPointClickAction[] = ["pin", "source", "daily"];
+
+function isDataPointClickAction(value: unknown): value is DataPointClickAction {
+	return typeof value === "string" && DATA_POINT_CLICK_ACTIONS.includes(value as DataPointClickAction);
+}
 
 export default class HealthMdPlugin extends Plugin {
 	settings: HealthMdSettings = DEFAULT_SETTINGS;
@@ -169,6 +176,9 @@ export default class HealthMdPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			await this.loadData() as Partial<HealthMdSettings>
 		);
+		if (!isDataPointClickAction(this.settings.dataPointClickAction)) {
+			this.settings.dataPointClickAction = DEFAULT_SETTINGS.dataPointClickAction;
+		}
 	}
 
 	async saveSettings(): Promise<void> {
@@ -334,6 +344,21 @@ class HealthMdSettingTab extends PluginSettingTab {
 							this.plugin.settings.defaultHeight = num;
 							await this.plugin.saveSettings();
 						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Data point click action")
+			.setDesc("Choose what happens when clicking a hoverable point in canvas charts.")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("pin", "Pin tooltip")
+					.addOption("source", "Open source data file")
+					.addOption("daily", "Open daily note")
+					.setValue(this.plugin.settings.dataPointClickAction)
+					.onChange(async (value) => {
+						this.plugin.settings.dataPointClickAction = value as DataPointClickAction;
+						await this.plugin.saveSettings();
 					})
 			);
 

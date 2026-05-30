@@ -471,6 +471,7 @@ export const renderWorkoutHeartRate: RenderFn = (
 			h: plotH,
 			title: "Heart rate",
 			details,
+			payload: picked.day,
 		});
 	}
 

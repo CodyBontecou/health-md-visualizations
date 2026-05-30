@@ -9989,18 +9989,18 @@ var DataLoader = class {
         switch (format) {
           case "json": {
             const day = parseJSON(content);
-            if (day) days.push(day);
+            if (day) days.push(withSourcePath(day, file.path));
             break;
           }
           case "csv": {
             const csvDays = parseCSV(content);
-            days.push(...csvDays);
+            days.push(...csvDays.map((day) => withSourcePath(day, file.path)));
             break;
           }
           case "markdown":
           case "bases": {
             const day = parseMarkdown(content);
-            if (day) days.push(day);
+            if (day) days.push(withSourcePath(day, file.path));
             break;
           }
         }
@@ -10049,14 +10049,28 @@ var DataLoader = class {
       if (!(f instanceof import_obsidian.TFile)) return false;
       if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
       return matchesGlob(f.name, pattern);
-    });
+    }).sort((a, b) => a.path.localeCompare(b.path));
   }
 };
+function mergeSourcePaths(...pathLists) {
+  const paths = /* @__PURE__ */ new Set();
+  for (const list of pathLists) {
+    list == null ? void 0 : list.forEach((path) => paths.add(path));
+  }
+  return paths.size ? Array.from(paths).sort((a, b) => a.localeCompare(b)) : void 0;
+}
+function withSourcePath(day, path) {
+  return {
+    ...day,
+    sourcePaths: mergeSourcePaths(day.sourcePaths, [path])
+  };
+}
 function mergeDays(a, b) {
   var _a, _b, _c, _d, _e, _f, _g, _h;
   return {
     type: "health-data",
     date: a.date,
+    sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths),
     units: (_a = a.units) != null ? _a : b.units,
     activity: (_b = a.activity) != null ? _b : b.activity,
     heart: (_c = a.heart) != null ? _c : b.heart,
@@ -11070,7 +11084,7 @@ var renderSleepArchitecture = (ctx, data, W, H, _config, theme, _statsEl, hits) 
             value: formatDuration(stage.durationSeconds)
           }
         ],
-        payload: stage
+        payload: { day: night, stage }
       });
     });
   });
@@ -13861,7 +13875,8 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       w: STRIDE,
       h: plotH,
       title: "Heart rate",
-      details
+      details,
+      payload: picked.day
     });
   }
   const avg4 = pts.reduce((s, p) => s + p.v, 0) / pts.length;
@@ -14519,6 +14534,126 @@ function renderTooltipContent(tooltipEl, region) {
     row.createSpan({ cls: "health-md-tooltip-value", text: value });
   });
 }
+var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function normalizeDataPointClickAction(value) {
+  if (typeof value !== "string") return null;
+  switch (value.trim().toLowerCase()) {
+    case "pin":
+    case "tooltip":
+    case "pin-tooltip":
+      return "pin";
+    case "source":
+    case "source-file":
+    case "data-file":
+    case "open-source":
+    case "open-source-file":
+      return "source";
+    case "daily":
+    case "daily-note":
+    case "open-daily":
+    case "open-daily-note":
+      return "daily";
+    default:
+      return null;
+  }
+}
+function collectPayloadNavigation(payload, dates, sourcePaths) {
+  if (typeof payload === "string") {
+    if (ISO_DATE.test(payload)) dates.add(payload);
+    return;
+  }
+  if (Array.isArray(payload)) {
+    payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
+    return;
+  }
+  if (!isRecord(payload)) return;
+  const date = payload.date;
+  if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
+  const paths = payload.sourcePaths;
+  if (Array.isArray(paths)) {
+    paths.forEach((path) => {
+      if (typeof path === "string" && path) sourcePaths.add(path);
+    });
+  }
+  if ("day" in payload) {
+    collectPayloadNavigation(payload.day, dates, sourcePaths);
+  }
+}
+function getRegionNavigationTarget(region, dataByDate) {
+  var _a, _b;
+  const dates = /* @__PURE__ */ new Set();
+  const sourcePaths = /* @__PURE__ */ new Set();
+  collectPayloadNavigation(region.payload, dates, sourcePaths);
+  for (const date of dates) {
+    (_b = (_a = dataByDate.get(date)) == null ? void 0 : _a.sourcePaths) == null ? void 0 : _b.forEach((path) => sourcePaths.add(path));
+  }
+  return {
+    dates: Array.from(dates).sort((a, b) => a.localeCompare(b)),
+    sourcePaths: Array.from(sourcePaths).sort((a, b) => a.localeCompare(b))
+  };
+}
+function getDailyNotesOptions(app) {
+  var _a, _b, _c, _d, _e, _f;
+  const internalPlugins = app.internalPlugins;
+  const dailyNotes = (_c = (_a = internalPlugins == null ? void 0 : internalPlugins.getPluginById) == null ? void 0 : _a.call(internalPlugins, "daily-notes")) != null ? _c : (_b = internalPlugins == null ? void 0 : internalPlugins.plugins) == null ? void 0 : _b["daily-notes"];
+  const options = (dailyNotes == null ? void 0 : dailyNotes.enabled) ? (_d = dailyNotes.instance) == null ? void 0 : _d.options : void 0;
+  return {
+    folder: (_e = options == null ? void 0 : options.folder) != null ? _e : "",
+    format: (_f = options == null ? void 0 : options.format) != null ? _f : "YYYY-MM-DD"
+  };
+}
+function getDailyNotePath(app, date) {
+  const dailyDate = (0, import_obsidian2.moment)(date, "YYYY-MM-DD", true);
+  if (!dailyDate.isValid()) return null;
+  const { folder, format } = getDailyNotesOptions(app);
+  let notePath = dailyDate.format(format || "YYYY-MM-DD");
+  if (!notePath.toLowerCase().endsWith(".md")) notePath += ".md";
+  return (0, import_obsidian2.normalizePath)(folder ? `${folder}/${notePath}` : notePath);
+}
+async function openFileByPath(app, path) {
+  const normalized = (0, import_obsidian2.normalizePath)(path);
+  const file = app.vault.getAbstractFileByPath(normalized);
+  if (!(file instanceof import_obsidian2.TFile)) {
+    new import_obsidian2.Notice(`Health.md: file not found: ${normalized}`);
+    return false;
+  }
+  await app.workspace.getLeaf(false).openFile(file);
+  return true;
+}
+async function openSourceFile(plugin, target) {
+  if (!target.sourcePaths.length) {
+    new import_obsidian2.Notice("Health.md: no source file found for this data point.");
+    return false;
+  }
+  if (target.sourcePaths.length > 1) {
+    new import_obsidian2.Notice(
+      `Health.md: this point maps to ${target.sourcePaths.length} source files; click a single-day point to open one file.`
+    );
+    return false;
+  }
+  return openFileByPath(plugin.app, target.sourcePaths[0]);
+}
+async function openDailyNote(plugin, target) {
+  if (!target.dates.length) {
+    new import_obsidian2.Notice("Health.md: no date found for this data point.");
+    return false;
+  }
+  if (target.dates.length > 1) {
+    new import_obsidian2.Notice(
+      `Health.md: this point represents ${target.dates.length} dates; click a single-day point to open a Daily Note.`
+    );
+    return false;
+  }
+  const path = getDailyNotePath(plugin.app, target.dates[0]);
+  if (!path) {
+    new import_obsidian2.Notice(`Health.md: invalid date for Daily Note: ${target.dates[0]}`);
+    return false;
+  }
+  return openFileByPath(plugin.app, path);
+}
 var VizRenderChild = class extends import_obsidian2.MarkdownRenderChild {
   constructor() {
     super(...arguments);
@@ -14538,7 +14673,7 @@ var VizRenderChild = class extends import_obsidian2.MarkdownRenderChild {
   }
 };
 async function renderCodeBlock(plugin, source, el, ctx) {
-  var _a, _b;
+  var _a, _b, _c, _d, _e;
   const config = parseConfig(source);
   if (!config.type) {
     el.createEl("p", {
@@ -14601,8 +14736,10 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     });
     return;
   }
-  const defaultWidth = (_a = config.width) != null ? _a : plugin.settings.defaultWidth;
-  const height = (_b = config.height) != null ? _b : plugin.settings.defaultHeight;
+  const clickAction = (_c = (_b = normalizeDataPointClickAction((_a = config.clickAction) != null ? _a : config.onClick)) != null ? _b : normalizeDataPointClickAction(plugin.settings.dataPointClickAction)) != null ? _c : "pin";
+  const dataByDate = new Map(data.map((day) => [day.date, day]));
+  const defaultWidth = (_d = config.width) != null ? _d : plugin.settings.defaultWidth;
+  const height = (_e = config.height) != null ? _e : plugin.settings.defaultHeight;
   const container = el.createDiv({ cls: "health-md-container" });
   const canvas = container.createEl("canvas");
   const tooltipEl = container.createDiv({ cls: "health-md-tooltip is-hidden" });
@@ -14651,15 +14788,31 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     canvas.removeClass("health-md-canvas-pointer");
     hideTooltip();
   });
+  function pinTooltip(region, x, y) {
+    pinned = region;
+    renderTooltipContent(tooltipEl, region);
+    placeTooltip(x, y);
+  }
   canvas.addEventListener("click", (e) => {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const region = findRegion(regions, x, y);
     if (region) {
-      pinned = region;
-      renderTooltipContent(tooltipEl, region);
-      placeTooltip(x, y);
+      if (clickAction === "pin") {
+        pinTooltip(region, x, y);
+        return;
+      }
+      pinned = null;
+      hideTooltip();
+      const target = getRegionNavigationTarget(region, dataByDate);
+      void (clickAction === "source" ? openSourceFile(plugin, target) : openDailyNote(plugin, target)).then((opened) => {
+        if (!opened) pinTooltip(region, x, y);
+      }).catch((error) => {
+        console.error("Health.md: failed to open data point target", error);
+        new import_obsidian2.Notice("Health.md: failed to open data point target.");
+        pinTooltip(region, x, y);
+      });
     } else if (pinned) {
       pinned = null;
       hideTooltip();
@@ -15663,10 +15816,15 @@ var DEFAULT_SETTINGS = {
   colorSleepRem: "#7c3aed",
   colorSleepCore: "#2dd4bf",
   colorSleepAwake: "#f59e0b",
+  dataPointClickAction: "pin",
   mapTilesEnabled: true,
   mapTileUrl: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
   mapTileAttribution: "\xA9 OpenStreetMap contributors \xA9 CARTO"
 };
+var DATA_POINT_CLICK_ACTIONS = ["pin", "source", "daily"];
+function isDataPointClickAction(value) {
+  return typeof value === "string" && DATA_POINT_CLICK_ACTIONS.includes(value);
+}
 var HealthMdPlugin = class extends import_obsidian4.Plugin {
   constructor() {
     super(...arguments);
@@ -15723,6 +15881,9 @@ var HealthMdPlugin = class extends import_obsidian4.Plugin {
       DEFAULT_SETTINGS,
       await this.loadData()
     );
+    if (!isDataPointClickAction(this.settings.dataPointClickAction)) {
+      this.settings.dataPointClickAction = DEFAULT_SETTINGS.dataPointClickAction;
+    }
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -15825,6 +15986,12 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
           this.plugin.settings.defaultHeight = num;
           await this.plugin.saveSettings();
         }
+      })
+    );
+    new import_obsidian4.Setting(containerEl).setName("Data point click action").setDesc("Choose what happens when clicking a hoverable point in canvas charts.").addDropdown(
+      (dropdown) => dropdown.addOption("pin", "Pin tooltip").addOption("source", "Open source data file").addOption("daily", "Open daily note").setValue(this.plugin.settings.dataPointClickAction).onChange(async (value) => {
+        this.plugin.settings.dataPointClickAction = value;
+        await this.plugin.saveSettings();
       })
     );
     new import_obsidian4.Setting(containerEl).setName("Colors").setHeading();
