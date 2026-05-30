@@ -9585,7 +9585,7 @@ __export(main_exports, {
   default: () => HealthMdPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // src/data-loader.ts
 var import_obsidian = require("obsidian");
@@ -15740,6 +15740,150 @@ ${lines.join("\n")}
   }
 };
 
+// src/source-file-view.ts
+var import_obsidian4 = require("obsidian");
+var HEALTH_MD_SOURCE_VIEW_TYPE = "health-md-source-file";
+var HEALTH_MD_SOURCE_EXTENSIONS = ["json", "csv"];
+var CSV_PREVIEW_MAX_ROWS = 200;
+var CSV_PREVIEW_MAX_COLUMNS = 40;
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+function parseCsvLine(line) {
+  const cells = [];
+  let cell = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+    if (ch === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "," && !inQuotes) {
+      cells.push(cell);
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  cells.push(cell);
+  return cells;
+}
+function parseCsvPreview(content) {
+  const lines = content.split(/\r?\n/).filter((line, index, arr) => index < arr.length - 1 || line.length > 0);
+  const rows = [];
+  let truncatedColumns = false;
+  for (const line of lines.slice(0, CSV_PREVIEW_MAX_ROWS)) {
+    const cells = parseCsvLine(line);
+    if (cells.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
+    rows.push(cells.slice(0, CSV_PREVIEW_MAX_COLUMNS));
+  }
+  return {
+    rows,
+    truncatedRows: lines.length > CSV_PREVIEW_MAX_ROWS,
+    truncatedColumns
+  };
+}
+function renderPre(container, text, language) {
+  const pre = container.createEl("pre", { cls: `health-md-source-pre language-${language}` });
+  pre.createEl("code", { text, cls: `language-${language}` });
+}
+var HealthMdSourceFileView = class extends import_obsidian4.FileView {
+  constructor(leaf) {
+    super(leaf);
+    this.icon = "file-text";
+    this.navigation = true;
+    this.allowNoFile = false;
+  }
+  getViewType() {
+    return HEALTH_MD_SOURCE_VIEW_TYPE;
+  }
+  getDisplayText() {
+    var _a, _b;
+    return (_b = (_a = this.file) == null ? void 0 : _a.name) != null ? _b : "Health.md source";
+  }
+  canAcceptExtension(extension) {
+    return HEALTH_MD_SOURCE_EXTENSIONS.includes(extension.toLowerCase());
+  }
+  async onLoadFile(file) {
+    const content = await this.app.vault.cachedRead(file);
+    this.render(file, content);
+  }
+  async onUnloadFile(_file) {
+    this.contentEl.empty();
+  }
+  async onRename(file) {
+    if (this.file === file) {
+      await this.onLoadFile(file);
+    }
+  }
+  render(file, content) {
+    this.contentEl.empty();
+    const root = this.contentEl.createDiv({ cls: "health-md-source-view" });
+    const header = root.createDiv({ cls: "health-md-source-header" });
+    header.createDiv({ cls: "health-md-source-title", text: file.name });
+    header.createDiv({
+      cls: "health-md-source-meta",
+      text: `${file.path} \xB7 ${file.extension.toUpperCase()} \xB7 ${formatBytes(file.stat.size)}`
+    });
+    if (file.extension.toLowerCase() === "json") {
+      this.renderJson(root, content);
+    } else if (file.extension.toLowerCase() === "csv") {
+      this.renderCsv(root, content);
+    } else {
+      renderPre(root, content, "text");
+    }
+  }
+  renderJson(root, content) {
+    try {
+      const formatted = JSON.stringify(JSON.parse(content), null, 2);
+      renderPre(root, formatted, "json");
+    } catch (e) {
+      root.createDiv({
+        cls: "health-md-source-warning",
+        text: "Could not pretty-print JSON; showing raw file contents."
+      });
+      renderPre(root, content, "json");
+    }
+  }
+  renderCsv(root, content) {
+    const { rows, truncatedRows, truncatedColumns } = parseCsvPreview(content);
+    if (!rows.length) {
+      root.createDiv({ cls: "health-md-source-warning", text: "CSV file is empty." });
+      return;
+    }
+    const previewNote = root.createDiv({ cls: "health-md-source-meta" });
+    previewNote.setText(
+      `Previewing ${rows.length.toLocaleString()} row${rows.length === 1 ? "" : "s"}` + (truncatedRows || truncatedColumns ? " (truncated for readability)" : "")
+    );
+    const tableWrap = root.createDiv({ cls: "health-md-source-table-wrap" });
+    const table = tableWrap.createEl("table", { cls: "health-md-source-table" });
+    const [headerRow, ...bodyRows] = rows;
+    const thead = table.createEl("thead");
+    const tr = thead.createEl("tr");
+    headerRow.forEach((cell) => tr.createEl("th", { text: cell }));
+    const tbody = table.createEl("tbody");
+    bodyRows.forEach((row) => {
+      var _a;
+      const rowEl = tbody.createEl("tr");
+      const width = Math.max(headerRow.length, row.length);
+      for (let i = 0; i < width; i++) {
+        rowEl.createEl("td", { text: (_a = row[i]) != null ? _a : "" });
+      }
+    });
+    const details = root.createEl("details", { cls: "health-md-source-raw" });
+    details.createEl("summary", { text: "Raw CSV" });
+    renderPre(details, content, "csv");
+  }
+};
+
 // src/main.ts
 var COLOR_SCHEMES = {
   default: {
@@ -15827,7 +15971,7 @@ var DATA_POINT_CLICK_ACTIONS = ["pin", "source", "daily"];
 function isDataPointClickAction(value) {
   return typeof value === "string" && DATA_POINT_CLICK_ACTIONS.includes(value);
 }
-var HealthMdPlugin = class extends import_obsidian4.Plugin {
+var HealthMdPlugin = class extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -15848,6 +15992,11 @@ var HealthMdPlugin = class extends import_obsidian4.Plugin {
       (source, el, ctx) => renderCodeBlock(this, source, el, ctx)
     );
     this.addSettingTab(new HealthMdSettingTab(this.app, this));
+    this.registerView(
+      HEALTH_MD_SOURCE_VIEW_TYPE,
+      (leaf) => new HealthMdSourceFileView(leaf)
+    );
+    this.registerExtensions(HEALTH_MD_SOURCE_EXTENSIONS, HEALTH_MD_SOURCE_VIEW_TYPE);
     this.registerEvent(
       this.app.vault.on("create", (file) => {
         if (file.path.startsWith(this.settings.dataFolder + "/")) {
@@ -15892,19 +16041,19 @@ var HealthMdPlugin = class extends import_obsidian4.Plugin {
   }
   refreshViews() {
     this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
-      if (leaf.view instanceof import_obsidian4.MarkdownView) {
+      if (leaf.view instanceof import_obsidian5.MarkdownView) {
         leaf.view.previewMode.rerender(true);
       }
     });
   }
 };
-var FolderInputSuggest = class extends import_obsidian4.AbstractInputSuggest {
+var FolderInputSuggest = class extends import_obsidian5.AbstractInputSuggest {
   constructor(app, inputEl) {
     super(app, inputEl);
     this.limit = 200;
   }
   getFolderPaths() {
-    return this.app.vault.getAllLoadedFiles().filter((f) => f instanceof import_obsidian4.TFolder).map((f) => f.path).filter((path) => path.length > 0 && path !== "/").sort((a, b) => a.localeCompare(b));
+    return this.app.vault.getAllLoadedFiles().filter((f) => f instanceof import_obsidian5.TFolder).map((f) => f.path).filter((path) => path.length > 0 && path !== "/").sort((a, b) => a.localeCompare(b));
   }
   getSuggestions(query) {
     const q = query.trim().toLowerCase();
@@ -15916,7 +16065,7 @@ var FolderInputSuggest = class extends import_obsidian4.AbstractInputSuggest {
     el.setText(value);
   }
 };
-var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
+var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -15932,7 +16081,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
       await this.plugin.saveSettings();
       this.plugin.refreshViews();
     };
-    new import_obsidian4.Setting(containerEl).setName("Data folder").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Data folder").setDesc(
       "Path to the folder containing health data files. Start typing to pick an existing folder."
     ).addSearch((search) => {
       search.setPlaceholder("Health").setValue(this.plugin.settings.dataFolder).onChange(async (value) => {
@@ -15945,7 +16094,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
       search.inputEl.addEventListener("focus", () => folderSuggest.open());
       search.inputEl.addEventListener("click", () => folderSuggest.open());
     });
-    new import_obsidian4.Setting(containerEl).setName("File pattern").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("File pattern").setDesc(
       "Glob pattern to match files. Use * to include all supported files."
     ).addText(
       (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
@@ -15955,7 +16104,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.refreshViews();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Data format").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Data format").setDesc(
       "Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter."
     ).addDropdown(
       (dropdown) => dropdown.addOption("auto", "Auto-detect by extension").addOption("json", "JSON").addOption("csv", "CSV").addOption("markdown", "Markdown (YAML frontmatter required)").addOption("bases", "Obsidian bases (YAML frontmatter)").setValue(this.plugin.settings.dataFormat).onChange(async (value) => {
@@ -15965,14 +16114,14 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.refreshViews();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Theme").setDesc("Color theme for visualizations").addDropdown(
+    new import_obsidian5.Setting(containerEl).setName("Theme").setDesc("Color theme for visualizations").addDropdown(
       (dropdown) => dropdown.addOption("auto", "Auto (match Obsidian)").addOption("dark", "Dark").addOption("light", "Light").setValue(this.plugin.settings.theme).onChange(async (value) => {
         this.plugin.settings.theme = value;
         await this.plugin.saveSettings();
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Default width").setDesc("Default canvas width in pixels").addText(
+    new import_obsidian5.Setting(containerEl).setName("Default width").setDesc("Default canvas width in pixels").addText(
       (text) => text.setValue(String(this.plugin.settings.defaultWidth)).onChange(async (value) => {
         const num = parseInt(value, 10);
         if (!isNaN(num) && num > 0) {
@@ -15981,7 +16130,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         }
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Default height").setDesc("Default canvas height in pixels").addText(
+    new import_obsidian5.Setting(containerEl).setName("Default height").setDesc("Default canvas height in pixels").addText(
       (text) => text.setValue(String(this.plugin.settings.defaultHeight)).onChange(async (value) => {
         const num = parseInt(value, 10);
         if (!isNaN(num) && num > 0) {
@@ -15990,13 +16139,13 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         }
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Data point click action").setDesc("Choose what happens when clicking a hoverable point in canvas charts.").addDropdown(
+    new import_obsidian5.Setting(containerEl).setName("Data point click action").setDesc("Choose what happens when clicking a hoverable point in canvas charts.").addDropdown(
       (dropdown) => dropdown.addOption("pin", "Pin tooltip").addOption("source", "Open source data file").addOption("daily", "Open daily note").setValue(this.plugin.settings.dataPointClickAction).onChange(async (value) => {
         this.plugin.settings.dataPointClickAction = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Colors").setHeading();
+    new import_obsidian5.Setting(containerEl).setName("Colors").setHeading();
     const colorInputs = {};
     const applyScheme = async (schemeId) => {
       this.plugin.settings.colorScheme = schemeId;
@@ -16021,7 +16170,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
       this.plugin.redrawAll();
     };
     let schemeDropdown;
-    new import_obsidian4.Setting(containerEl).setName("Color scheme").setDesc("Choose a preset palette or customize individual colors below").addDropdown((dropdown) => {
+    new import_obsidian5.Setting(containerEl).setName("Color scheme").setDesc("Choose a preset palette or customize individual colors below").addDropdown((dropdown) => {
       Object.keys(COLOR_SCHEMES).forEach((id) => {
         dropdown.addOption(id, COLOR_SCHEMES[id].label);
       });
@@ -16042,7 +16191,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
       { key: "colorSleepAwake", name: "Awake", desc: "Color for awake periods in sleep charts" }
     ];
     colorSettings.forEach(({ key, name, desc }) => {
-      const setting = new import_obsidian4.Setting(containerEl).setName(name).setDesc(desc);
+      const setting = new import_obsidian5.Setting(containerEl).setName(name).setDesc(desc);
       const input = setting.controlEl.createEl("input");
       input.type = "color";
       input.value = this.plugin.settings[key];
@@ -16057,8 +16206,8 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         })();
       });
     });
-    new import_obsidian4.Setting(containerEl).setName("Workouts").setHeading();
-    new import_obsidian4.Setting(containerEl).setName("Maximum heart rate").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Workouts").setHeading();
+    new import_obsidian5.Setting(containerEl).setName("Maximum heart rate").setDesc(
       "Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age."
     ).addText(
       (text) => text.setPlaceholder("190").setValue(
@@ -16077,7 +16226,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Show map tiles").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Show map tiles").setDesc(
       "Render workout maps with tile imagery (requires network). When off, the route is drawn as a polyline on a plain background."
     ).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.mapTilesEnabled).onChange(async (value) => {
@@ -16086,7 +16235,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Map tile URL").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Map tile URL").setDesc(
       "Leaflet tile URL template. Replace with a different provider's URL if you have your own API key."
     ).addText(
       (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl).setValue(this.plugin.settings.mapTileUrl).onChange(async (value) => {
@@ -16095,7 +16244,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Map attribution").setDesc("Attribution string shown on the map. Required by most tile providers.").addText(
+    new import_obsidian5.Setting(containerEl).setName("Map attribution").setDesc("Attribution string shown on the map. Required by most tile providers.").addText(
       (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution).setValue(this.plugin.settings.mapTileAttribution).onChange(async (value) => {
         this.plugin.settings.mapTileAttribution = value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
         await this.plugin.saveSettings();

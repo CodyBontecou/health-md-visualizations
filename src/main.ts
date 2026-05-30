@@ -11,6 +11,11 @@ import { ColorSchemeId, DataPointClickAction, HealthMdSettings } from "./types";
 import { DataLoader } from "./data-loader";
 import { renderCodeBlock } from "./renderer";
 import { openInsertVisualizationWizard } from "./insert-wizard";
+import {
+	HEALTH_MD_SOURCE_EXTENSIONS,
+	HEALTH_MD_SOURCE_VIEW_TYPE,
+	HealthMdSourceFileView,
+} from "./source-file-view";
 
 interface ColorScheme {
 	label: string;
@@ -137,6 +142,12 @@ export default class HealthMdPlugin extends Plugin {
 		);
 
 		this.addSettingTab(new HealthMdSettingTab(this.app, this));
+
+		this.registerView(
+			HEALTH_MD_SOURCE_VIEW_TYPE,
+			(leaf) => new HealthMdSourceFileView(leaf)
+		);
+		this.registerExtensions(HEALTH_MD_SOURCE_EXTENSIONS, HEALTH_MD_SOURCE_VIEW_TYPE);
 
 		// Invalidate cache when files change in the data folder
 		this.registerEvent(
