@@ -464,6 +464,13 @@ interface AppWithInternalPlugins extends App {
 interface RegionNavigationTarget {
 	dates: string[];
 	sourcePaths: string[];
+	/**
+	 * Aggregate regions (for example weekday averages) may represent many dates.
+	 * In those cases navigation should still land somewhere useful; prefer the
+	 * latest matching date in the rendered range when it has a single source file.
+	 */
+	preferredDate?: string;
+	preferredSourcePaths?: string[];
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -529,6 +536,18 @@ function collectPayloadNavigation(
 	}
 }
 
+function sortedStrings(values: Iterable<string>): string[] {
+	return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+
+function getSourcePathsForDate(
+	date: string | undefined,
+	dataByDate: Map<string, HealthDay>
+): string[] {
+	if (!date) return [];
+	return sortedStrings(dataByDate.get(date)?.sourcePaths ?? []);
+}
+
 function getRegionNavigationTarget(
 	region: HitRegion,
 	dataByDate: Map<string, HealthDay>
@@ -541,9 +560,15 @@ function getRegionNavigationTarget(
 		dataByDate.get(date)?.sourcePaths?.forEach((path) => sourcePaths.add(path));
 	}
 
+	const sortedDates = sortedStrings(dates);
+	const preferredDate = sortedDates[sortedDates.length - 1];
+	const preferredSourcePaths = getSourcePathsForDate(preferredDate, dataByDate);
+
 	return {
-		dates: Array.from(dates).sort((a, b) => a.localeCompare(b)),
-		sourcePaths: Array.from(sourcePaths).sort((a, b) => a.localeCompare(b)),
+		dates: sortedDates,
+		sourcePaths: sortedStrings(sourcePaths),
+		preferredDate,
+		preferredSourcePaths,
 	};
 }
 
@@ -595,8 +620,14 @@ async function openSourceFile(
 		return false;
 	}
 	if (target.sourcePaths.length > 1) {
+		if (target.preferredDate && target.preferredSourcePaths?.length === 1) {
+			return openFileByPath(plugin.app, target.preferredSourcePaths[0]);
+		}
+
 		new Notice(
-			`Health.md: this point maps to ${target.sourcePaths.length} source files; click a single-day point to open one file.`
+			target.dates.length > 1
+				? `Health.md: this aggregate maps to ${target.dates.length} dates and ${target.sourcePaths.length} source files; click a single-day point to open one file.`
+				: `Health.md: this point maps to ${target.sourcePaths.length} source files; click a single-day point to open one file.`
 		);
 		return false;
 	}
@@ -611,16 +642,17 @@ async function openDailyNote(
 		new Notice("Health.md: no date found for this data point.");
 		return false;
 	}
-	if (target.dates.length > 1) {
+	const date = target.dates.length > 1 ? target.preferredDate : target.dates[0];
+	if (!date) {
 		new Notice(
 			`Health.md: this point represents ${target.dates.length} dates; click a single-day point to open a Daily Note.`
 		);
 		return false;
 	}
 
-	const path = getDailyNotePath(plugin.app, target.dates[0]);
+	const path = getDailyNotePath(plugin.app, date);
 	if (!path) {
-		new Notice(`Health.md: invalid date for Daily Note: ${target.dates[0]}`);
+		new Notice(`Health.md: invalid date for Daily Note: ${date}`);
 		return false;
 	}
 	return openFileByPath(plugin.app, path);

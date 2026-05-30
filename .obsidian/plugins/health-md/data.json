@@ -13,6 +13,7 @@
   "colorSleepRem": "#7c3aed",
   "colorSleepCore": "#2dd4bf",
   "colorSleepAwake": "#f59e0b",
+  "dataPointClickAction": "source",
   "mapTilesEnabled": true,
   "mapTileUrl": "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
   "mapTileAttribution": "© OpenStreetMap contributors © CARTO"

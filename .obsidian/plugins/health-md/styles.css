@@ -635,3 +635,101 @@
 	border: 2px dotted #3388ff;
 	background: rgba(255, 255, 255, 0.5);
 }
+
+/* Source data viewer (JSON/CSV opened from chart data points) */
+.health-md-source-view {
+	padding: 16px;
+	height: 100%;
+	box-sizing: border-box;
+	overflow: auto;
+}
+
+.health-md-source-header {
+	margin-bottom: 12px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.health-md-source-title {
+	font-size: 1.2em;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.health-md-source-meta {
+	margin-top: 4px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+.health-md-source-warning {
+	margin: 8px 0;
+	padding: 8px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+}
+
+.health-md-source-pre {
+	margin: 10px 0 0;
+	padding: 12px;
+	max-height: calc(100vh - 180px);
+	overflow: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: 0.85em;
+	line-height: 1.5;
+	white-space: pre;
+}
+
+.health-md-source-table-wrap {
+	margin-top: 10px;
+	max-height: calc(100vh - 220px);
+	overflow: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+}
+
+.health-md-source-table {
+	width: max-content;
+	min-width: 100%;
+	border-collapse: collapse;
+	font-size: 0.85em;
+}
+
+.health-md-source-table th,
+.health-md-source-table td {
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+	max-width: 280px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.health-md-source-table th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-weight: 600;
+}
+
+.health-md-source-table td {
+	color: var(--text-normal);
+	font-variant-numeric: tabular-nums;
+}
+
+.health-md-source-raw {
+	margin-top: 12px;
+}
+
+.health-md-source-raw summary {
+	cursor: pointer;
+	color: var(--text-muted);
+}

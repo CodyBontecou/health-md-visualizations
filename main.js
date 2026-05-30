@@ -13338,7 +13338,9 @@ var renderWeekdayAverage = (ctx, data, W, H, config, theme, statsEl, hits) => {
       x: padL + i * slot,
       y: plotTop,
       w: slot,
-      h: plotBottom - plotTop,
+      // Include the x-axis label area so clicking “Tuesday” behaves the
+      // same as clicking the Tuesday bar.
+      h: plotBottom + axisH - plotTop,
       title: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][dow],
       details: v != null ? [
         { label: "Average", value: `${meta.format(v)} ${meta.unit}` },
@@ -14582,6 +14584,14 @@ function collectPayloadNavigation(payload, dates, sourcePaths) {
     collectPayloadNavigation(payload.day, dates, sourcePaths);
   }
 }
+function sortedStrings(values) {
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+function getSourcePathsForDate(date, dataByDate) {
+  var _a, _b;
+  if (!date) return [];
+  return sortedStrings((_b = (_a = dataByDate.get(date)) == null ? void 0 : _a.sourcePaths) != null ? _b : []);
+}
 function getRegionNavigationTarget(region, dataByDate) {
   var _a, _b;
   const dates = /* @__PURE__ */ new Set();
@@ -14590,9 +14600,14 @@ function getRegionNavigationTarget(region, dataByDate) {
   for (const date of dates) {
     (_b = (_a = dataByDate.get(date)) == null ? void 0 : _a.sourcePaths) == null ? void 0 : _b.forEach((path) => sourcePaths.add(path));
   }
+  const sortedDates = sortedStrings(dates);
+  const preferredDate = sortedDates[sortedDates.length - 1];
+  const preferredSourcePaths = getSourcePathsForDate(preferredDate, dataByDate);
   return {
-    dates: Array.from(dates).sort((a, b) => a.localeCompare(b)),
-    sourcePaths: Array.from(sourcePaths).sort((a, b) => a.localeCompare(b))
+    dates: sortedDates,
+    sourcePaths: sortedStrings(sourcePaths),
+    preferredDate,
+    preferredSourcePaths
   };
 }
 function getDailyNotesOptions(app) {
@@ -14626,13 +14641,17 @@ async function openFileByPath(app, path) {
   return true;
 }
 async function openSourceFile(plugin, target) {
+  var _a;
   if (!target.sourcePaths.length) {
     new import_obsidian2.Notice("Health.md: no source file found for this data point.");
     return false;
   }
   if (target.sourcePaths.length > 1) {
+    if (target.preferredDate && ((_a = target.preferredSourcePaths) == null ? void 0 : _a.length) === 1) {
+      return openFileByPath(plugin.app, target.preferredSourcePaths[0]);
+    }
     new import_obsidian2.Notice(
-      `Health.md: this point maps to ${target.sourcePaths.length} source files; click a single-day point to open one file.`
+      target.dates.length > 1 ? `Health.md: this aggregate maps to ${target.dates.length} dates and ${target.sourcePaths.length} source files; click a single-day point to open one file.` : `Health.md: this point maps to ${target.sourcePaths.length} source files; click a single-day point to open one file.`
     );
     return false;
   }
@@ -14643,15 +14662,16 @@ async function openDailyNote(plugin, target) {
     new import_obsidian2.Notice("Health.md: no date found for this data point.");
     return false;
   }
-  if (target.dates.length > 1) {
+  const date = target.dates.length > 1 ? target.preferredDate : target.dates[0];
+  if (!date) {
     new import_obsidian2.Notice(
       `Health.md: this point represents ${target.dates.length} dates; click a single-day point to open a Daily Note.`
     );
     return false;
   }
-  const path = getDailyNotePath(plugin.app, target.dates[0]);
+  const path = getDailyNotePath(plugin.app, date);
   if (!path) {
-    new import_obsidian2.Notice(`Health.md: invalid date for Daily Note: ${target.dates[0]}`);
+    new import_obsidian2.Notice(`Health.md: invalid date for Daily Note: ${date}`);
     return false;
   }
   return openFileByPath(plugin.app, path);

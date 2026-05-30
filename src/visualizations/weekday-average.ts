@@ -250,7 +250,9 @@ export const renderWeekdayAverage: RenderFn = (
 			x: padL + i * slot,
 			y: plotTop,
 			w: slot,
-			h: plotBottom - plotTop,
+			// Include the x-axis label area so clicking “Tuesday” behaves the
+			// same as clicking the Tuesday bar.
+			h: plotBottom + axisH - plotTop,
 			title: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][dow],
 			details: v != null
 				? [

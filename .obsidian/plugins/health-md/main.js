@@ -9585,7 +9585,7 @@ __export(main_exports, {
   default: () => HealthMdPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // src/data-loader.ts
 var import_obsidian = require("obsidian");
@@ -9989,18 +9989,18 @@ var DataLoader = class {
         switch (format) {
           case "json": {
             const day = parseJSON(content);
-            if (day) days.push(day);
+            if (day) days.push(withSourcePath(day, file.path));
             break;
           }
           case "csv": {
             const csvDays = parseCSV(content);
-            days.push(...csvDays);
+            days.push(...csvDays.map((day) => withSourcePath(day, file.path)));
             break;
           }
           case "markdown":
           case "bases": {
             const day = parseMarkdown(content);
-            if (day) days.push(day);
+            if (day) days.push(withSourcePath(day, file.path));
             break;
           }
         }
@@ -10049,14 +10049,28 @@ var DataLoader = class {
       if (!(f instanceof import_obsidian.TFile)) return false;
       if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
       return matchesGlob(f.name, pattern);
-    });
+    }).sort((a, b) => a.path.localeCompare(b.path));
   }
 };
+function mergeSourcePaths(...pathLists) {
+  const paths = /* @__PURE__ */ new Set();
+  for (const list of pathLists) {
+    list == null ? void 0 : list.forEach((path) => paths.add(path));
+  }
+  return paths.size ? Array.from(paths).sort((a, b) => a.localeCompare(b)) : void 0;
+}
+function withSourcePath(day, path) {
+  return {
+    ...day,
+    sourcePaths: mergeSourcePaths(day.sourcePaths, [path])
+  };
+}
 function mergeDays(a, b) {
   var _a, _b, _c, _d, _e, _f, _g, _h;
   return {
     type: "health-data",
     date: a.date,
+    sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths),
     units: (_a = a.units) != null ? _a : b.units,
     activity: (_b = a.activity) != null ? _b : b.activity,
     heart: (_c = a.heart) != null ? _c : b.heart,
@@ -11070,7 +11084,7 @@ var renderSleepArchitecture = (ctx, data, W, H, _config, theme, _statsEl, hits) 
             value: formatDuration(stage.durationSeconds)
           }
         ],
-        payload: stage
+        payload: { day: night, stage }
       });
     });
   });
@@ -13324,7 +13338,9 @@ var renderWeekdayAverage = (ctx, data, W, H, config, theme, statsEl, hits) => {
       x: padL + i * slot,
       y: plotTop,
       w: slot,
-      h: plotBottom - plotTop,
+      // Include the x-axis label area so clicking “Tuesday” behaves the
+      // same as clicking the Tuesday bar.
+      h: plotBottom + axisH - plotTop,
       title: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][dow],
       details: v != null ? [
         { label: "Average", value: `${meta.format(v)} ${meta.unit}` },
@@ -13861,7 +13877,8 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       w: STRIDE,
       h: plotH,
       title: "Heart rate",
-      details
+      details,
+      payload: picked.day
     });
   }
   const avg4 = pts.reduce((s, p) => s + p.v, 0) / pts.length;
@@ -14519,6 +14536,146 @@ function renderTooltipContent(tooltipEl, region) {
     row.createSpan({ cls: "health-md-tooltip-value", text: value });
   });
 }
+var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function normalizeDataPointClickAction(value) {
+  if (typeof value !== "string") return null;
+  switch (value.trim().toLowerCase()) {
+    case "pin":
+    case "tooltip":
+    case "pin-tooltip":
+      return "pin";
+    case "source":
+    case "source-file":
+    case "data-file":
+    case "open-source":
+    case "open-source-file":
+      return "source";
+    case "daily":
+    case "daily-note":
+    case "open-daily":
+    case "open-daily-note":
+      return "daily";
+    default:
+      return null;
+  }
+}
+function collectPayloadNavigation(payload, dates, sourcePaths) {
+  if (typeof payload === "string") {
+    if (ISO_DATE.test(payload)) dates.add(payload);
+    return;
+  }
+  if (Array.isArray(payload)) {
+    payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
+    return;
+  }
+  if (!isRecord(payload)) return;
+  const date = payload.date;
+  if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
+  const paths = payload.sourcePaths;
+  if (Array.isArray(paths)) {
+    paths.forEach((path) => {
+      if (typeof path === "string" && path) sourcePaths.add(path);
+    });
+  }
+  if ("day" in payload) {
+    collectPayloadNavigation(payload.day, dates, sourcePaths);
+  }
+}
+function sortedStrings(values) {
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+function getSourcePathsForDate(date, dataByDate) {
+  var _a, _b;
+  if (!date) return [];
+  return sortedStrings((_b = (_a = dataByDate.get(date)) == null ? void 0 : _a.sourcePaths) != null ? _b : []);
+}
+function getRegionNavigationTarget(region, dataByDate) {
+  var _a, _b;
+  const dates = /* @__PURE__ */ new Set();
+  const sourcePaths = /* @__PURE__ */ new Set();
+  collectPayloadNavigation(region.payload, dates, sourcePaths);
+  for (const date of dates) {
+    (_b = (_a = dataByDate.get(date)) == null ? void 0 : _a.sourcePaths) == null ? void 0 : _b.forEach((path) => sourcePaths.add(path));
+  }
+  const sortedDates = sortedStrings(dates);
+  const preferredDate = sortedDates[sortedDates.length - 1];
+  const preferredSourcePaths = getSourcePathsForDate(preferredDate, dataByDate);
+  return {
+    dates: sortedDates,
+    sourcePaths: sortedStrings(sourcePaths),
+    preferredDate,
+    preferredSourcePaths
+  };
+}
+function getDailyNotesOptions(app) {
+  var _a, _b, _c, _d, _e, _f;
+  const internalPlugins = app.internalPlugins;
+  const dailyNotes = (_c = (_a = internalPlugins == null ? void 0 : internalPlugins.getPluginById) == null ? void 0 : _a.call(internalPlugins, "daily-notes")) != null ? _c : (_b = internalPlugins == null ? void 0 : internalPlugins.plugins) == null ? void 0 : _b["daily-notes"];
+  const options = (dailyNotes == null ? void 0 : dailyNotes.enabled) ? (_d = dailyNotes.instance) == null ? void 0 : _d.options : void 0;
+  return {
+    folder: (_e = options == null ? void 0 : options.folder) != null ? _e : "",
+    format: (_f = options == null ? void 0 : options.format) != null ? _f : "YYYY-MM-DD"
+  };
+}
+function getDailyNotePath(app, date) {
+  const dailyDate = (0, import_obsidian2.moment)(date, "YYYY-MM-DD", true);
+  if (!dailyDate.isValid()) return null;
+  const { folder, format } = getDailyNotesOptions(app);
+  let notePath = dailyDate.format(format || "YYYY-MM-DD");
+  if (!notePath.toLowerCase().endsWith(".md")) notePath += ".md";
+  return (0, import_obsidian2.normalizePath)(folder ? `${folder}/${notePath}` : notePath);
+}
+async function openFileByPath(app, path) {
+  const normalized = (0, import_obsidian2.normalizePath)(path);
+  const file = app.vault.getAbstractFileByPath(normalized);
+  if (!(file instanceof import_obsidian2.TFile)) {
+    new import_obsidian2.Notice(`Health.md: file not found in this vault: ${normalized}`);
+    return false;
+  }
+  const leaf = app.workspace.getLeaf(false);
+  await leaf.openFile(file, { active: true });
+  app.workspace.setActiveLeaf(leaf, { focus: true });
+  return true;
+}
+async function openSourceFile(plugin, target) {
+  var _a;
+  if (!target.sourcePaths.length) {
+    new import_obsidian2.Notice("Health.md: no source file found for this data point.");
+    return false;
+  }
+  if (target.sourcePaths.length > 1) {
+    if (target.preferredDate && ((_a = target.preferredSourcePaths) == null ? void 0 : _a.length) === 1) {
+      return openFileByPath(plugin.app, target.preferredSourcePaths[0]);
+    }
+    new import_obsidian2.Notice(
+      target.dates.length > 1 ? `Health.md: this aggregate maps to ${target.dates.length} dates and ${target.sourcePaths.length} source files; click a single-day point to open one file.` : `Health.md: this point maps to ${target.sourcePaths.length} source files; click a single-day point to open one file.`
+    );
+    return false;
+  }
+  return openFileByPath(plugin.app, target.sourcePaths[0]);
+}
+async function openDailyNote(plugin, target) {
+  if (!target.dates.length) {
+    new import_obsidian2.Notice("Health.md: no date found for this data point.");
+    return false;
+  }
+  const date = target.dates.length > 1 ? target.preferredDate : target.dates[0];
+  if (!date) {
+    new import_obsidian2.Notice(
+      `Health.md: this point represents ${target.dates.length} dates; click a single-day point to open a Daily Note.`
+    );
+    return false;
+  }
+  const path = getDailyNotePath(plugin.app, date);
+  if (!path) {
+    new import_obsidian2.Notice(`Health.md: invalid date for Daily Note: ${date}`);
+    return false;
+  }
+  return openFileByPath(plugin.app, path);
+}
 var VizRenderChild = class extends import_obsidian2.MarkdownRenderChild {
   constructor() {
     super(...arguments);
@@ -14538,7 +14695,7 @@ var VizRenderChild = class extends import_obsidian2.MarkdownRenderChild {
   }
 };
 async function renderCodeBlock(plugin, source, el, ctx) {
-  var _a, _b;
+  var _a, _b, _c, _d, _e;
   const config = parseConfig(source);
   if (!config.type) {
     el.createEl("p", {
@@ -14601,8 +14758,10 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     });
     return;
   }
-  const defaultWidth = (_a = config.width) != null ? _a : plugin.settings.defaultWidth;
-  const height = (_b = config.height) != null ? _b : plugin.settings.defaultHeight;
+  const clickAction = (_c = (_b = normalizeDataPointClickAction((_a = config.clickAction) != null ? _a : config.onClick)) != null ? _b : normalizeDataPointClickAction(plugin.settings.dataPointClickAction)) != null ? _c : "pin";
+  const dataByDate = new Map(data.map((day) => [day.date, day]));
+  const defaultWidth = (_d = config.width) != null ? _d : plugin.settings.defaultWidth;
+  const height = (_e = config.height) != null ? _e : plugin.settings.defaultHeight;
   const container = el.createDiv({ cls: "health-md-container" });
   const canvas = container.createEl("canvas");
   const tooltipEl = container.createDiv({ cls: "health-md-tooltip is-hidden" });
@@ -14651,15 +14810,31 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     canvas.removeClass("health-md-canvas-pointer");
     hideTooltip();
   });
+  function pinTooltip(region, x, y) {
+    pinned = region;
+    renderTooltipContent(tooltipEl, region);
+    placeTooltip(x, y);
+  }
   canvas.addEventListener("click", (e) => {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const region = findRegion(regions, x, y);
     if (region) {
-      pinned = region;
-      renderTooltipContent(tooltipEl, region);
-      placeTooltip(x, y);
+      if (clickAction === "pin") {
+        pinTooltip(region, x, y);
+        return;
+      }
+      pinned = null;
+      hideTooltip();
+      const target = getRegionNavigationTarget(region, dataByDate);
+      void (clickAction === "source" ? openSourceFile(plugin, target) : openDailyNote(plugin, target)).then((opened) => {
+        if (!opened) pinTooltip(region, x, y);
+      }).catch((error) => {
+        console.error("Health.md: failed to open data point target", error);
+        new import_obsidian2.Notice("Health.md: failed to open data point target.");
+        pinTooltip(region, x, y);
+      });
     } else if (pinned) {
       pinned = null;
       hideTooltip();
@@ -15585,6 +15760,150 @@ ${lines.join("\n")}
   }
 };
 
+// src/source-file-view.ts
+var import_obsidian4 = require("obsidian");
+var HEALTH_MD_SOURCE_VIEW_TYPE = "health-md-source-file";
+var HEALTH_MD_SOURCE_EXTENSIONS = ["json", "csv"];
+var CSV_PREVIEW_MAX_ROWS = 200;
+var CSV_PREVIEW_MAX_COLUMNS = 40;
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+function parseCsvLine(line) {
+  const cells = [];
+  let cell = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+    if (ch === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "," && !inQuotes) {
+      cells.push(cell);
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  cells.push(cell);
+  return cells;
+}
+function parseCsvPreview(content) {
+  const lines = content.split(/\r?\n/).filter((line, index, arr) => index < arr.length - 1 || line.length > 0);
+  const rows = [];
+  let truncatedColumns = false;
+  for (const line of lines.slice(0, CSV_PREVIEW_MAX_ROWS)) {
+    const cells = parseCsvLine(line);
+    if (cells.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
+    rows.push(cells.slice(0, CSV_PREVIEW_MAX_COLUMNS));
+  }
+  return {
+    rows,
+    truncatedRows: lines.length > CSV_PREVIEW_MAX_ROWS,
+    truncatedColumns
+  };
+}
+function renderPre(container, text, language) {
+  const pre = container.createEl("pre", { cls: `health-md-source-pre language-${language}` });
+  pre.createEl("code", { text, cls: `language-${language}` });
+}
+var HealthMdSourceFileView = class extends import_obsidian4.FileView {
+  constructor(leaf) {
+    super(leaf);
+    this.icon = "file-text";
+    this.navigation = true;
+    this.allowNoFile = false;
+  }
+  getViewType() {
+    return HEALTH_MD_SOURCE_VIEW_TYPE;
+  }
+  getDisplayText() {
+    var _a, _b;
+    return (_b = (_a = this.file) == null ? void 0 : _a.name) != null ? _b : "Health.md source";
+  }
+  canAcceptExtension(extension) {
+    return HEALTH_MD_SOURCE_EXTENSIONS.includes(extension.toLowerCase());
+  }
+  async onLoadFile(file) {
+    const content = await this.app.vault.cachedRead(file);
+    this.render(file, content);
+  }
+  async onUnloadFile(_file) {
+    this.contentEl.empty();
+  }
+  async onRename(file) {
+    if (this.file === file) {
+      await this.onLoadFile(file);
+    }
+  }
+  render(file, content) {
+    this.contentEl.empty();
+    const root = this.contentEl.createDiv({ cls: "health-md-source-view" });
+    const header = root.createDiv({ cls: "health-md-source-header" });
+    header.createDiv({ cls: "health-md-source-title", text: file.name });
+    header.createDiv({
+      cls: "health-md-source-meta",
+      text: `${file.path} \xB7 ${file.extension.toUpperCase()} \xB7 ${formatBytes(file.stat.size)}`
+    });
+    if (file.extension.toLowerCase() === "json") {
+      this.renderJson(root, content);
+    } else if (file.extension.toLowerCase() === "csv") {
+      this.renderCsv(root, content);
+    } else {
+      renderPre(root, content, "text");
+    }
+  }
+  renderJson(root, content) {
+    try {
+      const formatted = JSON.stringify(JSON.parse(content), null, 2);
+      renderPre(root, formatted, "json");
+    } catch (e) {
+      root.createDiv({
+        cls: "health-md-source-warning",
+        text: "Could not pretty-print JSON; showing raw file contents."
+      });
+      renderPre(root, content, "json");
+    }
+  }
+  renderCsv(root, content) {
+    const { rows, truncatedRows, truncatedColumns } = parseCsvPreview(content);
+    if (!rows.length) {
+      root.createDiv({ cls: "health-md-source-warning", text: "CSV file is empty." });
+      return;
+    }
+    const previewNote = root.createDiv({ cls: "health-md-source-meta" });
+    previewNote.setText(
+      `Previewing ${rows.length.toLocaleString()} row${rows.length === 1 ? "" : "s"}` + (truncatedRows || truncatedColumns ? " (truncated for readability)" : "")
+    );
+    const tableWrap = root.createDiv({ cls: "health-md-source-table-wrap" });
+    const table = tableWrap.createEl("table", { cls: "health-md-source-table" });
+    const [headerRow, ...bodyRows] = rows;
+    const thead = table.createEl("thead");
+    const tr = thead.createEl("tr");
+    headerRow.forEach((cell) => tr.createEl("th", { text: cell }));
+    const tbody = table.createEl("tbody");
+    bodyRows.forEach((row) => {
+      var _a;
+      const rowEl = tbody.createEl("tr");
+      const width = Math.max(headerRow.length, row.length);
+      for (let i = 0; i < width; i++) {
+        rowEl.createEl("td", { text: (_a = row[i]) != null ? _a : "" });
+      }
+    });
+    const details = root.createEl("details", { cls: "health-md-source-raw" });
+    details.createEl("summary", { text: "Raw CSV" });
+    renderPre(details, content, "csv");
+  }
+};
+
 // src/main.ts
 var COLOR_SCHEMES = {
   default: {
@@ -15663,11 +15982,16 @@ var DEFAULT_SETTINGS = {
   colorSleepRem: "#7c3aed",
   colorSleepCore: "#2dd4bf",
   colorSleepAwake: "#f59e0b",
+  dataPointClickAction: "pin",
   mapTilesEnabled: true,
   mapTileUrl: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
   mapTileAttribution: "\xA9 OpenStreetMap contributors \xA9 CARTO"
 };
-var HealthMdPlugin = class extends import_obsidian4.Plugin {
+var DATA_POINT_CLICK_ACTIONS = ["pin", "source", "daily"];
+function isDataPointClickAction(value) {
+  return typeof value === "string" && DATA_POINT_CLICK_ACTIONS.includes(value);
+}
+var HealthMdPlugin = class extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -15688,6 +16012,11 @@ var HealthMdPlugin = class extends import_obsidian4.Plugin {
       (source, el, ctx) => renderCodeBlock(this, source, el, ctx)
     );
     this.addSettingTab(new HealthMdSettingTab(this.app, this));
+    this.registerView(
+      HEALTH_MD_SOURCE_VIEW_TYPE,
+      (leaf) => new HealthMdSourceFileView(leaf)
+    );
+    this.registerExtensions(HEALTH_MD_SOURCE_EXTENSIONS, HEALTH_MD_SOURCE_VIEW_TYPE);
     this.registerEvent(
       this.app.vault.on("create", (file) => {
         if (file.path.startsWith(this.settings.dataFolder + "/")) {
@@ -15723,25 +16052,28 @@ var HealthMdPlugin = class extends import_obsidian4.Plugin {
       DEFAULT_SETTINGS,
       await this.loadData()
     );
+    if (!isDataPointClickAction(this.settings.dataPointClickAction)) {
+      this.settings.dataPointClickAction = DEFAULT_SETTINGS.dataPointClickAction;
+    }
   }
   async saveSettings() {
     await this.saveData(this.settings);
   }
   refreshViews() {
     this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
-      if (leaf.view instanceof import_obsidian4.MarkdownView) {
+      if (leaf.view instanceof import_obsidian5.MarkdownView) {
         leaf.view.previewMode.rerender(true);
       }
     });
   }
 };
-var FolderInputSuggest = class extends import_obsidian4.AbstractInputSuggest {
+var FolderInputSuggest = class extends import_obsidian5.AbstractInputSuggest {
   constructor(app, inputEl) {
     super(app, inputEl);
     this.limit = 200;
   }
   getFolderPaths() {
-    return this.app.vault.getAllLoadedFiles().filter((f) => f instanceof import_obsidian4.TFolder).map((f) => f.path).filter((path) => path.length > 0 && path !== "/").sort((a, b) => a.localeCompare(b));
+    return this.app.vault.getAllLoadedFiles().filter((f) => f instanceof import_obsidian5.TFolder).map((f) => f.path).filter((path) => path.length > 0 && path !== "/").sort((a, b) => a.localeCompare(b));
   }
   getSuggestions(query) {
     const q = query.trim().toLowerCase();
@@ -15753,7 +16085,7 @@ var FolderInputSuggest = class extends import_obsidian4.AbstractInputSuggest {
     el.setText(value);
   }
 };
-var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
+var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -15769,7 +16101,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
       await this.plugin.saveSettings();
       this.plugin.refreshViews();
     };
-    new import_obsidian4.Setting(containerEl).setName("Data folder").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Data folder").setDesc(
       "Path to the folder containing health data files. Start typing to pick an existing folder."
     ).addSearch((search) => {
       search.setPlaceholder("Health").setValue(this.plugin.settings.dataFolder).onChange(async (value) => {
@@ -15782,7 +16114,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
       search.inputEl.addEventListener("focus", () => folderSuggest.open());
       search.inputEl.addEventListener("click", () => folderSuggest.open());
     });
-    new import_obsidian4.Setting(containerEl).setName("File pattern").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("File pattern").setDesc(
       "Glob pattern to match files. Use * to include all supported files."
     ).addText(
       (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
@@ -15792,7 +16124,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.refreshViews();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Data format").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Data format").setDesc(
       "Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter."
     ).addDropdown(
       (dropdown) => dropdown.addOption("auto", "Auto-detect by extension").addOption("json", "JSON").addOption("csv", "CSV").addOption("markdown", "Markdown (YAML frontmatter required)").addOption("bases", "Obsidian bases (YAML frontmatter)").setValue(this.plugin.settings.dataFormat).onChange(async (value) => {
@@ -15802,14 +16134,14 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.refreshViews();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Theme").setDesc("Color theme for visualizations").addDropdown(
+    new import_obsidian5.Setting(containerEl).setName("Theme").setDesc("Color theme for visualizations").addDropdown(
       (dropdown) => dropdown.addOption("auto", "Auto (match Obsidian)").addOption("dark", "Dark").addOption("light", "Light").setValue(this.plugin.settings.theme).onChange(async (value) => {
         this.plugin.settings.theme = value;
         await this.plugin.saveSettings();
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Default width").setDesc("Default canvas width in pixels").addText(
+    new import_obsidian5.Setting(containerEl).setName("Default width").setDesc("Default canvas width in pixels").addText(
       (text) => text.setValue(String(this.plugin.settings.defaultWidth)).onChange(async (value) => {
         const num = parseInt(value, 10);
         if (!isNaN(num) && num > 0) {
@@ -15818,7 +16150,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         }
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Default height").setDesc("Default canvas height in pixels").addText(
+    new import_obsidian5.Setting(containerEl).setName("Default height").setDesc("Default canvas height in pixels").addText(
       (text) => text.setValue(String(this.plugin.settings.defaultHeight)).onChange(async (value) => {
         const num = parseInt(value, 10);
         if (!isNaN(num) && num > 0) {
@@ -15827,7 +16159,13 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         }
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Colors").setHeading();
+    new import_obsidian5.Setting(containerEl).setName("Data point click action").setDesc("Choose what happens when clicking a hoverable point in canvas charts.").addDropdown(
+      (dropdown) => dropdown.addOption("pin", "Pin tooltip").addOption("source", "Open source data file").addOption("daily", "Open daily note").setValue(this.plugin.settings.dataPointClickAction).onChange(async (value) => {
+        this.plugin.settings.dataPointClickAction = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian5.Setting(containerEl).setName("Colors").setHeading();
     const colorInputs = {};
     const applyScheme = async (schemeId) => {
       this.plugin.settings.colorScheme = schemeId;
@@ -15852,7 +16190,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
       this.plugin.redrawAll();
     };
     let schemeDropdown;
-    new import_obsidian4.Setting(containerEl).setName("Color scheme").setDesc("Choose a preset palette or customize individual colors below").addDropdown((dropdown) => {
+    new import_obsidian5.Setting(containerEl).setName("Color scheme").setDesc("Choose a preset palette or customize individual colors below").addDropdown((dropdown) => {
       Object.keys(COLOR_SCHEMES).forEach((id) => {
         dropdown.addOption(id, COLOR_SCHEMES[id].label);
       });
@@ -15873,7 +16211,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
       { key: "colorSleepAwake", name: "Awake", desc: "Color for awake periods in sleep charts" }
     ];
     colorSettings.forEach(({ key, name, desc }) => {
-      const setting = new import_obsidian4.Setting(containerEl).setName(name).setDesc(desc);
+      const setting = new import_obsidian5.Setting(containerEl).setName(name).setDesc(desc);
       const input = setting.controlEl.createEl("input");
       input.type = "color";
       input.value = this.plugin.settings[key];
@@ -15888,8 +16226,8 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         })();
       });
     });
-    new import_obsidian4.Setting(containerEl).setName("Workouts").setHeading();
-    new import_obsidian4.Setting(containerEl).setName("Maximum heart rate").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Workouts").setHeading();
+    new import_obsidian5.Setting(containerEl).setName("Maximum heart rate").setDesc(
       "Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age."
     ).addText(
       (text) => text.setPlaceholder("190").setValue(
@@ -15908,7 +16246,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Show map tiles").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Show map tiles").setDesc(
       "Render workout maps with tile imagery (requires network). When off, the route is drawn as a polyline on a plain background."
     ).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.mapTilesEnabled).onChange(async (value) => {
@@ -15917,7 +16255,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Map tile URL").setDesc(
+    new import_obsidian5.Setting(containerEl).setName("Map tile URL").setDesc(
       "Leaflet tile URL template. Replace with a different provider's URL if you have your own API key."
     ).addText(
       (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl).setValue(this.plugin.settings.mapTileUrl).onChange(async (value) => {
@@ -15926,7 +16264,7 @@ var HealthMdSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.redrawAll();
       })
     );
-    new import_obsidian4.Setting(containerEl).setName("Map attribution").setDesc("Attribution string shown on the map. Required by most tile providers.").addText(
+    new import_obsidian5.Setting(containerEl).setName("Map attribution").setDesc("Attribution string shown on the map. Required by most tile providers.").addText(
       (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution).setValue(this.plugin.settings.mapTileAttribution).onChange(async (value) => {
         this.plugin.settings.mapTileAttribution = value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
         await this.plugin.saveSettings();

@@ -123,11 +123,11 @@ and a two-period sparkline. The renderer marks improvements green based on the
 metric: higher is good for HRV, steps, VO₂ max, walking speed, sleep duration,
 and active calories; lower is good for resting heart rate.
 
-| Argument | Values | Default | Effect |
-| --- | --- | --- | --- |
-| `metric` | `resting-heart-rate`, `hrv`, `steps`, `vo2max`, `walking-speed`, `sleep-duration`, `active-calories` | `resting-heart-rate` | Chooses the trend metric and preferred direction. |
-| `currentWindow` | positive number of days | `90` | Number of most-recent filtered days in the current period. |
-| `priorWindow` | positive number of days | `90` | Number of days immediately before the current period used for comparison. |
+| Argument        | Values                                                                                               | Default              | Effect                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------- |
+| `metric`        | `resting-heart-rate`, `hrv`, `steps`, `vo2max`, `walking-speed`, `sleep-duration`, `active-calories` | `resting-heart-rate` | Chooses the trend metric and preferred direction.                         |
+| `currentWindow` | positive number of days                                                                              | `90`                 | Number of most-recent filtered days in the current period.                |
+| `priorWindow`   | positive number of days                                                                              | `90`                 | Number of days immediately before the current period used for comparison. |
 
 ```health-viz
 # Apple-style trend using the latest 30 days vs the previous 30 days.
