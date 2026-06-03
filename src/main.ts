@@ -7,7 +7,12 @@ import {
 	Setting,
 	TFolder,
 } from "obsidian";
-import { ColorSchemeId, DataPointClickAction, HealthMdSettings } from "./types";
+import {
+	ColorSchemeId,
+	DataFolderGranularity,
+	DataPointClickAction,
+	HealthMdSettings,
+} from "./types";
 import { DataLoader } from "./data-loader";
 import { renderCodeBlock } from "./renderer";
 import { openInsertVisualizationWizard } from "./insert-wizard";
@@ -95,6 +100,7 @@ const DEFAULT_SETTINGS: HealthMdSettings = {
 	dataFolder: "Health",
 	filePattern: "*",
 	dataFormat: "auto",
+	dataFolderGranularity: "flat",
 	theme: "auto",
 	defaultWidth: 800,
 	defaultHeight: 400,
@@ -113,9 +119,20 @@ const DEFAULT_SETTINGS: HealthMdSettings = {
 };
 
 const DATA_POINT_CLICK_ACTIONS: DataPointClickAction[] = ["pin", "source", "daily"];
+const DATA_FOLDER_GRANULARITIES: DataFolderGranularity[] = [
+	"flat",
+	"year",
+	"month",
+	"week",
+	"day",
+];
 
 function isDataPointClickAction(value: unknown): value is DataPointClickAction {
 	return typeof value === "string" && DATA_POINT_CLICK_ACTIONS.includes(value as DataPointClickAction);
+}
+
+function isDataFolderGranularity(value: unknown): value is DataFolderGranularity {
+	return typeof value === "string" && DATA_FOLDER_GRANULARITIES.includes(value as DataFolderGranularity);
 }
 
 export default class HealthMdPlugin extends Plugin {
@@ -189,6 +206,9 @@ export default class HealthMdPlugin extends Plugin {
 		);
 		if (!isDataPointClickAction(this.settings.dataPointClickAction)) {
 			this.settings.dataPointClickAction = DEFAULT_SETTINGS.dataPointClickAction;
+		}
+		if (!isDataFolderGranularity(this.settings.dataFolderGranularity)) {
+			this.settings.dataFolderGranularity = DEFAULT_SETTINGS.dataFolderGranularity;
 		}
 	}
 
@@ -275,9 +295,31 @@ class HealthMdSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName("Data folder structure")
+			.setDesc(
+				"Opt in to nested data folders. Flat keeps the existing direct-file behavior; nested choices scan up to that depth and also keep direct files loadable for gradual migrations."
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("flat", "Flat (Health/file.json)")
+					.addOption("year", "Year folders (Health/YYYY/file.json)")
+					.addOption("month", "Month folders (Health/YYYY/MM/file.json)")
+					.addOption("week", "Week folders (Health/YYYY/W23/file.json)")
+					.addOption("day", "Day folders (Health/YYYY/MM/DD/file.json)")
+					.setValue(this.plugin.settings.dataFolderGranularity)
+					.onChange(async (value) => {
+						this.plugin.settings.dataFolderGranularity =
+							value as DataFolderGranularity;
+						this.plugin.dataLoader.invalidate();
+						await this.plugin.saveSettings();
+						this.plugin.refreshViews();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName("File pattern")
 			.setDesc(
-				"Glob pattern to match files. Use * to include all supported files."
+				"Glob pattern to match file names or nested paths. Use * to include all supported files."
 			)
 			.addText((text) =>
 				text

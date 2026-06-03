@@ -1,26 +1,17 @@
 import { Vault, TFile, TFolder } from "obsidian";
-import { HealthDay, HealthMdSettings, DataFormat } from "./types";
+import {
+	dataFolderMaxDepth,
+	matchesDataFilePath,
+} from "./data-folder-layout";
+import {
+	HealthDay,
+	HealthMdSettings,
+	DataFormat,
+	DataFolderGranularity,
+} from "./types";
 import { parseJSON } from "./parsers/json-parser";
 import { parseCSV } from "./parsers/csv-parser";
 import { parseMarkdown } from "./parsers/markdown-parser";
-
-const SUPPORTED_EXTENSIONS = ["json", "csv", "md"];
-
-function matchesGlob(filename: string, pattern: string): boolean {
-	if (!pattern || pattern === "*" || pattern === "*.*") return true;
-
-	// Simple glob: support * and ? wildcards
-	const regex = new RegExp(
-		"^" +
-			pattern
-				.replace(/[.+^${}()|[\]\\]/g, "\\$&")
-				.replace(/\*/g, ".*")
-				.replace(/\?/g, ".") +
-			"$",
-		"i"
-	);
-	return regex.test(filename);
-}
 
 function detectFormat(extension: string, configFormat: DataFormat): DataFormat {
 	if (configFormat !== "auto") return configFormat;
@@ -103,9 +94,10 @@ export class DataLoader {
 	}
 
 	private getDataFiles(pattern: string): TFile[] {
+		const granularity = this.settings.dataFolderGranularity ?? "flat";
 		const configuredFolder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
 		if (configuredFolder instanceof TFolder) {
-			const files = this.getMatchingFiles(configuredFolder, pattern);
+			const files = this.getMatchingFiles(configuredFolder, pattern, granularity);
 			if (files.length > 0 || this.settings.dataFolder !== "Health") {
 				return files;
 			}
@@ -117,7 +109,7 @@ export class DataLoader {
 			for (const fallbackPath of ["examples/Health", "exports/Health"]) {
 				const bundledFolder = this.vault.getAbstractFileByPath(fallbackPath);
 				if (bundledFolder instanceof TFolder) {
-					const files = this.getMatchingFiles(bundledFolder, pattern);
+					const files = this.getMatchingFiles(bundledFolder, pattern, granularity);
 					if (files.length > 0) return files;
 				}
 			}
@@ -126,14 +118,60 @@ export class DataLoader {
 		return [];
 	}
 
-	private getMatchingFiles(folder: TFolder, pattern: string): TFile[] {
-		return folder.children
-			.filter((f): f is TFile => {
-				if (!(f instanceof TFile)) return false;
-				if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
-				return matchesGlob(f.name, pattern);
-			})
-			.sort((a, b) => a.path.localeCompare(b.path));
+	private getMatchingFiles(
+		folder: TFolder,
+		pattern: string,
+		granularity: DataFolderGranularity
+	): TFile[] {
+		const files: TFile[] = [];
+		this.collectMatchingFiles(
+			folder,
+			folder.path,
+			pattern,
+			dataFolderMaxDepth(granularity),
+			0,
+			files
+		);
+		return files.sort((a, b) => a.path.localeCompare(b.path));
+	}
+
+	private collectMatchingFiles(
+		folder: TFolder,
+		rootPath: string,
+		pattern: string,
+		maxDepth: number,
+		depth: number,
+		files: TFile[]
+	): void {
+		for (const child of folder.children) {
+			if (child instanceof TFile) {
+				if (this.matchesDataFile(child, rootPath, pattern)) {
+					files.push(child);
+				}
+				continue;
+			}
+
+			if (child instanceof TFolder && depth < maxDepth) {
+				this.collectMatchingFiles(
+					child,
+					rootPath,
+					pattern,
+					maxDepth,
+					depth + 1,
+					files
+				);
+			}
+		}
+	}
+
+	private matchesDataFile(file: TFile, rootPath: string, pattern: string): boolean {
+		return matchesDataFilePath({
+			name: file.name,
+			extension: file.extension,
+			path: file.path,
+			rootPath,
+			pattern,
+		});
 	}
 }
 

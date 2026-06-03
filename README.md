@@ -55,12 +55,15 @@ Open **Settings → Health.md Visualizations**:
 | Setting | Description |
 | --- | --- |
 | **Data folder** | Path inside the vault where the plugin looks for health files. Default `Health`. Includes folder autocomplete in settings to reduce path typos. |
-| **File pattern** | Glob to filter which files in that folder are loaded. Examples: `*` (all supported), `*.json`, `2026-*.md`, `health-*.csv`. |
+| **Data folder structure** | Opt-in folder nesting. Default `Flat` keeps the historical behavior of loading files directly under the data folder. `Year`, `Month`, `Week`, and `Day` scan up to those subfolder depths for layouts like `Health/2026/`, `Health/2026/06/`, `Health/2026/W23/`, or `Health/2026/06/03/`. |
+| **File pattern** | Glob to filter which files in that folder are loaded. Examples: `*` (all supported), `*.json`, `2026-*.md`, `health-*.csv`, `2026/**/*.json` for nested paths. |
 | **Data format** | `auto` (detect by file extension), `json`, `csv`, `markdown`, or `bases`. Markdown support requires YAML frontmatter (Bases-style). |
 | **Theme** | `auto` matches Obsidian, or force `dark` / `light`. |
 | **Default width** | Default canvas width in pixels (charts shrink to container width). |
 | **Default height** | Default canvas height in pixels. |
 | **Data point click action** | What clicking a hoverable canvas point does: pin the tooltip, open the source health data file, or open the matching Daily Note. |
+
+Nested folders are opt-in so existing vaults keep working unchanged. In any nested mode, files directly under the data folder are still loaded, which lets you migrate from flat exports gradually.
 
 The plugin watches your data folder and automatically refreshes its cache when files are added, modified, or deleted.
 

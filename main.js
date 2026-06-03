@@ -9590,6 +9590,47 @@ var import_obsidian5 = require("obsidian");
 // src/data-loader.ts
 var import_obsidian = require("obsidian");
 
+// src/data-folder-layout.ts
+var SUPPORTED_DATA_EXTENSIONS = ["json", "csv", "md"];
+var DATA_FOLDER_MAX_DEPTH = {
+  flat: 0,
+  year: 1,
+  month: 2,
+  week: 3,
+  day: 4
+};
+function dataFolderMaxDepth(granularity) {
+  return DATA_FOLDER_MAX_DEPTH[granularity];
+}
+function isSupportedDataExtension(extension) {
+  return SUPPORTED_DATA_EXTENSIONS.includes(extension);
+}
+function matchesGlob(candidate, pattern) {
+  if (!pattern || pattern === "*" || pattern === "*.*") return true;
+  const regex = new RegExp(
+    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+    "i"
+  );
+  return regex.test(candidate);
+}
+function relativePathFromRoot(rootPath, filePath) {
+  const normalizedRoot = rootPath.replace(/\/+$/g, "");
+  if (!normalizedRoot) return filePath;
+  const prefix = `${normalizedRoot}/`;
+  return filePath.startsWith(prefix) ? filePath.slice(prefix.length) : filePath;
+}
+function matchesDataFilePath({
+  name,
+  extension,
+  path,
+  rootPath,
+  pattern
+}) {
+  if (!isSupportedDataExtension(extension)) return false;
+  if (matchesGlob(name, pattern)) return true;
+  return matchesGlob(relativePathFromRoot(rootPath, path), pattern);
+}
+
 // src/parsers/json-parser.ts
 function parseJSON(content) {
   try {
@@ -9944,15 +9985,6 @@ function parseMarkdown(content) {
 }
 
 // src/data-loader.ts
-var SUPPORTED_EXTENSIONS = ["json", "csv", "md"];
-function matchesGlob(filename, pattern) {
-  if (!pattern || pattern === "*" || pattern === "*.*") return true;
-  const regex = new RegExp(
-    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
-    "i"
-  );
-  return regex.test(filename);
-}
 function detectFormat(extension, configFormat) {
   if (configFormat !== "auto") return configFormat;
   switch (extension) {
@@ -10026,9 +10058,11 @@ var DataLoader = class {
     this.cache = null;
   }
   getDataFiles(pattern) {
+    var _a;
+    const granularity = (_a = this.settings.dataFolderGranularity) != null ? _a : "flat";
     const configuredFolder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
     if (configuredFolder instanceof import_obsidian.TFolder) {
-      const files = this.getMatchingFiles(configuredFolder, pattern);
+      const files = this.getMatchingFiles(configuredFolder, pattern, granularity);
       if (files.length > 0 || this.settings.dataFolder !== "Health") {
         return files;
       }
@@ -10037,19 +10071,53 @@ var DataLoader = class {
       for (const fallbackPath of ["examples/Health", "exports/Health"]) {
         const bundledFolder = this.vault.getAbstractFileByPath(fallbackPath);
         if (bundledFolder instanceof import_obsidian.TFolder) {
-          const files = this.getMatchingFiles(bundledFolder, pattern);
+          const files = this.getMatchingFiles(bundledFolder, pattern, granularity);
           if (files.length > 0) return files;
         }
       }
     }
     return [];
   }
-  getMatchingFiles(folder, pattern) {
-    return folder.children.filter((f) => {
-      if (!(f instanceof import_obsidian.TFile)) return false;
-      if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
-      return matchesGlob(f.name, pattern);
-    }).sort((a, b) => a.path.localeCompare(b.path));
+  getMatchingFiles(folder, pattern, granularity) {
+    const files = [];
+    this.collectMatchingFiles(
+      folder,
+      folder.path,
+      pattern,
+      dataFolderMaxDepth(granularity),
+      0,
+      files
+    );
+    return files.sort((a, b) => a.path.localeCompare(b.path));
+  }
+  collectMatchingFiles(folder, rootPath, pattern, maxDepth, depth, files) {
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian.TFile) {
+        if (this.matchesDataFile(child, rootPath, pattern)) {
+          files.push(child);
+        }
+        continue;
+      }
+      if (child instanceof import_obsidian.TFolder && depth < maxDepth) {
+        this.collectMatchingFiles(
+          child,
+          rootPath,
+          pattern,
+          maxDepth,
+          depth + 1,
+          files
+        );
+      }
+    }
+  }
+  matchesDataFile(file, rootPath, pattern) {
+    return matchesDataFilePath({
+      name: file.name,
+      extension: file.extension,
+      path: file.path,
+      rootPath,
+      pattern
+    });
   }
 };
 function mergeSourcePaths(...pathLists) {
@@ -15971,6 +16039,7 @@ var DEFAULT_SETTINGS = {
   dataFolder: "Health",
   filePattern: "*",
   dataFormat: "auto",
+  dataFolderGranularity: "flat",
   theme: "auto",
   defaultWidth: 800,
   defaultHeight: 400,
@@ -15988,8 +16057,18 @@ var DEFAULT_SETTINGS = {
   mapTileAttribution: "\xA9 OpenStreetMap contributors \xA9 CARTO"
 };
 var DATA_POINT_CLICK_ACTIONS = ["pin", "source", "daily"];
+var DATA_FOLDER_GRANULARITIES = [
+  "flat",
+  "year",
+  "month",
+  "week",
+  "day"
+];
 function isDataPointClickAction(value) {
   return typeof value === "string" && DATA_POINT_CLICK_ACTIONS.includes(value);
+}
+function isDataFolderGranularity(value) {
+  return typeof value === "string" && DATA_FOLDER_GRANULARITIES.includes(value);
 }
 var HealthMdPlugin = class extends import_obsidian5.Plugin {
   constructor() {
@@ -16055,6 +16134,9 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
     if (!isDataPointClickAction(this.settings.dataPointClickAction)) {
       this.settings.dataPointClickAction = DEFAULT_SETTINGS.dataPointClickAction;
     }
+    if (!isDataFolderGranularity(this.settings.dataFolderGranularity)) {
+      this.settings.dataFolderGranularity = DEFAULT_SETTINGS.dataFolderGranularity;
+    }
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -16114,8 +16196,18 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
       search.inputEl.addEventListener("focus", () => folderSuggest.open());
       search.inputEl.addEventListener("click", () => folderSuggest.open());
     });
+    new import_obsidian5.Setting(containerEl).setName("Data folder structure").setDesc(
+      "Opt in to nested data folders. Flat keeps the existing direct-file behavior; nested choices scan up to that depth and also keep direct files loadable for gradual migrations."
+    ).addDropdown(
+      (dropdown) => dropdown.addOption("flat", "Flat (Health/file.json)").addOption("year", "Year folders (Health/YYYY/file.json)").addOption("month", "Month folders (Health/YYYY/MM/file.json)").addOption("week", "Week folders (Health/YYYY/W23/file.json)").addOption("day", "Day folders (Health/YYYY/MM/DD/file.json)").setValue(this.plugin.settings.dataFolderGranularity).onChange(async (value) => {
+        this.plugin.settings.dataFolderGranularity = value;
+        this.plugin.dataLoader.invalidate();
+        await this.plugin.saveSettings();
+        this.plugin.refreshViews();
+      })
+    );
     new import_obsidian5.Setting(containerEl).setName("File pattern").setDesc(
-      "Glob pattern to match files. Use * to include all supported files."
+      "Glob pattern to match file names or nested paths. Use * to include all supported files."
     ).addText(
       (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
         this.plugin.settings.filePattern = value.trim();
