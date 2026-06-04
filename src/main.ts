@@ -14,6 +14,11 @@ import {
 	HealthMdSettings,
 } from "./types";
 import { DataLoader } from "./data-loader";
+import {
+	DATA_FOLDER_PATH_TEMPLATE_VARIABLES,
+	DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE,
+	normalizeDataFolderPathTemplate,
+} from "./data-folder-layout";
 import { renderCodeBlock } from "./renderer";
 import { openInsertVisualizationWizard } from "./insert-wizard";
 import {
@@ -101,6 +106,7 @@ const DEFAULT_SETTINGS: HealthMdSettings = {
 	filePattern: "*",
 	dataFormat: "auto",
 	dataFolderGranularity: "flat",
+	dataFolderCustomPathTemplate: DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE,
 	theme: "auto",
 	defaultWidth: 800,
 	defaultHeight: 400,
@@ -125,6 +131,7 @@ const DATA_FOLDER_GRANULARITIES: DataFolderGranularity[] = [
 	"month",
 	"week",
 	"day",
+	"custom",
 ];
 
 function isDataPointClickAction(value: unknown): value is DataPointClickAction {
@@ -210,6 +217,10 @@ export default class HealthMdPlugin extends Plugin {
 		if (!isDataFolderGranularity(this.settings.dataFolderGranularity)) {
 			this.settings.dataFolderGranularity = DEFAULT_SETTINGS.dataFolderGranularity;
 		}
+		this.settings.dataFolderCustomPathTemplate = normalizeDataFolderPathTemplate(
+			this.settings.dataFolderCustomPathTemplate ??
+				DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE
+		);
 	}
 
 	async saveSettings(): Promise<void> {
@@ -273,6 +284,15 @@ class HealthMdSettingTab extends PluginSettingTab {
 			this.plugin.refreshViews();
 		};
 
+		const updateCustomPathTemplate = async (value: string): Promise<void> => {
+			const next = normalizeDataFolderPathTemplate(value);
+			if (next === this.plugin.settings.dataFolderCustomPathTemplate) return;
+			this.plugin.settings.dataFolderCustomPathTemplate = next;
+			this.plugin.dataLoader.invalidate();
+			await this.plugin.saveSettings();
+			this.plugin.refreshViews();
+		};
+
 		new Setting(containerEl)
 			.setName("Data folder")
 			.setDesc(
@@ -306,6 +326,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 					.addOption("month", "Month folders (Health/YYYY/MM/file.json)")
 					.addOption("week", "Week folders (Health/YYYY/W23/file.json)")
 					.addOption("day", "Day folders (Health/YYYY/MM/DD/file.json)")
+					.addOption("custom", "Custom template")
 					.setValue(this.plugin.settings.dataFolderGranularity)
 					.onChange(async (value) => {
 						this.plugin.settings.dataFolderGranularity =
@@ -313,6 +334,24 @@ class HealthMdSettingTab extends PluginSettingTab {
 						this.plugin.dataLoader.invalidate();
 						await this.plugin.saveSettings();
 						this.plugin.refreshViews();
+					})
+			);
+
+		const customTemplateVariables = DATA_FOLDER_PATH_TEMPLATE_VARIABLES
+			.map((variable) => `{${variable}}`)
+			.join(", ");
+
+		new Setting(containerEl)
+			.setName("Custom folder path template")
+			.setDesc(
+				`Used when Data folder structure is Custom. Available variables: ${customTemplateVariables}. Example: {year}/{month}/{day}.`
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE)
+					.setValue(this.plugin.settings.dataFolderCustomPathTemplate)
+					.onChange(async (value) => {
+						await updateCustomPathTemplate(value);
 					})
 			);
 

@@ -9592,15 +9592,37 @@ var import_obsidian = require("obsidian");
 
 // src/data-folder-layout.ts
 var SUPPORTED_DATA_EXTENSIONS = ["json", "csv", "md"];
-var DATA_FOLDER_MAX_DEPTH = {
+var DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE = "{year}/{month}/{day}";
+var DATA_FOLDER_PATH_TEMPLATE_VARIABLES = [
+  "year",
+  "month",
+  "week",
+  "day",
+  "date"
+];
+var MAX_CUSTOM_DATA_FOLDER_DEPTH = 8;
+var PREDEFINED_DATA_FOLDER_MAX_DEPTH = {
   flat: 0,
   year: 1,
   month: 2,
   week: 3,
   day: 4
 };
-function dataFolderMaxDepth(granularity) {
-  return DATA_FOLDER_MAX_DEPTH[granularity];
+function dataFolderMaxDepth(granularity, customTemplate = DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE) {
+  if (granularity === "custom") {
+    return customDataFolderPathTemplateDepth(customTemplate);
+  }
+  return PREDEFINED_DATA_FOLDER_MAX_DEPTH[granularity];
+}
+function customDataFolderPathTemplateDepth(template) {
+  const normalized = normalizeDataFolderPathTemplate(template);
+  if (!normalized) return 0;
+  return Math.min(normalized.split("/").length, MAX_CUSTOM_DATA_FOLDER_DEPTH);
+}
+function normalizeDataFolderPathTemplate(template) {
+  const normalized = template.trim().replace(/\\/g, "/").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\/+$/g, "").replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+  const safeSegments = normalized.split("/").map((segment) => segment.trim()).filter((segment) => segment.length > 0 && segment !== "." && segment !== "..").slice(0, MAX_CUSTOM_DATA_FOLDER_DEPTH);
+  return safeSegments.join("/") || DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE;
 }
 function isSupportedDataExtension(extension) {
   return SUPPORTED_DATA_EXTENSIONS.includes(extension);
@@ -10084,7 +10106,10 @@ var DataLoader = class {
       folder,
       folder.path,
       pattern,
-      dataFolderMaxDepth(granularity),
+      dataFolderMaxDepth(
+        granularity,
+        this.settings.dataFolderCustomPathTemplate
+      ),
       0,
       files
     );
@@ -16040,6 +16065,7 @@ var DEFAULT_SETTINGS = {
   filePattern: "*",
   dataFormat: "auto",
   dataFolderGranularity: "flat",
+  dataFolderCustomPathTemplate: DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE,
   theme: "auto",
   defaultWidth: 800,
   defaultHeight: 400,
@@ -16062,7 +16088,8 @@ var DATA_FOLDER_GRANULARITIES = [
   "year",
   "month",
   "week",
-  "day"
+  "day",
+  "custom"
 ];
 function isDataPointClickAction(value) {
   return typeof value === "string" && DATA_POINT_CLICK_ACTIONS.includes(value);
@@ -16126,6 +16153,7 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
     });
   }
   async loadSettings() {
+    var _a;
     this.settings = Object.assign(
       {},
       DEFAULT_SETTINGS,
@@ -16137,6 +16165,9 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
     if (!isDataFolderGranularity(this.settings.dataFolderGranularity)) {
       this.settings.dataFolderGranularity = DEFAULT_SETTINGS.dataFolderGranularity;
     }
+    this.settings.dataFolderCustomPathTemplate = normalizeDataFolderPathTemplate(
+      (_a = this.settings.dataFolderCustomPathTemplate) != null ? _a : DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE
+    );
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -16183,6 +16214,14 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
       await this.plugin.saveSettings();
       this.plugin.refreshViews();
     };
+    const updateCustomPathTemplate = async (value) => {
+      const next = normalizeDataFolderPathTemplate(value);
+      if (next === this.plugin.settings.dataFolderCustomPathTemplate) return;
+      this.plugin.settings.dataFolderCustomPathTemplate = next;
+      this.plugin.dataLoader.invalidate();
+      await this.plugin.saveSettings();
+      this.plugin.refreshViews();
+    };
     new import_obsidian5.Setting(containerEl).setName("Data folder").setDesc(
       "Path to the folder containing health data files. Start typing to pick an existing folder."
     ).addSearch((search) => {
@@ -16199,11 +16238,19 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
     new import_obsidian5.Setting(containerEl).setName("Data folder structure").setDesc(
       "Opt in to nested data folders. Flat keeps the existing direct-file behavior; nested choices scan up to that depth and also keep direct files loadable for gradual migrations."
     ).addDropdown(
-      (dropdown) => dropdown.addOption("flat", "Flat (Health/file.json)").addOption("year", "Year folders (Health/YYYY/file.json)").addOption("month", "Month folders (Health/YYYY/MM/file.json)").addOption("week", "Week folders (Health/YYYY/W23/file.json)").addOption("day", "Day folders (Health/YYYY/MM/DD/file.json)").setValue(this.plugin.settings.dataFolderGranularity).onChange(async (value) => {
+      (dropdown) => dropdown.addOption("flat", "Flat (Health/file.json)").addOption("year", "Year folders (Health/YYYY/file.json)").addOption("month", "Month folders (Health/YYYY/MM/file.json)").addOption("week", "Week folders (Health/YYYY/W23/file.json)").addOption("day", "Day folders (Health/YYYY/MM/DD/file.json)").addOption("custom", "Custom template").setValue(this.plugin.settings.dataFolderGranularity).onChange(async (value) => {
         this.plugin.settings.dataFolderGranularity = value;
         this.plugin.dataLoader.invalidate();
         await this.plugin.saveSettings();
         this.plugin.refreshViews();
+      })
+    );
+    const customTemplateVariables = DATA_FOLDER_PATH_TEMPLATE_VARIABLES.map((variable) => `{${variable}}`).join(", ");
+    new import_obsidian5.Setting(containerEl).setName("Custom folder path template").setDesc(
+      `Used when Data folder structure is Custom. Available variables: ${customTemplateVariables}. Example: {year}/{month}/{day}.`
+    ).addText(
+      (text) => text.setPlaceholder(DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE).setValue(this.plugin.settings.dataFolderCustomPathTemplate).onChange(async (value) => {
+        await updateCustomPathTemplate(value);
       })
     );
     new import_obsidian5.Setting(containerEl).setName("File pattern").setDesc(

@@ -152,7 +152,7 @@ export interface VizConfig {
 }
 
 export type DataFormat = "auto" | "json" | "csv" | "markdown" | "bases";
-export type DataFolderGranularity = "flat" | "year" | "month" | "week" | "day";
+export type DataFolderGranularity = "flat" | "year" | "month" | "week" | "day" | "custom";
 export type DataPointClickAction = "pin" | "source" | "daily";
 
 export interface ColorPalette {
@@ -174,6 +174,7 @@ export interface HealthMdSettings {
 	filePattern: string;
 	dataFormat: DataFormat;
 	dataFolderGranularity: DataFolderGranularity;
+	dataFolderCustomPathTemplate: string;
 	theme: "dark" | "light" | "auto";
 	defaultWidth: number;
 	defaultHeight: number;

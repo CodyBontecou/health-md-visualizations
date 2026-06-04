@@ -46,6 +46,20 @@ try {
 	}
 
 	assert.equal(layout.shouldDescendIntoDataFolderDepth("flat", 0), false);
+	assert.equal(layout.dataFolderMaxDepth("custom", "{year}/{month}/{day}"), 3);
+	assert.equal(layout.dataFolderMaxDepth("custom", "Apple Health/{year}/{week}"), 3);
+	assert.equal(layout.shouldDescendIntoDataFolderDepth("custom", 2, "{year}/{month}/{day}"), true);
+	assert.equal(layout.shouldDescendIntoDataFolderDepth("custom", 3, "{year}/{month}/{day}"), false);
+	assert.equal(layout.normalizeDataFolderPathTemplate("../../{year}//{month}/./{day}/"), "{year}/{month}/{day}");
+	assert.equal(layout.normalizeDataFolderPathTemplate(""), "{year}/{month}/{day}");
+	assert.deepEqual(layout.dataFolderPathTemplateDateParts("2026-06-03"), {
+		year: "2026",
+		month: "06",
+		week: "W23",
+		day: "03",
+		date: "2026-06-03",
+	});
+	assert.equal(layout.renderDataFolderPathTemplate("exports/{year}/{week}/{date}", "2026-06-03"), "exports/2026/W23/2026-06-03");
 	assert.equal(layout.relativePathFromRoot("Health", "Health/2026/06/03/data.json"), "2026/06/03/data.json");
 
 	assert.equal(

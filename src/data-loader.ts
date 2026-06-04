@@ -128,7 +128,10 @@ export class DataLoader {
 			folder,
 			folder.path,
 			pattern,
-			dataFolderMaxDepth(granularity),
+			dataFolderMaxDepth(
+				granularity,
+				this.settings.dataFolderCustomPathTemplate
+			),
 			0,
 			files
 		);
