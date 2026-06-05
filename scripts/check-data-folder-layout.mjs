@@ -51,6 +51,7 @@ try {
 	assert.equal(layout.shouldDescendIntoDataFolderDepth("custom", 2, "{year}/{month}/{day}"), true);
 	assert.equal(layout.shouldDescendIntoDataFolderDepth("custom", 3, "{year}/{month}/{day}"), false);
 	assert.equal(layout.normalizeDataFolderPathTemplate("../../{year}//{month}/./{day}/"), "{year}/{month}/{day}");
+	assert.equal(layout.normalizeDataFolderPathTemplate("exports\u0000/{year}\u001f/{month}\u007f"), "exports/{year}/{month}");
 	assert.equal(layout.normalizeDataFolderPathTemplate(""), "{year}/{month}/{day}");
 	assert.deepEqual(layout.dataFolderPathTemplateDateParts("2026-06-03"), {
 		year: "2026",

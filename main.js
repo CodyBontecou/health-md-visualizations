@@ -9620,7 +9620,9 @@ function customDataFolderPathTemplateDepth(template) {
   return Math.min(normalized.split("/").length, MAX_CUSTOM_DATA_FOLDER_DEPTH);
 }
 function normalizeDataFolderPathTemplate(template) {
-  const normalized = template.trim().replace(/\\/g, "/").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\/+$/g, "").replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+  const normalized = stripPathControlCharacters(
+    template.trim().replace(/\\/g, "/")
+  ).replace(/\/+$/g, "").replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
   const safeSegments = normalized.split("/").map((segment) => segment.trim()).filter((segment) => segment.length > 0 && segment !== "." && segment !== "..").slice(0, MAX_CUSTOM_DATA_FOLDER_DEPTH);
   return safeSegments.join("/") || DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE;
 }
@@ -9651,6 +9653,17 @@ function matchesDataFilePath({
   if (!isSupportedDataExtension(extension)) return false;
   if (matchesGlob(name, pattern)) return true;
   return matchesGlob(relativePathFromRoot(rootPath, path), pattern);
+}
+function stripPathControlCharacters(value) {
+  var _a;
+  let result = "";
+  for (const character of value) {
+    const codePoint = (_a = character.codePointAt(0)) != null ? _a : 0;
+    if (codePoint >= 32 && codePoint !== 127) {
+      result += character;
+    }
+  }
+  return result;
 }
 
 // src/parsers/json-parser.ts
@@ -16238,7 +16251,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
     new import_obsidian5.Setting(containerEl).setName("Data folder structure").setDesc(
       "Opt in to nested data folders. Flat keeps the existing direct-file behavior; nested choices scan up to that depth and also keep direct files loadable for gradual migrations."
     ).addDropdown(
-      (dropdown) => dropdown.addOption("flat", "Flat (Health/file.json)").addOption("year", "Year folders (Health/YYYY/file.json)").addOption("month", "Month folders (Health/YYYY/MM/file.json)").addOption("week", "Week folders (Health/YYYY/W23/file.json)").addOption("day", "Day folders (Health/YYYY/MM/DD/file.json)").addOption("custom", "Custom template").setValue(this.plugin.settings.dataFolderGranularity).onChange(async (value) => {
+      (dropdown) => dropdown.addOption("flat", "Flat (health/file.json)").addOption("year", "Year folders (health/yyyy/file.json)").addOption("month", "Month folders (health/yyyy/mm/file.json)").addOption("week", "Week folders (health/yyyy/w23/file.json)").addOption("day", "Day folders (health/yyyy/mm/dd/file.json)").addOption("custom", "Custom template").setValue(this.plugin.settings.dataFolderGranularity).onChange(async (value) => {
         this.plugin.settings.dataFolderGranularity = value;
         this.plugin.dataLoader.invalidate();
         await this.plugin.saveSettings();

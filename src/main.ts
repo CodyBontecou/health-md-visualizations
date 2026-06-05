@@ -321,11 +321,11 @@ class HealthMdSettingTab extends PluginSettingTab {
 			)
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption("flat", "Flat (Health/file.json)")
-					.addOption("year", "Year folders (Health/YYYY/file.json)")
-					.addOption("month", "Month folders (Health/YYYY/MM/file.json)")
-					.addOption("week", "Week folders (Health/YYYY/W23/file.json)")
-					.addOption("day", "Day folders (Health/YYYY/MM/DD/file.json)")
+					.addOption("flat", "Flat (health/file.json)")
+					.addOption("year", "Year folders (health/yyyy/file.json)")
+					.addOption("month", "Month folders (health/yyyy/mm/file.json)")
+					.addOption("week", "Week folders (health/yyyy/w23/file.json)")
+					.addOption("day", "Day folders (health/yyyy/mm/dd/file.json)")
 					.addOption("custom", "Custom template")
 					.setValue(this.plugin.settings.dataFolderGranularity)
 					.onChange(async (value) => {

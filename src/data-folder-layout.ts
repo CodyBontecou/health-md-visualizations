@@ -67,10 +67,9 @@ export function customDataFolderPathTemplateDepth(template: string): number {
 }
 
 export function normalizeDataFolderPathTemplate(template: string): string {
-	const normalized = template
-		.trim()
-		.replace(/\\/g, "/")
-		.replace(/[\u0000-\u001f\u007f]/g, "")
+	const normalized = stripPathControlCharacters(
+		template.trim().replace(/\\/g, "/")
+	)
 		.replace(/\/+$/g, "")
 		.replace(/^\/+|\/+$/g, "")
 		.replace(/\/+/g, "/");
@@ -106,12 +105,15 @@ export function renderDataFolderPathTemplate(
 ): string {
 	const normalized = normalizeDataFolderPathTemplate(template);
 	const parts = dataFolderPathTemplateDateParts(value);
-	return normalized.replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (match, name) => {
-		if (isDataFolderPathTemplateVariable(name)) {
-			return parts[name];
+	return normalized.replace(
+		/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g,
+		(match: string, name: string): string => {
+			if (isDataFolderPathTemplateVariable(name)) {
+				return parts[name];
+			}
+			return match;
 		}
-		return match;
-	});
+	);
 }
 
 export function isSupportedDataExtension(extension: string): boolean {
@@ -151,6 +153,17 @@ export function matchesDataFilePath({
 	if (!isSupportedDataExtension(extension)) return false;
 	if (matchesGlob(name, pattern)) return true;
 	return matchesGlob(relativePathFromRoot(rootPath, path), pattern);
+}
+
+function stripPathControlCharacters(value: string): string {
+	let result = "";
+	for (const character of value) {
+		const codePoint = character.codePointAt(0) ?? 0;
+		if (codePoint >= 0x20 && codePoint !== 0x7f) {
+			result += character;
+		}
+	}
+	return result;
 }
 
 function isDataFolderPathTemplateVariable(
