@@ -5,6 +5,7 @@ import {
 	Plugin,
 	PluginSettingTab,
 	Setting,
+	type SettingDefinitionItem,
 	TFolder,
 } from "obsidian";
 import {
@@ -271,10 +272,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
-
+	getSettingDefinitions(): SettingDefinitionItem[] {
 		const updateDataFolder = async (value: string): Promise<void> => {
 			const next = value.trim().replace(/^\/+|\/+$/g, "");
 			if (next === this.plugin.settings.dataFolder) return;
@@ -293,173 +291,13 @@ class HealthMdSettingTab extends PluginSettingTab {
 			this.plugin.refreshViews();
 		};
 
-		new Setting(containerEl)
-			.setName("Data folder")
-			.setDesc(
-				"Path to the folder containing health data files. Start typing to pick an existing folder."
-			)
-			.addSearch((search) => {
-				search
-					.setPlaceholder("Health")
-					.setValue(this.plugin.settings.dataFolder)
-					.onChange(async (value) => {
-						await updateDataFolder(value);
-					});
-
-				const folderSuggest = new FolderInputSuggest(this.app, search.inputEl);
-				folderSuggest.onSelect((value) => {
-					void updateDataFolder(value);
-				});
-				search.inputEl.addEventListener("focus", () => folderSuggest.open());
-				search.inputEl.addEventListener("click", () => folderSuggest.open());
-			});
-
-		new Setting(containerEl)
-			.setName("Data folder structure")
-			.setDesc(
-				"Opt in to nested data folders. Flat keeps the existing direct-file behavior; nested choices scan up to that depth and also keep direct files loadable for gradual migrations."
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("flat", "Flat (health/file.json)")
-					.addOption("year", "Year folders (health/yyyy/file.json)")
-					.addOption("month", "Month folders (health/yyyy/mm/file.json)")
-					.addOption("week", "Week folders (health/yyyy/w23/file.json)")
-					.addOption("day", "Day folders (health/yyyy/mm/dd/file.json)")
-					.addOption("custom", "Custom template")
-					.setValue(this.plugin.settings.dataFolderGranularity)
-					.onChange(async (value) => {
-						this.plugin.settings.dataFolderGranularity =
-							value as DataFolderGranularity;
-						this.plugin.dataLoader.invalidate();
-						await this.plugin.saveSettings();
-						this.plugin.refreshViews();
-					})
-			);
-
 		const customTemplateVariables = DATA_FOLDER_PATH_TEMPLATE_VARIABLES
 			.map((variable) => `{${variable}}`)
 			.join(", ");
 
-		new Setting(containerEl)
-			.setName("Custom folder path template")
-			.setDesc(
-				`Used when Data folder structure is Custom. Available variables: ${customTemplateVariables}. Example: {year}/{month}/{day}.`
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE)
-					.setValue(this.plugin.settings.dataFolderCustomPathTemplate)
-					.onChange(async (value) => {
-						await updateCustomPathTemplate(value);
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("File pattern")
-			.setDesc(
-				"Glob pattern to match file names or nested paths. Use * to include all supported files."
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder("*")
-					.setValue(this.plugin.settings.filePattern)
-					.onChange(async (value) => {
-						this.plugin.settings.filePattern = value.trim();
-						this.plugin.dataLoader.invalidate();
-						await this.plugin.saveSettings();
-						this.plugin.refreshViews();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Data format")
-			.setDesc(
-				"Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter."
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("auto", "Auto-detect by extension")
-					.addOption("json", "JSON")
-					.addOption("csv", "CSV")
-					.addOption("markdown", "Markdown (YAML frontmatter required)")
-					.addOption("bases", "Obsidian bases (YAML frontmatter)")
-					.setValue(this.plugin.settings.dataFormat)
-					.onChange(async (value) => {
-						this.plugin.settings.dataFormat = value as HealthMdSettings["dataFormat"];
-						this.plugin.dataLoader.invalidate();
-						await this.plugin.saveSettings();
-						this.plugin.refreshViews();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Theme")
-			.setDesc("Color theme for visualizations")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("auto", "Auto (match Obsidian)")
-					.addOption("dark", "Dark")
-					.addOption("light", "Light")
-					.setValue(this.plugin.settings.theme)
-					.onChange(async (value) => {
-						this.plugin.settings.theme = value as "auto" | "dark" | "light";
-						await this.plugin.saveSettings();
-						this.plugin.redrawAll();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Default width")
-			.setDesc("Default canvas width in pixels")
-			.addText((text) =>
-				text
-					.setValue(String(this.plugin.settings.defaultWidth))
-					.onChange(async (value) => {
-						const num = parseInt(value, 10);
-						if (!isNaN(num) && num > 0) {
-							this.plugin.settings.defaultWidth = num;
-							await this.plugin.saveSettings();
-						}
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Default height")
-			.setDesc("Default canvas height in pixels")
-			.addText((text) =>
-				text
-					.setValue(String(this.plugin.settings.defaultHeight))
-					.onChange(async (value) => {
-						const num = parseInt(value, 10);
-						if (!isNaN(num) && num > 0) {
-							this.plugin.settings.defaultHeight = num;
-							await this.plugin.saveSettings();
-						}
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Data point click action")
-			.setDesc("Choose what happens when clicking a hoverable point in canvas charts.")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("pin", "Pin tooltip")
-					.addOption("source", "Open source data file")
-					.addOption("daily", "Open daily note")
-					.setValue(this.plugin.settings.dataPointClickAction)
-					.onChange(async (value) => {
-						this.plugin.settings.dataPointClickAction = value as DataPointClickAction;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl).setName("Colors").setHeading();
-
-		// Color scheme preset picker
 		const colorInputs: Record<string, HTMLInputElement> = {};
 
-		const applyScheme = async (schemeId: ColorSchemeId) => {
+		const applyScheme = async (schemeId: ColorSchemeId): Promise<void> => {
 			this.plugin.settings.colorScheme = schemeId;
 			if (schemeId !== "custom") {
 				const scheme = COLOR_SCHEMES[schemeId];
@@ -470,7 +308,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 				this.plugin.settings.colorSleepRem = scheme.sleepRem;
 				this.plugin.settings.colorSleepCore = scheme.sleepCore;
 				this.plugin.settings.colorSleepAwake = scheme.sleepAwake;
-				// Sync color pickers to the new values
+				// Sync color pickers to the new values.
 				if (colorInputs["colorAccent"]) colorInputs["colorAccent"].value = scheme.accent;
 				if (colorInputs["colorSecondary"]) colorInputs["colorSecondary"].value = scheme.secondary;
 				if (colorInputs["colorHeart"]) colorInputs["colorHeart"].value = scheme.heart;
@@ -483,23 +321,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 			this.plugin.redrawAll();
 		};
 
-		let schemeDropdown: HTMLSelectElement;
-		new Setting(containerEl)
-			.setName("Color scheme")
-			.setDesc("Choose a preset palette or customize individual colors below")
-			.addDropdown((dropdown) => {
-				(Object.keys(COLOR_SCHEMES) as ColorSchemeId[]).forEach((id) => {
-					dropdown.addOption(id, COLOR_SCHEMES[id as Exclude<ColorSchemeId, "custom">].label);
-				});
-				dropdown.addOption("custom", "Custom");
-				dropdown.setValue(this.plugin.settings.colorScheme);
-				dropdown.onChange(async (value) => {
-					await applyScheme(value as ColorSchemeId);
-				});
-				schemeDropdown = dropdown.selectEl;
-			});
-
-		// Individual color pickers
+		let schemeDropdown: HTMLSelectElement | undefined;
 		const colorSettings: Array<{
 			key: keyof HealthMdSettings;
 			name: string;
@@ -514,99 +336,298 @@ class HealthMdSettingTab extends PluginSettingTab {
 			{ key: "colorSleepAwake", name: "Awake", desc: "Color for awake periods in sleep charts" },
 		];
 
-		colorSettings.forEach(({ key, name, desc }) => {
-			const setting = new Setting(containerEl).setName(name).setDesc(desc);
-			const input = setting.controlEl.createEl("input");
-			input.type = "color";
-			input.value = this.plugin.settings[key] as string;
-			colorInputs[key] = input;
-			input.addEventListener("change", () => {
-				void (async () => {
-					(this.plugin.settings[key] as string) = input.value;
-					// Switch to custom when the user manually changes a color
-					this.plugin.settings.colorScheme = "custom";
-					if (schemeDropdown) schemeDropdown.value = "custom";
-					await this.plugin.saveSettings();
-					this.plugin.redrawAll();
-				})();
-			});
-		});
+		return [
+			{
+				name: "Data folder",
+				desc: "Path to the folder containing health data files. Start typing to pick an existing folder.",
+				render: (setting) => {
+					setting.addSearch((search) => {
+						search
+							.setPlaceholder("Health")
+							.setValue(this.plugin.settings.dataFolder)
+							.onChange(async (value) => {
+								await updateDataFolder(value);
+							});
 
-		new Setting(containerEl).setName("Workouts").setHeading();
-
-		new Setting(containerEl)
-			.setName("Maximum heart rate")
-			.setDesc(
-				"Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age."
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder("190")
-					.setValue(
-						this.plugin.settings.maxHeartRate != null
-							? String(this.plugin.settings.maxHeartRate)
-							: ""
-					)
-					.onChange(async (value) => {
-						const trimmed = value.trim();
-						if (!trimmed) {
-							this.plugin.settings.maxHeartRate = undefined;
-						} else {
-							const num = parseInt(trimmed, 10);
-							if (Number.isFinite(num) && num > 0) {
-								this.plugin.settings.maxHeartRate = num;
-							}
-						}
-						await this.plugin.saveSettings();
-						this.plugin.redrawAll();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Show map tiles")
-			.setDesc(
-				"Render workout maps with tile imagery (requires network). When off, the route is drawn as a polyline on a plain background."
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.mapTilesEnabled)
-					.onChange(async (value) => {
-						this.plugin.settings.mapTilesEnabled = value;
-						await this.plugin.saveSettings();
-						this.plugin.redrawAll();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Map tile URL")
-			.setDesc(
-				"Leaflet tile URL template. Replace with a different provider's URL if you have your own API key."
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl)
-					.setValue(this.plugin.settings.mapTileUrl)
-					.onChange(async (value) => {
-						this.plugin.settings.mapTileUrl =
-							value.trim() || DEFAULT_SETTINGS.mapTileUrl;
-						await this.plugin.saveSettings();
-						this.plugin.redrawAll();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Map attribution")
-			.setDesc("Attribution string shown on the map. Required by most tile providers.")
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution)
-					.setValue(this.plugin.settings.mapTileAttribution)
-					.onChange(async (value) => {
-						this.plugin.settings.mapTileAttribution =
-							value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
-						await this.plugin.saveSettings();
-						this.plugin.redrawAll();
-					})
-			);
+						const folderSuggest = new FolderInputSuggest(this.app, search.inputEl);
+						folderSuggest.onSelect((value) => {
+							void updateDataFolder(value);
+						});
+						search.inputEl.addEventListener("focus", () => folderSuggest.open());
+						search.inputEl.addEventListener("click", () => folderSuggest.open());
+					});
+				},
+			},
+			{
+				name: "Data folder structure",
+				desc: "Opt in to nested data folders. Flat keeps the existing direct-file behavior; nested choices scan up to that depth and also keep direct files loadable for gradual migrations.",
+				render: (setting) => {
+					setting.addDropdown((dropdown) =>
+						dropdown
+							.addOption("flat", "Flat (health/file.json)")
+							.addOption("year", "Year folders (health/yyyy/file.json)")
+							.addOption("month", "Month folders (health/yyyy/mm/file.json)")
+							.addOption("week", "Week folders (health/yyyy/w23/file.json)")
+							.addOption("day", "Day folders (health/yyyy/mm/dd/file.json)")
+							.addOption("custom", "Custom template")
+							.setValue(this.plugin.settings.dataFolderGranularity)
+							.onChange(async (value) => {
+								this.plugin.settings.dataFolderGranularity =
+									value as DataFolderGranularity;
+								this.plugin.dataLoader.invalidate();
+								await this.plugin.saveSettings();
+								this.plugin.refreshViews();
+							})
+					);
+				},
+			},
+			{
+				name: "Custom folder path template",
+				desc: `Used when Data folder structure is Custom. Available variables: ${customTemplateVariables}. Example: {year}/{month}/{day}.`,
+				render: (setting) => {
+					setting.addText((text) =>
+						text
+							.setPlaceholder(DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE)
+							.setValue(this.plugin.settings.dataFolderCustomPathTemplate)
+							.onChange(async (value) => {
+								await updateCustomPathTemplate(value);
+							})
+					);
+				},
+			},
+			{
+				name: "File pattern",
+				desc: "Glob pattern to match file names or nested paths. Use * to include all supported files.",
+				render: (setting) => {
+					setting.addText((text) =>
+						text
+							.setPlaceholder("*")
+							.setValue(this.plugin.settings.filePattern)
+							.onChange(async (value) => {
+								this.plugin.settings.filePattern = value.trim();
+								this.plugin.dataLoader.invalidate();
+								await this.plugin.saveSettings();
+								this.plugin.refreshViews();
+							})
+					);
+				},
+			},
+			{
+				name: "Data format",
+				desc: "Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter.",
+				render: (setting) => {
+					setting.addDropdown((dropdown) =>
+						dropdown
+							.addOption("auto", "Auto-detect by extension")
+							.addOption("json", "JSON")
+							.addOption("csv", "CSV")
+							.addOption("markdown", "Markdown (YAML frontmatter required)")
+							.addOption("bases", "Obsidian bases (YAML frontmatter)")
+							.setValue(this.plugin.settings.dataFormat)
+							.onChange(async (value) => {
+								this.plugin.settings.dataFormat = value as HealthMdSettings["dataFormat"];
+								this.plugin.dataLoader.invalidate();
+								await this.plugin.saveSettings();
+								this.plugin.refreshViews();
+							})
+					);
+				},
+			},
+			{
+				name: "Theme",
+				desc: "Color theme for visualizations",
+				render: (setting) => {
+					setting.addDropdown((dropdown) =>
+						dropdown
+							.addOption("auto", "Auto (match Obsidian)")
+							.addOption("dark", "Dark")
+							.addOption("light", "Light")
+							.setValue(this.plugin.settings.theme)
+							.onChange(async (value) => {
+								this.plugin.settings.theme = value as "auto" | "dark" | "light";
+								await this.plugin.saveSettings();
+								this.plugin.redrawAll();
+							})
+					);
+				},
+			},
+			{
+				name: "Default width",
+				desc: "Default canvas width in pixels",
+				render: (setting) => {
+					setting.addText((text) =>
+						text
+							.setValue(String(this.plugin.settings.defaultWidth))
+							.onChange(async (value) => {
+								const num = parseInt(value, 10);
+								if (!isNaN(num) && num > 0) {
+									this.plugin.settings.defaultWidth = num;
+									await this.plugin.saveSettings();
+								}
+							})
+					);
+				},
+			},
+			{
+				name: "Default height",
+				desc: "Default canvas height in pixels",
+				render: (setting) => {
+					setting.addText((text) =>
+						text
+							.setValue(String(this.plugin.settings.defaultHeight))
+							.onChange(async (value) => {
+								const num = parseInt(value, 10);
+								if (!isNaN(num) && num > 0) {
+									this.plugin.settings.defaultHeight = num;
+									await this.plugin.saveSettings();
+								}
+							})
+					);
+				},
+			},
+			{
+				name: "Data point click action",
+				desc: "Choose what happens when clicking a hoverable point in canvas charts.",
+				render: (setting) => {
+					setting.addDropdown((dropdown) =>
+						dropdown
+							.addOption("pin", "Pin tooltip")
+							.addOption("source", "Open source data file")
+							.addOption("daily", "Open daily note")
+							.setValue(this.plugin.settings.dataPointClickAction)
+							.onChange(async (value) => {
+								this.plugin.settings.dataPointClickAction = value as DataPointClickAction;
+								await this.plugin.saveSettings();
+							})
+					);
+				},
+			},
+			{
+				type: "group",
+				heading: "Colors",
+				items: [
+					{
+						name: "Color scheme",
+						desc: "Choose a preset palette or customize individual colors below",
+						render: (setting) => {
+							setting.addDropdown((dropdown) => {
+								(Object.keys(COLOR_SCHEMES) as Array<Exclude<ColorSchemeId, "custom">>).forEach((id) => {
+									dropdown.addOption(id, COLOR_SCHEMES[id].label);
+								});
+								dropdown.addOption("custom", "Custom");
+								dropdown.setValue(this.plugin.settings.colorScheme);
+								dropdown.onChange(async (value) => {
+									await applyScheme(value as ColorSchemeId);
+								});
+								schemeDropdown = dropdown.selectEl;
+							});
+						},
+					},
+					...colorSettings.map(({ key, name, desc }) => ({
+						name,
+						desc,
+						render: (setting: Setting) => {
+							const input = setting.controlEl.createEl("input");
+							input.type = "color";
+							input.value = this.plugin.settings[key] as string;
+							colorInputs[key] = input;
+							input.addEventListener("change", () => {
+								void (async () => {
+									(this.plugin.settings[key] as string) = input.value;
+									// Switch to custom when the user manually changes a color.
+									this.plugin.settings.colorScheme = "custom";
+									if (schemeDropdown) schemeDropdown.value = "custom";
+									await this.plugin.saveSettings();
+									this.plugin.redrawAll();
+								})();
+							});
+						},
+					})),
+				],
+			},
+			{
+				type: "group",
+				heading: "Workouts",
+				items: [
+					{
+						name: "Maximum heart rate",
+						desc: "Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age.",
+						render: (setting) => {
+							setting.addText((text) =>
+								text
+									.setPlaceholder("190")
+									.setValue(
+										this.plugin.settings.maxHeartRate != null
+											? String(this.plugin.settings.maxHeartRate)
+											: ""
+									)
+									.onChange(async (value) => {
+										const trimmed = value.trim();
+										if (!trimmed) {
+											this.plugin.settings.maxHeartRate = undefined;
+										} else {
+											const num = parseInt(trimmed, 10);
+											if (Number.isFinite(num) && num > 0) {
+												this.plugin.settings.maxHeartRate = num;
+											}
+										}
+										await this.plugin.saveSettings();
+										this.plugin.redrawAll();
+									})
+							);
+						},
+					},
+					{
+						name: "Show map tiles",
+						desc: "Render workout maps with tile imagery (requires network). When off, the route is drawn as a polyline on a plain background.",
+						render: (setting) => {
+							setting.addToggle((toggle) =>
+								toggle
+									.setValue(this.plugin.settings.mapTilesEnabled)
+									.onChange(async (value) => {
+										this.plugin.settings.mapTilesEnabled = value;
+										await this.plugin.saveSettings();
+										this.plugin.redrawAll();
+									})
+							);
+						},
+					},
+					{
+						name: "Map tile URL",
+						desc: "Leaflet tile URL template. Replace with a different provider's URL if you have your own API key.",
+						render: (setting) => {
+							setting.addText((text) =>
+								text
+									.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl)
+									.setValue(this.plugin.settings.mapTileUrl)
+									.onChange(async (value) => {
+										this.plugin.settings.mapTileUrl =
+											value.trim() || DEFAULT_SETTINGS.mapTileUrl;
+										await this.plugin.saveSettings();
+										this.plugin.redrawAll();
+									})
+							);
+						},
+					},
+					{
+						name: "Map attribution",
+						desc: "Attribution string shown on the map. Required by most tile providers.",
+						render: (setting) => {
+							setting.addText((text) =>
+								text
+									.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution)
+									.setValue(this.plugin.settings.mapTileAttribution)
+									.onChange(async (value) => {
+										this.plugin.settings.mapTileAttribution =
+											value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
+										await this.plugin.saveSettings();
+										this.plugin.redrawAll();
+									})
+							);
+						},
+					},
+				],
+			},
+		];
 	}
 }
