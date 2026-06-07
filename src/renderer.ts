@@ -51,6 +51,60 @@ function frontmatterDateValueToString(
 	return null;
 }
 
+function parseSimpleFrontmatter(source: string): Record<string, unknown> | null {
+	const match = /^---\s*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source);
+	if (!match) return null;
+
+	const frontmatter: Record<string, unknown> = {};
+	for (const line of match[1].split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#") || /^\s/.test(line)) continue;
+
+		const colonIdx = line.indexOf(":");
+		if (colonIdx === -1) continue;
+
+		const key = line.slice(0, colonIdx).trim();
+		if (!key) continue;
+
+		let value = line.slice(colonIdx + 1).trim();
+		if (
+			(value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'"))
+		) {
+			value = value.slice(1, -1);
+		}
+		frontmatter[key] = value;
+	}
+	return frontmatter;
+}
+
+async function getFrontmatterForContext(
+	plugin: HealthMdPlugin,
+	ctx: MarkdownPostProcessorContext
+): Promise<unknown> {
+	const contextFrontmatter = ctx.frontmatter as unknown;
+	const cachedFrontmatter =
+		plugin.app.metadataCache.getCache(ctx.sourcePath)?.frontmatter;
+	const cached = contextFrontmatter ?? cachedFrontmatter;
+
+	let parsed: Record<string, unknown> | null = null;
+	if (ctx.sourcePath) {
+		const sourceFile = plugin.app.vault.getAbstractFileByPath(
+			normalizePath(ctx.sourcePath)
+		);
+		if (sourceFile instanceof TFile) {
+			try {
+				parsed = parseSimpleFrontmatter(await plugin.app.vault.read(sourceFile));
+			} catch (error) {
+				console.warn("Health.md: failed to read note frontmatter", error);
+			}
+		}
+	}
+
+	if (parsed && isRecord(cached)) return { ...parsed, ...cached };
+	return cached ?? parsed;
+}
+
 function resolveFrontmatterDateVariables(
 	config: VizConfig,
 	frontmatter: unknown
@@ -757,9 +811,7 @@ export async function renderCodeBlock(
 		return;
 	}
 
-	const frontmatter: unknown =
-		(ctx.frontmatter as unknown) ??
-		plugin.app.metadataCache.getCache(ctx.sourcePath)?.frontmatter;
+	const frontmatter = await getFrontmatterForContext(plugin, ctx);
 	const configResolution = resolveFrontmatterDateVariables(parsedConfig, frontmatter);
 	if ("error" in configResolution) {
 		el.createEl("p", { text: configResolution.error, cls: "health-md-error" });

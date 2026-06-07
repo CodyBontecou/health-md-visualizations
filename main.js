@@ -14339,6 +14339,46 @@ function frontmatterDateValueToString(value, key) {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return null;
 }
+function parseSimpleFrontmatter(source) {
+  const match = /^---\s*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source);
+  if (!match) return null;
+  const frontmatter = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || /^\s/.test(line)) continue;
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    if (!key) continue;
+    let value = line.slice(colonIdx + 1).trim();
+    if (value.startsWith('"') && value.endsWith('"') || value.startsWith("'") && value.endsWith("'")) {
+      value = value.slice(1, -1);
+    }
+    frontmatter[key] = value;
+  }
+  return frontmatter;
+}
+async function getFrontmatterForContext(plugin, ctx) {
+  var _a;
+  const contextFrontmatter = ctx.frontmatter;
+  const cachedFrontmatter = (_a = plugin.app.metadataCache.getCache(ctx.sourcePath)) == null ? void 0 : _a.frontmatter;
+  const cached = contextFrontmatter != null ? contextFrontmatter : cachedFrontmatter;
+  let parsed = null;
+  if (ctx.sourcePath) {
+    const sourceFile = plugin.app.vault.getAbstractFileByPath(
+      (0, import_obsidian2.normalizePath)(ctx.sourcePath)
+    );
+    if (sourceFile instanceof import_obsidian2.TFile) {
+      try {
+        parsed = parseSimpleFrontmatter(await plugin.app.vault.read(sourceFile));
+      } catch (error) {
+        console.warn("Health.md: failed to read note frontmatter", error);
+      }
+    }
+  }
+  if (parsed && isRecord(cached)) return { ...parsed, ...cached };
+  return cached != null ? cached : parsed;
+}
 function resolveFrontmatterDateVariables(config, frontmatter) {
   const resolved = { ...config };
   for (const key of FRONTMATTER_DATE_VARIABLE_KEYS) {
@@ -14849,7 +14889,7 @@ var VizRenderChild = class extends import_obsidian2.MarkdownRenderChild {
   }
 };
 async function renderCodeBlock(plugin, source, el, ctx) {
-  var _a, _b, _c, _d, _e, _f, _g;
+  var _a, _b, _c, _d, _e;
   const parsedConfig = parseConfig(source);
   if (!parsedConfig.type) {
     el.createEl("p", {
@@ -14858,7 +14898,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     });
     return;
   }
-  const frontmatter = (_b = ctx.frontmatter) != null ? _b : (_a = plugin.app.metadataCache.getCache(ctx.sourcePath)) == null ? void 0 : _a.frontmatter;
+  const frontmatter = await getFrontmatterForContext(plugin, ctx);
   const configResolution = resolveFrontmatterDateVariables(parsedConfig, frontmatter);
   if ("error" in configResolution) {
     el.createEl("p", { text: configResolution.error, cls: "health-md-error" });
@@ -14919,10 +14959,10 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     });
     return;
   }
-  const clickAction = (_e = (_d = normalizeDataPointClickAction((_c = config.clickAction) != null ? _c : config.onClick)) != null ? _d : normalizeDataPointClickAction(plugin.settings.dataPointClickAction)) != null ? _e : "pin";
+  const clickAction = (_c = (_b = normalizeDataPointClickAction((_a = config.clickAction) != null ? _a : config.onClick)) != null ? _b : normalizeDataPointClickAction(plugin.settings.dataPointClickAction)) != null ? _c : "pin";
   const dataByDate = new Map(data.map((day) => [day.date, day]));
-  const defaultWidth = (_f = config.width) != null ? _f : plugin.settings.defaultWidth;
-  const height = (_g = config.height) != null ? _g : plugin.settings.defaultHeight;
+  const defaultWidth = (_d = config.width) != null ? _d : plugin.settings.defaultWidth;
+  const height = (_e = config.height) != null ? _e : plugin.settings.defaultHeight;
   const container = el.createDiv({ cls: "health-md-container" });
   const canvas = container.createEl("canvas");
   const tooltipEl = container.createDiv({ cls: "health-md-tooltip is-hidden" });
