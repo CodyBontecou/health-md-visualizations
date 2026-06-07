@@ -14324,6 +14324,54 @@ function parseConfig(source) {
   }
   return config;
 }
+var FRONTMATTER_DATE_VARIABLE_KEYS = ["from", "to", "date"];
+var FRONTMATTER_VARIABLE = /^\{([^{}]+)\}$/;
+function frontmatterDateValueToString(value, key) {
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    if (Number.isNaN(ms)) return null;
+    const iso = value.toISOString();
+    const isMidnightUtc = value.getUTCHours() === 0 && value.getUTCMinutes() === 0 && value.getUTCSeconds() === 0 && value.getUTCMilliseconds() === 0;
+    if (key === "date" || isMidnightUtc) return iso.slice(0, 10);
+    return iso.replace(/\.\d{3}Z$/, "Z");
+  }
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+function resolveFrontmatterDateVariables(config, frontmatter) {
+  const resolved = { ...config };
+  for (const key of FRONTMATTER_DATE_VARIABLE_KEYS) {
+    const raw = config[key];
+    if (typeof raw !== "string") continue;
+    const match = FRONTMATTER_VARIABLE.exec(raw.trim());
+    if (!match) continue;
+    const variable = match[1].trim();
+    if (!variable) {
+      return { error: `Invalid frontmatter variable in "${key}".` };
+    }
+    if (!isRecord(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
+      return {
+        error: `Missing frontmatter variable "${variable}" for "${key}". Add "${variable}" to this note's frontmatter or use a literal date.`
+      };
+    }
+    const value = frontmatter[variable];
+    const dateValue = frontmatterDateValueToString(value, key);
+    if (!dateValue) {
+      return {
+        error: `Frontmatter variable "${variable}" for "${key}" must be a date or datetime string.`
+      };
+    }
+    if (key === "date") {
+      const parsed = parseBoundary(dateValue, key);
+      if ("error" in parsed) return { error: parsed.error };
+      resolved[key] = parsed.date;
+      continue;
+    }
+    resolved[key] = dateValue;
+  }
+  return { config: resolved };
+}
 var DATE_OR_DATETIME = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 function toISODate(d) {
   const y = d.getFullYear();
@@ -14801,15 +14849,22 @@ var VizRenderChild = class extends import_obsidian2.MarkdownRenderChild {
   }
 };
 async function renderCodeBlock(plugin, source, el, ctx) {
-  var _a, _b, _c, _d, _e;
-  const config = parseConfig(source);
-  if (!config.type) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  const parsedConfig = parseConfig(source);
+  if (!parsedConfig.type) {
     el.createEl("p", {
       text: "Missing type. Example: type: heart-terrain",
       cls: "health-md-error"
     });
     return;
   }
+  const frontmatter = (_b = ctx.frontmatter) != null ? _b : (_a = plugin.app.metadataCache.getCache(ctx.sourcePath)) == null ? void 0 : _a.frontmatter;
+  const configResolution = resolveFrontmatterDateVariables(parsedConfig, frontmatter);
+  if ("error" in configResolution) {
+    el.createEl("p", { text: configResolution.error, cls: "health-md-error" });
+    return;
+  }
+  const config = configResolution.config;
   const range = resolveDateRange(config);
   if (range.error) {
     el.createEl("p", { text: range.error, cls: "health-md-error" });
@@ -14864,10 +14919,10 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     });
     return;
   }
-  const clickAction = (_c = (_b = normalizeDataPointClickAction((_a = config.clickAction) != null ? _a : config.onClick)) != null ? _b : normalizeDataPointClickAction(plugin.settings.dataPointClickAction)) != null ? _c : "pin";
+  const clickAction = (_e = (_d = normalizeDataPointClickAction((_c = config.clickAction) != null ? _c : config.onClick)) != null ? _d : normalizeDataPointClickAction(plugin.settings.dataPointClickAction)) != null ? _e : "pin";
   const dataByDate = new Map(data.map((day) => [day.date, day]));
-  const defaultWidth = (_d = config.width) != null ? _d : plugin.settings.defaultWidth;
-  const height = (_e = config.height) != null ? _e : plugin.settings.defaultHeight;
+  const defaultWidth = (_f = config.width) != null ? _f : plugin.settings.defaultWidth;
+  const height = (_g = config.height) != null ? _g : plugin.settings.defaultHeight;
   const container = el.createDiv({ cls: "health-md-container" });
   const canvas = container.createEl("canvas");
   const tooltipEl = container.createDiv({ cls: "health-md-tooltip is-hidden" });

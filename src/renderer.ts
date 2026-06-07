@@ -27,6 +27,72 @@ function parseConfig(source: string): VizConfig {
 	return config;
 }
 
+const FRONTMATTER_DATE_VARIABLE_KEYS = ["from", "to", "date"] as const;
+const FRONTMATTER_VARIABLE = /^\{([^{}]+)\}$/;
+
+function frontmatterDateValueToString(
+	value: unknown,
+	key: typeof FRONTMATTER_DATE_VARIABLE_KEYS[number]
+): string | null {
+	if (value instanceof Date) {
+		const ms = value.getTime();
+		if (Number.isNaN(ms)) return null;
+		const iso = value.toISOString();
+		const isMidnightUtc =
+			value.getUTCHours() === 0 &&
+			value.getUTCMinutes() === 0 &&
+			value.getUTCSeconds() === 0 &&
+			value.getUTCMilliseconds() === 0;
+		if (key === "date" || isMidnightUtc) return iso.slice(0, 10);
+		return iso.replace(/\.\d{3}Z$/, "Z");
+	}
+	if (typeof value === "string") return value.trim();
+	if (typeof value === "number" && Number.isFinite(value)) return String(value);
+	return null;
+}
+
+function resolveFrontmatterDateVariables(
+	config: VizConfig,
+	frontmatter: unknown
+): { config: VizConfig } | { error: string } {
+	const resolved: VizConfig = { ...config };
+	for (const key of FRONTMATTER_DATE_VARIABLE_KEYS) {
+		const raw = config[key];
+		if (typeof raw !== "string") continue;
+		const match = FRONTMATTER_VARIABLE.exec(raw.trim());
+		if (!match) continue;
+
+		const variable = match[1].trim();
+		if (!variable) {
+			return { error: `Invalid frontmatter variable in "${key}".` };
+		}
+		if (
+			!isRecord(frontmatter) ||
+			!Object.prototype.hasOwnProperty.call(frontmatter, variable)
+		) {
+			return {
+				error: `Missing frontmatter variable "${variable}" for "${key}". Add "${variable}" to this note's frontmatter or use a literal date.`,
+			};
+		}
+
+		const value = frontmatter[variable];
+		const dateValue = frontmatterDateValueToString(value, key);
+		if (!dateValue) {
+			return {
+				error: `Frontmatter variable "${variable}" for "${key}" must be a date or datetime string.`,
+			};
+		}
+		if (key === "date") {
+			const parsed = parseBoundary(dateValue, key);
+			if ("error" in parsed) return { error: parsed.error };
+			resolved[key] = parsed.date;
+			continue;
+		}
+		resolved[key] = dateValue;
+	}
+	return { config: resolved };
+}
+
 // Accepts:
 //   YYYY-MM-DD
 //   YYYY-MM-DDTHH:MM
@@ -50,7 +116,7 @@ interface ParsedBoundary {
 
 function parseBoundary(
 	raw: string | number,
-	field: "from" | "to"
+	field: string
 ): ParsedBoundary | { error: string } {
 	const v = String(raw);
 	const m = DATE_OR_DATETIME.exec(v);
@@ -682,14 +748,24 @@ export async function renderCodeBlock(
 	el: HTMLElement,
 	ctx: MarkdownPostProcessorContext
 ): Promise<void> {
-	const config = parseConfig(source);
-	if (!config.type) {
+	const parsedConfig = parseConfig(source);
+	if (!parsedConfig.type) {
 		el.createEl("p", {
 			text: 'Missing type. Example: type: heart-terrain',
 			cls: "health-md-error",
 		});
 		return;
 	}
+
+	const frontmatter: unknown =
+		(ctx.frontmatter as unknown) ??
+		plugin.app.metadataCache.getCache(ctx.sourcePath)?.frontmatter;
+	const configResolution = resolveFrontmatterDateVariables(parsedConfig, frontmatter);
+	if ("error" in configResolution) {
+		el.createEl("p", { text: configResolution.error, cls: "health-md-error" });
+		return;
+	}
+	const config = configResolution.config;
 
 	const range = resolveDateRange(config);
 	if (range.error) {

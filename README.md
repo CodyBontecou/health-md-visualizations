@@ -200,8 +200,8 @@ height: 400
 | `type` | string | *(required)* | Visualization type — see the gallery above. |
 | `width` | number | from settings | Canvas width in pixels (chart shrinks to container width). |
 | `height` | number | from settings | Canvas height in pixels. |
-| `from` | date or datetime | — | Start of the data window (inclusive). |
-| `to` | date or datetime | — | End of the data window (inclusive). |
+| `from` | date, datetime, or frontmatter variable | — | Start of the data window (inclusive). |
+| `to` | date, datetime, or frontmatter variable | — | End of the data window (inclusive). |
 | `last` | number | — | Number of calendar days back to include. |
 | `clickAction` | `pin`, `source`, `daily` | from settings | Optional per-chart override for data point clicks: pin tooltip, open source data file, or open matching Daily Note. |
 
@@ -231,6 +231,25 @@ type: oxygen-river
 from: 2026-04-01
 ```
 ````
+
+### Frontmatter date variables
+
+`from`, `to`, and chart-specific `date` fields can also reference top-level frontmatter properties from the current note using `{property-name}`. This is useful for weekly or monthly journal templates that should stay pinned to the journal's dates instead of moving with `last`.
+
+````markdown
+---
+journal-start: 2026-06-01
+journal-end: 2026-06-07
+---
+
+```health-viz
+type: step-spiral
+from: {journal-start}
+to: {journal-end}
+```
+````
+
+The frontmatter value must resolve to a supported date or datetime. Existing literal dates and `last` windows continue to work unchanged. If a variable is missing or resolves to an invalid value, the chart renders an inline error.
 
 ### Last N days
 
@@ -327,6 +346,7 @@ Apple Health exports `activity.steps`, `activity.activeCalories`, `activity.exer
 The plugin validates the date range up front and renders an inline error if something is off:
 
 - `Invalid "from" value: ... Use YYYY-MM-DD or YYYY-MM-DDTHH:MM[:SS].`
+- `Missing frontmatter variable "journal-start" for "from"...`
 - `Invalid "last": ... Use a positive number of days.`
 - `"from" (...) is after "to" (...).`
 - `No health data in range (...).` — when the window is valid but produces an empty result.
