@@ -16271,6 +16271,32 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
     super(app, plugin);
     this.plugin = plugin;
   }
+  /**
+   * Obsidian 1.13+ renders getSettingDefinitions() declaratively. Older
+   * Obsidian versions still call display(), so keep an imperative fallback to
+   * preserve compatibility with current stable releases.
+   */
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    this.renderSettingItems(containerEl, this.getSettingDefinitions());
+  }
+  renderSettingItems(containerEl, items) {
+    for (const item of items) {
+      if (item.visible === false) continue;
+      if (typeof item.visible === "function" && !item.visible()) continue;
+      if ("type" in item && (item.type === "group" || item.type === "list")) {
+        if (item.heading) new import_obsidian5.Setting(containerEl).setName(item.heading).setHeading();
+        if (item.items) this.renderSettingItems(containerEl, item.items);
+        continue;
+      }
+      if ("render" in item && typeof item.render === "function") {
+        const setting = new import_obsidian5.Setting(containerEl).setName(item.name);
+        if (item.desc) setting.setDesc(item.desc);
+        item.render(setting, void 0);
+      }
+    }
+  }
   getSettingDefinitions() {
     const updateDataFolder = async (value) => {
       const next = value.trim().replace(/^\/+|\/+$/g, "");
