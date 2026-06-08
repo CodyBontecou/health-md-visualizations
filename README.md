@@ -2,11 +2,11 @@
 
 # Health.md Visualizations
 
-An [Obsidian](https://obsidian.md) plugin that renders rich Apple Health visualizations from data files in your vault. Drop a fenced code block into any note (including a daily note) and the plugin renders an interactive canvas chart pulled from your local health data.
+An [Obsidian](https://obsidian.md) plugin that renders rich health visualizations from Health.md export files in your vault, including iOS Apple Health and Android Health Connect exports. Drop a fenced code block into any note (including a daily note) and the plugin renders an interactive canvas chart pulled from your local health data.
 
 Supported data formats: **JSON**, **CSV**, **Markdown frontmatter**, and **Obsidian Bases** (YAML frontmatter).
 
-Download [Health.md](https://apps.apple.com/us/app/health-md/id6757763969) on the app store to easily export and get access to your Apple Health data.
+Download [Health.md](https://apps.apple.com/us/app/health-md/id6757763969) on the App Store to easily export and get access to your Apple Health data.
 
 ## Installation
 
@@ -35,7 +35,7 @@ Then copy `main.js`, `manifest.json`, and `styles.css` into your vault's plugin 
 
 ## Quick start
 
-1. Put your Apple Health export files in a folder inside your vault — by default the plugin looks at `Health/`.
+1. Put your Health.md export files in a folder inside your vault — by default the plugin looks at `Health/`.
 2. In any note, add a fenced code block:
 
    ````markdown

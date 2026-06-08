@@ -114,6 +114,11 @@ function getFirstStr(fm: Record<string, unknown>, ...keys: string[]): string | u
 	return undefined;
 }
 
+function toPercentScale(value: number | undefined): number | undefined {
+	if (value === undefined) return undefined;
+	return value > 0 && value <= 1 ? value * 100 : value;
+}
+
 /**
  * Parse a Markdown or Bases file into a HealthDay.
  * Supports both:
@@ -157,7 +162,13 @@ export function parseMarkdown(content: string): HealthDay | null {
 			vo2Max:
 				getNum(fm, "vo2_max") ??
 				getNum(fm, "vo2max"),
-			basalEnergyBurned: getNum(fm, "basal_energy_burned"),
+			basalEnergyBurned: getFirstNum(
+				fm,
+				"basal_energy_burned",
+				"basal_calories",
+				"basal_energy",
+				"basalEnergyBurned"
+			),
 			standHours: getNum(fm, "stand_hours"),
 			flightsClimbed: getNum(fm, "flights_climbed"),
 		};
@@ -219,7 +230,15 @@ export function parseMarkdown(content: string): HealthDay | null {
 	if (sleepTotal !== undefined) {
 		const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
 		const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
-		const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours");
+		const coreH = getFirstNum(
+			fm,
+			"sleep_core_hours",
+			"sleepCoreHours",
+			"core_sleep_hours",
+			"sleep_light_hours",
+			"sleepLightHours",
+			"light_sleep_hours"
+		);
 		const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
 		day.sleep = {
 			sleepStages: [],
@@ -232,7 +251,17 @@ export function parseMarkdown(content: string): HealthDay | null {
 				: (getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep") ?? 0),
 			coreSleep: coreH !== undefined
 				? coreH * 3600
-				: (getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep") ?? 0),
+				: (getFirstNum(
+					fm,
+					"sleep_core",
+					"sleepCore",
+					"coreSleep",
+					"core_sleep",
+					"sleep_light",
+					"sleepLight",
+					"lightSleep",
+					"light_sleep"
+				) ?? 0),
 			awakeTime: awakeH !== undefined
 				? awakeH * 3600
 				: getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time"),
@@ -286,18 +315,39 @@ export function parseMarkdown(content: string): HealthDay | null {
 	}
 
 	// --- Vitals ---
-	const respRate =
-		getNum(fm, "respiratory_rate") ??
-		getNum(fm, "vitals_respiratory_rate");
-	const bloodOx =
-		getNum(fm, "blood_oxygen") ??
-		getNum(fm, "blood_oxygen_avg") ??
-		getNum(fm, "vitals_blood_oxygen");
-	if (respRate !== undefined || bloodOx !== undefined) {
+	const respRate = getFirstNum(
+		fm,
+		"respiratory_rate",
+		"respiratory_rate_avg",
+		"vitals_respiratory_rate"
+	);
+	const respiratoryRateMin = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin");
+	const respiratoryRateMax = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax");
+	const bloodOx = toPercentScale(getFirstNum(
+		fm,
+		"blood_oxygen",
+		"blood_oxygen_avg",
+		"vitals_blood_oxygen"
+	));
+	const bloodOxygenMin = toPercentScale(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"));
+	const bloodOxygenMax = toPercentScale(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"));
+	if (
+		respRate !== undefined ||
+		respiratoryRateMin !== undefined ||
+		respiratoryRateMax !== undefined ||
+		bloodOx !== undefined ||
+		bloodOxygenMin !== undefined ||
+		bloodOxygenMax !== undefined
+	) {
 		day.vitals = {
 			respiratoryRate: respRate,
+			respiratoryRateAvg: respRate,
+			respiratoryRateMin,
+			respiratoryRateMax,
 			bloodOxygenPercent: bloodOx,
 			bloodOxygenAvg: bloodOx,
+			bloodOxygenMin,
+			bloodOxygenMax,
 		};
 	}
 
