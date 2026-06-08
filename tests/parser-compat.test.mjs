@@ -15,6 +15,7 @@ async function loadParsers() {
 	parsersPromise = (async () => {
 		tempDir = await mkdtemp(path.join(os.tmpdir(), "health-md-parser-tests-"));
 		const csvOutfile = path.join(tempDir, "csv-parser.mjs");
+		const jsonOutfile = path.join(tempDir, "json-parser.mjs");
 		const markdownOutfile = path.join(tempDir, "markdown-parser.mjs");
 
 		await Promise.all([
@@ -27,6 +28,14 @@ async function loadParsers() {
 				logLevel: "silent",
 			}),
 			esbuild.build({
+				entryPoints: [path.join(process.cwd(), "src/parsers/json-parser.ts")],
+				bundle: true,
+				platform: "node",
+				format: "esm",
+				outfile: jsonOutfile,
+				logLevel: "silent",
+			}),
+			esbuild.build({
 				entryPoints: [path.join(process.cwd(), "src/parsers/markdown-parser.ts")],
 				bundle: true,
 				platform: "node",
@@ -36,13 +45,15 @@ async function loadParsers() {
 			}),
 		]);
 
-		const [csvModule, markdownModule] = await Promise.all([
+		const [csvModule, jsonModule, markdownModule] = await Promise.all([
 			import(pathToFileURL(csvOutfile).href),
+			import(pathToFileURL(jsonOutfile).href),
 			import(pathToFileURL(markdownOutfile).href),
 		]);
 
 		return {
 			parseCSV: csvModule.parseCSV,
+			parseJSON: jsonModule.parseJSON,
 			parseMarkdown: markdownModule.parseMarkdown,
 		};
 	})();
@@ -54,6 +65,149 @@ after(async () => {
 	if (tempDir) {
 		await rm(tempDir, { recursive: true, force: true });
 	}
+});
+
+test("JSON parser preserves the complete HealthDay data structure", async () => {
+	const { parseJSON } = await loadParsers();
+	const completeDay = {
+		type: "health-data",
+		date: "2026-03-17",
+		sourcePaths: ["Health/2026-03-17.json"],
+		units: "metric",
+		activity: {
+			steps: 14321,
+			walkingRunningDistanceKm: 10.2,
+			activeCalories: 640,
+			exerciseMinutes: 55,
+			vo2Max: 43.2,
+			basalEnergyBurned: 1680,
+			standHours: 12,
+			flightsClimbed: 14,
+			walkingRunningDistance: 10200,
+		},
+		heart: {
+			averageHeartRate: 73,
+			heartRateMin: 51,
+			heartRateMax: 162,
+			heartRateSamples: [
+				{ timestamp: "2026-03-17T06:00:00", value: 58 },
+				{ timestamp: "2026-03-17T06:05:00", value: 62 },
+			],
+			hrvSamples: [
+				{ timestamp: "2026-03-17T06:00:00", value: 44 },
+			],
+			hrv: 44,
+			restingHeartRate: 57,
+			walkingHeartRateAverage: 89,
+		},
+		vitals: {
+			bloodOxygenSamples: [
+				{ timestamp: "2026-03-17T06:00:00", value: 96, percent: 96 },
+			],
+			respiratoryRateSamples: [
+				{ timestamp: "2026-03-17T06:00:00", value: 14.5 },
+			],
+			bloodOxygenPercent: 97,
+			respiratoryRate: 15,
+			bloodOxygenAvg: 97,
+			bloodOxygenMin: 94,
+			bloodOxygenMax: 99,
+			respiratoryRateAvg: 15,
+			respiratoryRateMin: 12,
+			respiratoryRateMax: 18,
+		},
+		sleep: {
+			sleepStages: [
+				{
+					stage: "core",
+					startDate: "2026-03-16T22:00:00",
+					endDate: "2026-03-16T23:00:00",
+					durationSeconds: 3600,
+				},
+			],
+			totalDuration: 28800,
+			totalDurationFormatted: "8h 0m",
+			deepSleep: 5400,
+			deepSleepFormatted: "1h 30m",
+			remSleep: 7200,
+			remSleepFormatted: "2h 0m",
+			coreSleep: 15300,
+			coreSleepFormatted: "4h 15m",
+			awakeTime: 900,
+			awakeTimeFormatted: "15m",
+			bedtime: "22:00",
+			bedtimeISO: "2026-03-16T22:00:00",
+			wakeTime: "06:00",
+			wakeTimeISO: "2026-03-17T06:00:00",
+		},
+		mobility: {
+			walkingSpeed: 1.42,
+			walkingAsymmetryPercentage: 1.2,
+			walkingStepLength: 0.75,
+			walkingDoubleSupportPercentage: 22.5,
+			stairAscentSpeed: 0.55,
+			stairDescentSpeed: 0.6,
+		},
+		workouts: [
+			{
+				type: "running",
+				duration: 1800,
+				durationFormatted: "30m",
+				calories: 310,
+				distance: 5000,
+				distanceFormatted: "5.0 km",
+				startTime: "06:30",
+				startTimeISO: "2026-03-17T06:30:00",
+				endTimeISO: "2026-03-17T07:00:00",
+				avgPaceFormatted: "6:00/km",
+				avgSpeedFormatted: "10.0 km/h",
+				avgHeartRate: 142,
+				maxHeartRate: 172,
+				minHeartRate: 105,
+				avgRunningCadence: 168,
+				avgStrideLength: 1.05,
+				avgGroundContactTime: 245,
+				avgVerticalOscillation: 8.5,
+				avgCyclingCadence: 0,
+				avgPower: 240,
+				maxPower: 410,
+				elevationGainMeters: 48,
+				elevationLossMeters: 42,
+				laps: [
+					{ index: 1, duration: 900, distance: 2500, paceFormatted: "6:00/km" },
+				],
+				splits: [
+					{ index: 1, duration: 360, distance: 1000, paceFormatted: "6:00/km", avgHeartRate: 136 },
+				],
+				route: [
+					{
+						timestamp: "2026-03-17T06:30:00",
+						latitude: 45.5,
+						longitude: -122.6,
+						altitude: 80,
+						speedMps: 2.8,
+						courseDegrees: 180,
+						horizontalAccuracyMeters: 5,
+					},
+				],
+				timeSeries: {
+					heartRate: [{ timestamp: "2026-03-17T06:30:00", value: 136 }],
+					speed: [{ timestamp: "2026-03-17T06:30:00", value: 2.8 }],
+					power: [{ timestamp: "2026-03-17T06:30:00", value: 240 }],
+					cadence: [{ timestamp: "2026-03-17T06:30:00", value: 168 }],
+					strideLength: [{ timestamp: "2026-03-17T06:30:00", value: 1.05 }],
+					groundContactTime: [{ timestamp: "2026-03-17T06:30:00", value: 245 }],
+					verticalOscillation: [{ timestamp: "2026-03-17T06:30:00", value: 8.5 }],
+					altitude: [{ timestamp: "2026-03-17T06:30:00", value: 80 }],
+				},
+			},
+		],
+		hearing: {
+			headphoneAudioLevel: 64.5,
+		},
+	};
+
+	assert.deepEqual(parseJSON(JSON.stringify(completeDay)), completeDay);
 });
 
 test("CSV parser accepts current iOS/Android aliases and granular samples", async () => {
@@ -88,7 +242,11 @@ test("CSV parser accepts current iOS/Android aliases and granular samples", asyn
 2026-03-15,Vitals,Blood Oxygen Max,99,percent,
 2026-03-15,Vitals,Blood Oxygen Sample,0.96,percent,2026-03-15T06:00:00
 2026-03-15,Vitals,Respiratory Rate Sample,14,breaths/min,2026-03-15T06:00:00
-2026-03-15,Mobility,Walking Speed,1.4,m/s,`;
+2026-03-15,Mobility,Walking Speed,1.4,m/s,
+2026-03-15,Mobility,Walking Asymmetry Percentage,1.2,percent,
+2026-03-15,Mobility,Walking Step Length,0.75,m,
+2026-03-15,Mobility,Walking Double Support Percentage,22.5,percent,
+2026-03-15,Hearing,Headphone Audio,64.5,dB,`;
 
 	const [day] = parseCSV(csv);
 
@@ -111,6 +269,10 @@ test("CSV parser accepts current iOS/Android aliases and granular samples", asyn
 	assert.equal(day.vitals?.bloodOxygenMax, 99);
 	assert.equal(day.vitals?.bloodOxygenSamples?.[0]?.value, 96);
 	assert.equal(day.mobility?.walkingSpeed, 1.4);
+	assert.equal(day.mobility?.walkingAsymmetryPercentage, 1.2);
+	assert.equal(day.mobility?.walkingStepLength, 0.75);
+	assert.equal(day.mobility?.walkingDoubleSupportPercentage, 22.5);
+	assert.equal(day.hearing?.headphoneAudioLevel, 64.5);
 });
 
 test("CSV parser preserves legacy plugin labels", async () => {
@@ -170,6 +332,7 @@ step_length_cm: 75.0
 double_support_percent: 22.5
 walking_asymmetry_percent: 1.2
 vo2_max: 42.5
+headphone_audio_db: 64.5
 workouts: [running]
 ---
 `;
@@ -206,6 +369,7 @@ workouts: [running]
 	assert.equal(day.mobility?.walkingStepLength, 0.75);
 	assert.equal(day.mobility?.walkingDoubleSupportPercentage, 22.5);
 	assert.equal(day.mobility?.walkingAsymmetryPercentage, 1.2);
+	assert.equal(day.hearing?.headphoneAudioLevel, 64.5);
 });
 
 test("Markdown parser reads granular Health.md tables and derives aggregates", async () => {
