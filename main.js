@@ -10055,8 +10055,8 @@ function parseCSV(content) {
 
 // src/parsers/markdown-parser.ts
 function parseFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return null;
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) return { frontmatter: null, body: content };
   const yaml = match[1];
   const result = {};
   for (const line of yaml.split("\n")) {
@@ -10084,23 +10084,32 @@ function parseFrontmatter(content) {
       result[key] = false;
       continue;
     }
-    const num = Number(val);
+    const num = Number(val.replace(/,/g, ""));
     if (!isNaN(num) && val !== "") {
       result[key] = num;
       continue;
     }
     result[key] = val;
   }
-  return result;
+  return {
+    frontmatter: result,
+    body: content.slice(match[0].length)
+  };
+}
+function normalizeLabel2(value) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+function parseNumberValue(value) {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return void 0;
+  const normalized = value.trim().replace(/,/g, "");
+  const match = /^[-+]?\d*\.?\d+(?:e[-+]?\d+)?/i.exec(normalized);
+  if (!match) return void 0;
+  const num = Number(match[0]);
+  return isNaN(num) ? void 0 : num;
 }
 function getNum2(fm, key) {
-  const v = fm[key];
-  if (typeof v === "number") return v;
-  if (typeof v === "string") {
-    const n = parseFloat(v);
-    return isNaN(n) ? void 0 : n;
-  }
-  return void 0;
+  return parseNumberValue(fm[key]);
 }
 function getStr(fm, key) {
   const v = fm[key];
@@ -10135,40 +10144,355 @@ function getFirstStr(fm, ...keys) {
   }
   return void 0;
 }
+function normalizePercent2(value) {
+  if (value === void 0) return void 0;
+  return value > 0 && value <= 1 ? value * 100 : value;
+}
+function average2(values) {
+  if (!values.length) return void 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+function pad2(value) {
+  return value < 10 ? `0${value}` : String(value);
+}
+function formatLocalDate(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+function formatLocalDateTime2(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+function addDaysIso(dateIso, days) {
+  const base = /* @__PURE__ */ new Date(`${dateIso}T00:00:00`);
+  base.setDate(base.getDate() + days);
+  return formatLocalDate(base.getTime());
+}
+function parseClockTime(raw) {
+  var _a, _b;
+  const value = raw.trim();
+  let match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (match) {
+    const h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = Number((_a = match[3]) != null ? _a : 0);
+    if (h <= 23 && m <= 59 && s <= 59) return { h, m, s };
+    return null;
+  }
+  match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap])\.?m\.?$/i.exec(value);
+  if (match) {
+    let h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = Number((_b = match[3]) != null ? _b : 0);
+    if (h < 1 || h > 12 || m > 59 || s > 59) return null;
+    const meridiem = match[4].toLowerCase();
+    if (meridiem === "p" && h !== 12) h += 12;
+    if (meridiem === "a" && h === 12) h = 0;
+    return { h, m, s };
+  }
+  return null;
+}
+function absoluteDateMs(raw) {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) return void 0;
+  const ms = Date.parse(raw.trim());
+  return isFinite(ms) ? ms : void 0;
+}
+function timestampMsOnDate(date, raw, dayOffset) {
+  const absolute = absoluteDateMs(raw);
+  if (absolute !== void 0) return absolute;
+  const clock = parseClockTime(raw);
+  if (!clock) return void 0;
+  const dateForOffset = addDaysIso(date, dayOffset);
+  const ms = (/* @__PURE__ */ new Date(`${dateForOffset}T${pad2(clock.h)}:${pad2(clock.m)}:${pad2(clock.s)}`)).getTime();
+  return isFinite(ms) ? ms : void 0;
+}
+function extractDateFromContent(content) {
+  const match = /(^|\D)(\d{4}-\d{2}-\d{2})(\D|$)/.exec(content);
+  return match == null ? void 0 : match[2];
+}
+function cleanTableCell(cell) {
+  return cell.trim().replace(/<br\s*\/?\s*>/gi, " ").replace(/&nbsp;/g, " ");
+}
+function parseTableLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|") || !trimmed.includes("|")) return null;
+  const withoutEdges = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  return withoutEdges.split("|").map(cleanTableCell);
+}
+function isSeparatorRow(cells) {
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+}
+function parseMarkdownTables(body) {
+  const tables = [];
+  const lines = body.split(/\r?\n/);
+  let context = "";
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    const heading = /^#{1,6}\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      context = heading[1];
+      continue;
+    }
+    const summary = /^<summary>(.*?)<\/summary>$/i.exec(trimmed);
+    if (summary) {
+      context = summary[1];
+      continue;
+    }
+    const header = parseTableLine(lines[i]);
+    const separator = i + 1 < lines.length ? parseTableLine(lines[i + 1]) : null;
+    if (!header || !separator || !isSeparatorRow(separator)) continue;
+    const rows = [];
+    i += 2;
+    while (i < lines.length) {
+      const row = parseTableLine(lines[i]);
+      if (!row || isSeparatorRow(row)) break;
+      rows.push(row);
+      i++;
+    }
+    i--;
+    tables.push({ context, headers: header, rows });
+  }
+  return tables;
+}
+function normalizedHeaders(table) {
+  return table.headers.map((header) => normalizeLabel2(header.replace(/[*_`]/g, "")));
+}
+function findHeaderIndex(headers, predicate) {
+  for (let i = 0; i < headers.length; i++) {
+    if (predicate(headers[i])) return i;
+  }
+  return -1;
+}
+function samplesFromTimeValueTable(table, date, timeIndex, valueIndex, transformValue = (value) => value) {
+  const samples = [];
+  let dayOffset = 0;
+  let lastMs = -Infinity;
+  for (const row of table.rows) {
+    const rawTime = row[timeIndex];
+    const rawValue = row[valueIndex];
+    if (rawTime === void 0 || rawValue === void 0) continue;
+    let ms = timestampMsOnDate(date, rawTime, dayOffset);
+    while (ms !== void 0 && ms <= lastMs && absoluteDateMs(rawTime) === void 0) {
+      dayOffset++;
+      ms = timestampMsOnDate(date, rawTime, dayOffset);
+    }
+    if (ms === void 0) continue;
+    const parsed = parseNumberValue(rawValue);
+    if (parsed === void 0) continue;
+    const value = transformValue(parsed);
+    if (value === void 0) continue;
+    samples.push({ timestamp: formatLocalDateTime2(ms), value });
+    lastMs = ms;
+  }
+  return samples;
+}
+function normalizeSleepStage2(stage) {
+  const normalized = normalizeLabel2(stage).replace(/^asleep[_\s-]*/, "").replace(/^sleep[_\s-]*/, "");
+  if (normalized === "light") return "core";
+  if (normalized.includes("deep")) return "deep";
+  if (normalized.includes("rem")) return "rem";
+  if (normalized.includes("awake")) return "awake";
+  if (normalized.includes("core")) return "core";
+  return normalized || "core";
+}
+function parseDurationSeconds(raw) {
+  var _a;
+  const trimmed = raw.trim().toLowerCase();
+  let match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (match) {
+    const h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = Number((_a = match[3]) != null ? _a : 0);
+    return h * 3600 + m * 60 + s;
+  }
+  let total = 0;
+  let found = false;
+  const unitPattern = /([0-9]+(?:\.[0-9]+)?)\s*(hours?|hrs?|hr|h|minutes?|mins?|min|m|seconds?|secs?|sec|s)\b/g;
+  while ((match = unitPattern.exec(trimmed)) !== null) {
+    found = true;
+    const value = Number(match[1]);
+    const unit = match[2];
+    if (unit.startsWith("h")) total += value * 3600;
+    else if (unit.startsWith("m")) total += value * 60;
+    else total += value;
+  }
+  return found ? total : void 0;
+}
+function parseSleepStageRangeTable(table, date, startIndex, endIndex, stageIndex) {
+  const stages = [];
+  let dayOffset = 0;
+  let lastStartMs = -Infinity;
+  for (const row of table.rows) {
+    const rawStart = row[startIndex];
+    const rawEnd = row[endIndex];
+    const rawStage = row[stageIndex];
+    if (!rawStart || !rawEnd || !rawStage) continue;
+    let startMs = timestampMsOnDate(date, rawStart, dayOffset);
+    while (startMs !== void 0 && startMs <= lastStartMs && absoluteDateMs(rawStart) === void 0) {
+      dayOffset++;
+      startMs = timestampMsOnDate(date, rawStart, dayOffset);
+    }
+    if (startMs === void 0) continue;
+    let endMs = timestampMsOnDate(date, rawEnd, dayOffset);
+    if (endMs === void 0) continue;
+    while (endMs <= startMs && absoluteDateMs(rawEnd) === void 0) {
+      endMs += 864e5;
+    }
+    stages.push({
+      stage: normalizeSleepStage2(rawStage),
+      startDate: formatLocalDateTime2(startMs),
+      endDate: formatLocalDateTime2(endMs),
+      durationSeconds: Math.round((endMs - startMs) / 1e3)
+    });
+    lastStartMs = startMs;
+  }
+  return stages;
+}
+function parseSleepStageDurationTable(table, date, timeIndex, stageIndex, durationIndex) {
+  const stages = [];
+  let dayOffset = 0;
+  let lastStartMs = -Infinity;
+  for (const row of table.rows) {
+    const rawTime = row[timeIndex];
+    const rawStage = row[stageIndex];
+    const rawDuration = row[durationIndex];
+    if (!rawTime || !rawStage || !rawDuration) continue;
+    let startMs = timestampMsOnDate(date, rawTime, dayOffset);
+    while (startMs !== void 0 && startMs <= lastStartMs && absoluteDateMs(rawTime) === void 0) {
+      dayOffset++;
+      startMs = timestampMsOnDate(date, rawTime, dayOffset);
+    }
+    const durationSeconds = parseDurationSeconds(rawDuration);
+    if (startMs === void 0 || durationSeconds === void 0) continue;
+    stages.push({
+      stage: normalizeSleepStage2(rawStage),
+      startDate: formatLocalDateTime2(startMs),
+      endDate: formatLocalDateTime2(startMs + durationSeconds * 1e3),
+      durationSeconds
+    });
+    lastStartMs = startMs;
+  }
+  return stages;
+}
+function parseGranularMarkdownData(body, date) {
+  const data = {
+    heartRateSamples: [],
+    hrvSamples: [],
+    bloodOxygenSamples: [],
+    respiratoryRateSamples: [],
+    sleepStages: []
+  };
+  for (const table of parseMarkdownTables(body)) {
+    const headers = normalizedHeaders(table);
+    const context = normalizeLabel2(table.context);
+    const timeIndex = findHeaderIndex(headers, (header) => header === "time");
+    const startIndex = findHeaderIndex(headers, (header) => header === "start");
+    const endIndex = findHeaderIndex(headers, (header) => header === "end");
+    const stageIndex = findHeaderIndex(headers, (header) => header === "stage");
+    const durationIndex = findHeaderIndex(headers, (header) => header === "duration");
+    if (startIndex !== -1 && endIndex !== -1 && stageIndex !== -1) {
+      data.sleepStages.push(...parseSleepStageRangeTable(table, date, startIndex, endIndex, stageIndex));
+      continue;
+    }
+    if (timeIndex !== -1 && stageIndex !== -1 && durationIndex !== -1) {
+      data.sleepStages.push(...parseSleepStageDurationTable(table, date, timeIndex, stageIndex, durationIndex));
+      continue;
+    }
+    if (timeIndex === -1) continue;
+    const bpmIndex = findHeaderIndex(headers, (header) => header === "bpm" || header.includes("heart rate"));
+    if (bpmIndex !== -1) {
+      data.heartRateSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, bpmIndex));
+      continue;
+    }
+    const hrvIndex = findHeaderIndex(headers, (header) => header.includes("hrv") || header === "ms" && context.includes("hrv"));
+    if (hrvIndex !== -1) {
+      data.hrvSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, hrvIndex));
+      continue;
+    }
+    const oxygenIndex = findHeaderIndex(headers, (header) => header.includes("spo2") || header.includes("spo\u2082") || header.includes("blood oxygen"));
+    if (oxygenIndex !== -1) {
+      data.bloodOxygenSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, oxygenIndex, normalizePercent2));
+      continue;
+    }
+    const respiratoryIndex = findHeaderIndex(headers, (header) => header.includes("respiratory") || header.includes("breaths/min"));
+    if (respiratoryIndex !== -1) {
+      data.respiratoryRateSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, respiratoryIndex));
+    }
+  }
+  data.heartRateSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  data.hrvSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  data.bloodOxygenSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  data.respiratoryRateSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  data.sleepStages.sort((a, b) => a.startDate.localeCompare(b.startDate));
+  return data;
+}
+function sumStageSeconds2(stages, stageName) {
+  return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
+}
 function parseMarkdown(content) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
-  const fm = parseFrontmatter(content);
-  if (!fm) return null;
-  const date = getStr(fm, "date");
+  const parsed = parseFrontmatter(content);
+  const fm = (_a = parsed.frontmatter) != null ? _a : {};
+  const date = (_b = getFirstStr(fm, "date", "Date", "day", "Day")) != null ? _b : extractDateFromContent(content);
   if (!date) return null;
+  const granular = parseGranularMarkdownData(parsed.body, date);
   const day = {
     type: "health-data",
     date
   };
-  const steps = (_a = getNum2(fm, "steps")) != null ? _a : getNum2(fm, "activity_steps");
-  if (steps !== void 0) {
+  const steps = getFirstNum(fm, "steps", "activity_steps");
+  const walkingRunningDistanceKm = getFirstNum(
+    fm,
+    "walking_running_km",
+    "walking_running_distance_km",
+    "walkingRunningDistanceKm"
+  );
+  const activeCalories = getFirstNum(fm, "active_calories", "activity_active_calories", "activeCalories");
+  const exerciseMinutes = getFirstNum(fm, "exercise_minutes", "activity_exercise_minutes", "exerciseMinutes");
+  const vo2Max = getFirstNum(fm, "vo2_max", "vo2max", "vo2Max", "activity_vo2_max");
+  const basalEnergyBurned = getFirstNum(
+    fm,
+    "basal_energy_burned",
+    "basal_calories",
+    "basal_energy",
+    "basalEnergyBurned"
+  );
+  const standHours = getFirstNum(fm, "stand_hours", "standHours");
+  const flightsClimbed = getFirstNum(fm, "flights_climbed", "floors_climbed", "flightsClimbed");
+  if (steps !== void 0 || walkingRunningDistanceKm !== void 0 || activeCalories !== void 0 || exerciseMinutes !== void 0 || vo2Max !== void 0 || basalEnergyBurned !== void 0 || standHours !== void 0 || flightsClimbed !== void 0) {
     day.activity = {
-      steps,
-      walkingRunningDistanceKm: (_c = (_b = getNum2(fm, "walking_running_km")) != null ? _b : getNum2(fm, "walking_running_distance_km")) != null ? _c : 0,
-      activeCalories: (_e = (_d = getNum2(fm, "active_calories")) != null ? _d : getNum2(fm, "activity_active_calories")) != null ? _e : 0,
-      exerciseMinutes: (_g = (_f = getNum2(fm, "exercise_minutes")) != null ? _f : getNum2(fm, "activity_exercise_minutes")) != null ? _g : 0,
-      vo2Max: (_h = getNum2(fm, "vo2_max")) != null ? _h : getNum2(fm, "vo2max"),
-      basalEnergyBurned: getNum2(fm, "basal_energy_burned"),
-      standHours: getNum2(fm, "stand_hours"),
-      flightsClimbed: getNum2(fm, "flights_climbed")
+      steps: steps != null ? steps : 0,
+      walkingRunningDistanceKm: walkingRunningDistanceKm != null ? walkingRunningDistanceKm : 0,
+      activeCalories: activeCalories != null ? activeCalories : 0,
+      exerciseMinutes: exerciseMinutes != null ? exerciseMinutes : 0,
+      vo2Max,
+      basalEnergyBurned,
+      standHours,
+      flightsClimbed
     };
   }
-  const restingHR = (_i = getNum2(fm, "resting_heart_rate")) != null ? _i : getNum2(fm, "heart_resting_heart_rate");
-  const avgHR = (_j = getNum2(fm, "average_heart_rate")) != null ? _j : getNum2(fm, "heart_average_heart_rate");
-  const hrvVal = (_l = (_k = getNum2(fm, "hrv_ms")) != null ? _k : getNum2(fm, "hrv")) != null ? _l : getNum2(fm, "heart_hrv");
-  if (restingHR !== void 0 || avgHR !== void 0) {
+  const heartValues = granular.heartRateSamples.map((sample) => sample.value);
+  const hrvValues = granular.hrvSamples.map((sample) => sample.value);
+  const restingHR = getFirstNum(fm, "resting_heart_rate", "heart_resting_heart_rate", "restingHeartRate");
+  const avgHR = (_c = getFirstNum(fm, "average_heart_rate", "heart_average_heart_rate", "averageHeartRate")) != null ? _c : average2(heartValues);
+  const hrvVal = (_d = getFirstNum(fm, "hrv_ms", "hrv", "heart_hrv")) != null ? _d : average2(hrvValues);
+  const heartRateMin = (_e = getFirstNum(fm, "heart_rate_min", "heart_min", "heartRateMin")) != null ? _e : heartValues.length ? Math.min(...heartValues) : void 0;
+  const heartRateMax = (_f = getFirstNum(fm, "heart_rate_max", "heart_max", "heartRateMax")) != null ? _f : heartValues.length ? Math.max(...heartValues) : void 0;
+  const walkingHeartRateAverage = getFirstNum(
+    fm,
+    "walking_heart_rate",
+    "walking_heart_rate_average",
+    "walkingHeartRateAverage"
+  );
+  if (restingHR !== void 0 || avgHR !== void 0 || hrvVal !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || walkingHeartRateAverage !== void 0 || granular.heartRateSamples.length || granular.hrvSamples.length) {
     day.heart = {
-      averageHeartRate: (_m = avgHR != null ? avgHR : restingHR) != null ? _m : 0,
-      heartRateMin: (_o = (_n = getNum2(fm, "heart_rate_min")) != null ? _n : getNum2(fm, "heart_min")) != null ? _o : 0,
-      heartRateMax: (_q = (_p = getNum2(fm, "heart_rate_max")) != null ? _p : getNum2(fm, "heart_max")) != null ? _q : 0,
-      heartRateSamples: [],
+      averageHeartRate: (_g = avgHR != null ? avgHR : restingHR) != null ? _g : 0,
+      heartRateMin: (_i = (_h = heartRateMin != null ? heartRateMin : avgHR) != null ? _h : restingHR) != null ? _i : 0,
+      heartRateMax: (_k = (_j = heartRateMax != null ? heartRateMax : avgHR) != null ? _j : restingHR) != null ? _k : 0,
+      heartRateSamples: granular.heartRateSamples,
+      hrvSamples: granular.hrvSamples.length ? granular.hrvSamples : void 0,
       restingHeartRate: restingHR,
-      walkingHeartRateAverage: (_r = getNum2(fm, "walking_heart_rate")) != null ? _r : getNum2(fm, "walking_heart_rate_average"),
+      walkingHeartRateAverage,
       hrv: hrvVal
     };
   }
@@ -10187,20 +10511,21 @@ function parseMarkdown(content) {
     "totalDuration",
     "total_duration"
   );
-  const sleepTotal = sleepHours !== void 0 ? sleepHours * 3600 : sleepSeconds;
-  if (sleepTotal !== void 0) {
+  const derivedSleepTotal = granular.sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
+  const sleepTotal = sleepHours !== void 0 ? sleepHours * 3600 : sleepSeconds != null ? sleepSeconds : derivedSleepTotal > 0 ? derivedSleepTotal : void 0;
+  if (sleepTotal !== void 0 || granular.sleepStages.length) {
     const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
     const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
-    const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours");
+    const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours");
     const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
     day.sleep = {
-      sleepStages: [],
-      totalDuration: sleepTotal,
-      deepSleep: deepH !== void 0 ? deepH * 3600 : (_s = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _s : 0,
-      remSleep: remH !== void 0 ? remH * 3600 : (_t = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _t : 0,
-      coreSleep: coreH !== void 0 ? coreH * 3600 : (_u = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep")) != null ? _u : 0,
-      awakeTime: awakeH !== void 0 ? awakeH * 3600 : getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time"),
-      bedtime: (_v = getFirstStr(
+      sleepStages: granular.sleepStages,
+      totalDuration: sleepTotal != null ? sleepTotal : derivedSleepTotal,
+      deepSleep: deepH !== void 0 ? deepH * 3600 : (_l = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _l : sumStageSeconds2(granular.sleepStages, "deep"),
+      remSleep: remH !== void 0 ? remH * 3600 : (_m = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _m : sumStageSeconds2(granular.sleepStages, "rem"),
+      coreSleep: coreH !== void 0 ? coreH * 3600 : (_n = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light")) != null ? _n : sumStageSeconds2(granular.sleepStages, "core"),
+      awakeTime: awakeH !== void 0 ? awakeH * 3600 : (_o = getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time")) != null ? _o : sumStageSeconds2(granular.sleepStages, "awake"),
+      bedtime: (_r = (_q = getFirstStr(
         fm,
         "sleep_bedtime",
         "sleepBedtime",
@@ -10209,8 +10534,8 @@ function parseMarkdown(content) {
         "sleep_start",
         "sleep_start_time",
         "sleep_session_start"
-      )) != null ? _v : "",
-      bedtimeISO: getFirstStr(
+      )) != null ? _q : (_p = granular.sleepStages[0]) == null ? void 0 : _p.startDate) != null ? _r : "",
+      bedtimeISO: (_t = getFirstStr(
         fm,
         "sleep_bedtime_iso",
         "sleepBedtimeISO",
@@ -10218,8 +10543,8 @@ function parseMarkdown(content) {
         "bed_time_iso",
         "sleep_start_iso",
         "sleep_session_start_iso"
-      ),
-      wakeTime: (_w = getFirstStr(
+      )) != null ? _t : (_s = granular.sleepStages[0]) == null ? void 0 : _s.startDate,
+      wakeTime: (_w = (_v = getFirstStr(
         fm,
         "sleep_wake",
         "sleepWake",
@@ -10230,8 +10555,8 @@ function parseMarkdown(content) {
         "sleep_end",
         "sleep_end_time",
         "sleep_session_end"
-      )) != null ? _w : "",
-      wakeTimeISO: getFirstStr(
+      )) != null ? _v : (_u = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _u.endDate) != null ? _w : "",
+      wakeTimeISO: (_y = getFirstStr(
         fm,
         "sleep_wake_iso",
         "sleepWakeISO",
@@ -10241,32 +10566,74 @@ function parseMarkdown(content) {
         "wake_iso",
         "sleep_end_iso",
         "sleep_session_end_iso"
-      )
+      )) != null ? _y : (_x = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _x.endDate
     };
   }
-  const respRate = (_x = getNum2(fm, "respiratory_rate")) != null ? _x : getNum2(fm, "vitals_respiratory_rate");
-  const bloodOx = (_z = (_y = getNum2(fm, "blood_oxygen")) != null ? _y : getNum2(fm, "blood_oxygen_avg")) != null ? _z : getNum2(fm, "vitals_blood_oxygen");
-  if (respRate !== void 0 || bloodOx !== void 0) {
+  const respiratoryValues = granular.respiratoryRateSamples.map((sample) => sample.value);
+  const respRateAvg = (_z = getFirstNum(fm, "respiratory_rate", "respiratory_rate_avg", "vitals_respiratory_rate", "respiratoryRateAvg")) != null ? _z : average2(respiratoryValues);
+  const respRateMin = (_A = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin")) != null ? _A : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0;
+  const respRateMax = (_B = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax")) != null ? _B : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0;
+  const bloodOxygenSamples = granular.bloodOxygenSamples.map((sample) => ({
+    timestamp: sample.timestamp,
+    value: sample.value,
+    percent: sample.value
+  }));
+  const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
+  const bloodOxAvg = (_C = normalizePercent2(getFirstNum(
+    fm,
+    "blood_oxygen",
+    "blood_oxygen_avg",
+    "vitals_blood_oxygen",
+    "bloodOxygenAvg",
+    "bloodOxygenPercent"
+  ))) != null ? _C : average2(bloodOxygenValues);
+  const bloodOxMin = (_D = normalizePercent2(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"))) != null ? _D : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_E = normalizePercent2(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"))) != null ? _E : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  if (respRateAvg !== void 0 || respRateMin !== void 0 || respRateMax !== void 0 || bloodOxAvg !== void 0 || bloodOxMin !== void 0 || bloodOxMax !== void 0 || granular.respiratoryRateSamples.length || bloodOxygenSamples.length) {
     day.vitals = {
-      respiratoryRate: respRate,
-      bloodOxygenPercent: bloodOx,
-      bloodOxygenAvg: bloodOx
+      respiratoryRate: respRateAvg,
+      respiratoryRateAvg: respRateAvg,
+      respiratoryRateMin: respRateMin,
+      respiratoryRateMax: respRateMax,
+      respiratoryRateSamples: granular.respiratoryRateSamples.length ? granular.respiratoryRateSamples : void 0,
+      bloodOxygenPercent: bloodOxAvg,
+      bloodOxygenAvg: bloodOxAvg,
+      bloodOxygenMin: bloodOxMin,
+      bloodOxygenMax: bloodOxMax,
+      bloodOxygenSamples: bloodOxygenSamples.length ? bloodOxygenSamples : void 0
     };
   }
-  const walkSpeed = (_A = getNum2(fm, "walking_speed")) != null ? _A : getNum2(fm, "mobility_walking_speed");
-  if (walkSpeed !== void 0) {
+  const walkSpeed = getFirstNum(fm, "walking_speed", "mobility_walking_speed", "walkingSpeed");
+  const walkingAsymmetryPercentage = getFirstNum(
+    fm,
+    "walking_asymmetry_percentage",
+    "walking_asymmetry_percent",
+    "walking_asymmetry",
+    "walkingAsymmetryPercentage"
+  );
+  const walkingStepLengthMeters = getFirstNum(fm, "walking_step_length", "walkingStepLength");
+  const walkingStepLengthCm = getNum2(fm, "step_length_cm");
+  const walkingStepLength = walkingStepLengthMeters != null ? walkingStepLengthMeters : walkingStepLengthCm !== void 0 ? walkingStepLengthCm / 100 : void 0;
+  const walkingDoubleSupportPercentage = getFirstNum(
+    fm,
+    "walking_double_support_percentage",
+    "walking_double_support_percent",
+    "double_support_percent",
+    "walkingDoubleSupportPercentage"
+  );
+  if (walkSpeed !== void 0 || walkingAsymmetryPercentage !== void 0 || walkingStepLength !== void 0 || walkingDoubleSupportPercentage !== void 0) {
     day.mobility = {
-      walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_D = (_C = (_B = getNum2(fm, "walking_asymmetry_percentage")) != null ? _B : getNum2(fm, "walking_asymmetry_percent")) != null ? _C : getNum2(fm, "walking_asymmetry")) != null ? _D : 0,
-      walkingStepLength: getNum2(fm, "walking_step_length"),
-      walkingDoubleSupportPercentage: getNum2(fm, "walking_double_support_percentage")
+      walkingSpeed: walkSpeed != null ? walkSpeed : 0,
+      walkingAsymmetryPercentage: walkingAsymmetryPercentage != null ? walkingAsymmetryPercentage : 0,
+      walkingStepLength,
+      walkingDoubleSupportPercentage
     };
   }
-  const headphone = (_E = getNum2(fm, "headphone_audio_level")) != null ? _E : getNum2(fm, "hearing_headphone_audio_level");
+  const headphone = getFirstNum(fm, "headphone_audio_level", "headphone_audio_db", "hearing_headphone_audio_level");
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }
-  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility;
+  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.hearing;
   return hasData ? day : null;
 }
 
@@ -13011,7 +13378,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const max = Math.max(...values, 0);
   const nonZero = values.filter((v) => v > 0);
   const total = values.reduce((s, v) => s + v, 0);
-  const average2 = nonZero.length ? total / nonZero.length : 0;
+  const average3 = nonZero.length ? total / nonZero.length : 0;
   const goal = config.goal != null ? Number(config.goal) : void 0;
   const showAverage = config.showAverage === void 0 || config.showAverage === "true" || config.showAverage === 1 || config.showAverage === "1";
   const chartEffectiveMax = goal && goal > max ? goal : max;
@@ -13024,7 +13391,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const padR = 36;
   const plotTop = padT + kpiH;
   const plotH = H - plotTop - padB;
-  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average2);
+  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average3);
   const subtitle = `${formatDate(days[0].date)} \u2013 ${formatDate(days[n - 1].date)}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -13044,8 +13411,8 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.textBaseline = "top";
     ctx.fillText(meta.formatValue(chartEffectiveMax), W - 4, plotTop);
   }
-  if (showAverage && average2 > 0 && chartEffectiveMax > 0) {
-    const y = plotTop + plotH - average2 / denom * plotH;
+  if (showAverage && average3 > 0 && chartEffectiveMax > 0) {
+    const y = plotTop + plotH - average3 / denom * plotH;
     ctx.save();
     ctx.strokeStyle = hexToRgba(theme.fg, 0.4);
     ctx.lineWidth = 1;
@@ -13059,7 +13426,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText(`avg ${meta.formatValue(average2)}`, W - padR - 4, y - 2);
+    ctx.fillText(`avg ${meta.formatValue(average3)}`, W - padR - 4, y - 2);
   }
   if (goal && chartEffectiveMax > 0) {
     const y = plotTop + plotH - goal / denom * plotH;
@@ -13150,7 +13517,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
       value: meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(total),
       label: `Total ${meta.unit}`
     },
-    { value: meta.formatValue(average2), label: "Daily avg" },
+    { value: meta.formatValue(average3), label: "Daily avg" },
     { value: meta.formatValue(best), label: `Best (${bestLabel})` }
   ]);
 };
@@ -13158,11 +13525,11 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
 // src/visualizations/sleep-schedule.ts
 var DAY_MS = 864e5;
 function parseWindow(str) {
-  const clock = parseClockTime(str);
+  const clock = parseClockTime2(str);
   if (!clock) return { h: 0, m: 0 };
   return { h: clock.h, m: clock.m };
 }
-function parseClockTime(raw) {
+function parseClockTime2(raw) {
   var _a, _b;
   const value = raw == null ? void 0 : raw.trim();
   if (!value) return null;
@@ -13201,8 +13568,8 @@ function resolveExplicitBedWake(night, sleep) {
   const bedRaw = (_b = (_a = sleep.bedtimeISO) != null ? _a : sleep.sessionStart) != null ? _b : sleep.bedtime;
   const wakeRaw = (_d = (_c = sleep.wakeTimeISO) != null ? _c : sleep.sessionEnd) != null ? _d : sleep.wakeTime;
   if (!bedRaw || !wakeRaw) return null;
-  const bedClock = parseClockTime(bedRaw);
-  const wakeClock = parseClockTime(wakeRaw);
+  const bedClock = parseClockTime2(bedRaw);
+  const wakeClock = parseClockTime2(wakeRaw);
   let bedMs = bedClock ? clockMsOnDate(night.date, bedClock) : parseAbsoluteMs(bedRaw);
   let wakeMs = wakeClock ? clockMsOnDate(night.date, wakeClock) : parseAbsoluteMs(wakeRaw);
   if (!isFinite(bedMs) || !isFinite(wakeMs)) return null;
@@ -13247,7 +13614,7 @@ function localDateIso(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function addDaysIso(dateIso, days) {
+function addDaysIso2(dateIso, days) {
   const d = /* @__PURE__ */ new Date(`${dateIso}T00:00:00`);
   d.setDate(d.getDate() + days);
   return localDateIso(d.getTime());
@@ -13316,13 +13683,13 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     const bedDate = localDateIso(night.bedMs);
     const wakeDate = localDateIso(night.wakeMs);
     const candidates = Array.from(/* @__PURE__ */ new Set([
-      addDaysIso(night.date, -1),
+      addDaysIso2(night.date, -1),
       night.date,
-      addDaysIso(night.date, 1),
-      addDaysIso(bedDate, -1),
+      addDaysIso2(night.date, 1),
+      addDaysIso2(bedDate, -1),
       bedDate,
-      addDaysIso(bedDate, 1),
-      addDaysIso(wakeDate, -1),
+      addDaysIso2(bedDate, 1),
+      addDaysIso2(wakeDate, -1),
       wakeDate
     ]));
     let best = windowBoundsFor(night.date);

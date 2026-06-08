@@ -370,7 +370,7 @@ The plugin auto-detects the data format from the file extension. Each file shoul
 
 - `.json` — A `HealthDay` object (see `src/types.ts` for the full shape).
 - `.csv` — Health.md row exports (`Date,Category,Metric,Value,Unit[,Timestamp]`). The parser accepts both historical plugin labels and current iOS/Android labels such as `Min Heart Rate`, `Cardio Fitness (VO2 Max)`, `Respiratory Rate Avg`, and granular sample rows. See `src/parsers/csv-parser.ts`.
-- `.md` — A markdown file with YAML frontmatter that uses fields like `heart_rate_avg`, `sleep_deep`, `steps`, etc. **Plain markdown without frontmatter is not parsed.** See `src/parsers/markdown-parser.ts`. This format is compatible with Obsidian Bases.
+- `.md` — A markdown file with YAML frontmatter that uses fields like `average_heart_rate`, `sleep_deep_hours`, `steps`, etc. Optional Health.md granular tables (`Time | BPM`, `Time | SpO2`, `Start | End | Stage`, …) are parsed when present. Frontmatter is recommended for aggregate metrics; markdown without frontmatter needs an ISO date in the title/body. See `src/parsers/markdown-parser.ts`. This format is compatible with Obsidian Bases.
 
 The top-level `date` field on each day must be a `YYYY-MM-DD` ISO date — the date filter does fast lexicographic comparisons against this field.
 
