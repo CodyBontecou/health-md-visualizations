@@ -9678,106 +9678,357 @@ function parseJSON(content) {
 }
 
 // src/parsers/csv-parser.ts
+function parseCsvLine(line) {
+  const fields = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  fields.push(current);
+  return fields;
+}
 function parseRows(content) {
-  const lines = content.split("\n").filter((l) => l.trim());
+  var _a;
+  const lines = content.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(",");
+    const parts = parseCsvLine(lines[i]);
     if (parts.length >= 5) {
       rows.push({
         date: parts[0].trim(),
         category: parts[1].trim(),
         metric: parts[2].trim(),
         value: parts[3].trim(),
-        unit: parts[4].trim()
+        unit: parts[4].trim(),
+        timestamp: (_a = parts[5]) == null ? void 0 : _a.trim()
       });
     }
   }
   return rows;
 }
-function getNum(rows, category, metric) {
-  const row = rows.find(
-    (r) => r.category.toLowerCase() === category.toLowerCase() && r.metric.toLowerCase() === metric.toLowerCase()
-  );
-  if (!row) return void 0;
-  const num = parseFloat(row.value);
+function normalizeLabel(value) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+function rowMatches(row, lookup2) {
+  return normalizeLabel(row.category) === normalizeLabel(lookup2.category) && normalizeLabel(row.metric) === normalizeLabel(lookup2.metric);
+}
+function findRow(rows, lookups) {
+  for (const lookup2 of lookups) {
+    const row = rows.find((candidate) => rowMatches(candidate, lookup2));
+    if (row) return row;
+  }
+  return void 0;
+}
+function findRows(rows, lookups) {
+  const matches = [];
+  for (const row of rows) {
+    if (lookups.some((lookup2) => rowMatches(row, lookup2))) {
+      matches.push(row);
+    }
+  }
+  return matches;
+}
+function parseNumber(value) {
+  const num = parseFloat(value.replace(/,/g, ""));
   return isNaN(num) ? void 0 : num;
 }
-function getString(rows, category, metric) {
-  const row = rows.find(
-    (r) => r.category.toLowerCase() === category.toLowerCase() && r.metric.toLowerCase() === metric.toLowerCase()
-  );
+function getNumFromLookups(rows, lookups) {
+  const row = findRow(rows, lookups);
+  if (!row) return void 0;
+  return parseNumber(row.value);
+}
+function getStringFromLookups(rows, lookups) {
+  const row = findRow(rows, lookups);
   return row == null ? void 0 : row.value;
 }
+function getNum(rows, category, metric) {
+  return getNumFromLookups(rows, [{ category, metric }]);
+}
+function getString(rows, category, metric) {
+  return getStringFromLookups(rows, [{ category, metric }]);
+}
+function lookup(category, metric) {
+  return { category, metric };
+}
+function normalizeDistanceKm(row) {
+  if (!row) return void 0;
+  const value = parseNumber(row.value);
+  if (value === void 0) return void 0;
+  const unit = normalizeLabel(row.unit);
+  if (unit === "km" || unit.includes("kilometer")) return value;
+  if (unit === "mi" || unit.includes("mile")) return value * 1.609344;
+  if (unit === "m" || unit.includes("meter") || value > 100) return value / 1e3;
+  return value;
+}
+function normalizePercent(value) {
+  if (value === void 0) return void 0;
+  return value > 0 && value <= 1 ? value * 100 : value;
+}
+function average(values) {
+  if (!values.length) return void 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+function formatLocalDateTime(ms) {
+  const d = new Date(ms);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const sec = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
+}
+function timestampFromClock(date, rawClock) {
+  var _a;
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(rawClock.trim());
+  if (!match) return void 0;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  const s = Number((_a = match[3]) != null ? _a : 0);
+  if (h > 23 || m > 59 || s > 59) return void 0;
+  return `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+function normalizeTimestamp(date, raw) {
+  const value = raw == null ? void 0 : raw.trim();
+  if (!value) return void 0;
+  if (isFinite(Date.parse(value))) return value;
+  return timestampFromClock(date, value);
+}
+function samplesFromRows(rows, lookups, transformValue = (value) => value) {
+  const samples = [];
+  for (const row of findRows(rows, lookups)) {
+    const parsedValue = parseNumber(row.value);
+    const timestamp = normalizeTimestamp(row.date, row.timestamp);
+    if (parsedValue === void 0 || !timestamp) continue;
+    const value = transformValue(parsedValue);
+    if (value === void 0) continue;
+    samples.push({ timestamp, value });
+  }
+  return samples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+function normalizeSleepStage(stage) {
+  const normalized = normalizeLabel(stage).replace(/^asleep[_\s-]*/, "").replace(/^sleep[_\s-]*/, "");
+  if (normalized === "light") return "core";
+  if (normalized.includes("deep")) return "deep";
+  if (normalized.includes("rem")) return "rem";
+  if (normalized.includes("awake")) return "awake";
+  if (normalized.includes("core")) return "core";
+  return normalized || "core";
+}
+function parseStageDurationSeconds(value) {
+  const match = /\(([0-9]+(?:\.[0-9]+)?)\s*s(?:ec(?:onds?)?)?\)/i.exec(value);
+  if (match) return Number(match[1]);
+  return void 0;
+}
+function parseSleepStages(rows) {
+  const stages = [];
+  for (const row of rows) {
+    if (normalizeLabel(row.category) !== "sleep") continue;
+    const metric = normalizeLabel(row.metric);
+    if (metric === "sleep stage") {
+      const durationSeconds = parseStageDurationSeconds(row.value);
+      const startDate = normalizeTimestamp(row.date, row.timestamp);
+      if (durationSeconds === void 0 || !startDate) continue;
+      const stageName = row.value.replace(/\s*\([^)]+\)\s*$/, "");
+      const startMs = Date.parse(startDate);
+      if (!isFinite(startMs)) continue;
+      stages.push({
+        stage: normalizeSleepStage(stageName),
+        startDate,
+        endDate: formatLocalDateTime(startMs + durationSeconds * 1e3),
+        durationSeconds
+      });
+      continue;
+    }
+    if (metric.startsWith("stage ")) {
+      const rangeMatch = /^(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?)$/.exec(row.value.trim());
+      if (!rangeMatch) continue;
+      const startDate = timestampFromClock(row.date, rangeMatch[1]);
+      const endDateBase = timestampFromClock(row.date, rangeMatch[2]);
+      if (!startDate || !endDateBase) continue;
+      const startMs = Date.parse(startDate);
+      let endMs = Date.parse(endDateBase);
+      if (!isFinite(startMs) || !isFinite(endMs)) continue;
+      if (endMs <= startMs) endMs += 864e5;
+      stages.push({
+        stage: normalizeSleepStage(row.metric.replace(/^stage\s+/i, "")),
+        startDate,
+        endDate: formatLocalDateTime(endMs),
+        durationSeconds: Math.round((endMs - startMs) / 1e3)
+      });
+    }
+  }
+  return stages.sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+function sumStageSeconds(stages, stageName) {
+  return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
+}
 function buildDayFromRows(date, rows) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
   const day = {
     type: "health-data",
     date
   };
   const steps = getNum(rows, "Activity", "Steps");
-  if (steps !== void 0) {
+  const activeCalories = getNum(rows, "Activity", "Active Calories");
+  const exerciseMinutes = getNum(rows, "Activity", "Exercise Minutes");
+  const distanceRow = findRow(rows, [lookup("Activity", "Walking Running Distance")]);
+  const walkingRunningDistanceKm = normalizeDistanceKm(distanceRow);
+  const basalEnergyBurned = getNumFromLookups(rows, [
+    lookup("Activity", "Basal Energy Burned"),
+    lookup("Activity", "Basal Energy"),
+    lookup("Activity", "Basal Calories")
+  ]);
+  const flightsClimbed = getNumFromLookups(rows, [
+    lookup("Activity", "Flights Climbed"),
+    lookup("Activity", "Floors Climbed")
+  ]);
+  const vo2Max = getNumFromLookups(rows, [
+    lookup("Activity", "VO2 Max"),
+    lookup("Activity", "Cardio Fitness (VO2 Max)"),
+    lookup("Mobility", "VO2 Max")
+  ]);
+  const standHours = getNum(rows, "Activity", "Stand Hours");
+  if (steps !== void 0 || activeCalories !== void 0 || exerciseMinutes !== void 0 || walkingRunningDistanceKm !== void 0 || basalEnergyBurned !== void 0 || flightsClimbed !== void 0 || vo2Max !== void 0 || standHours !== void 0) {
     day.activity = {
-      steps,
-      walkingRunningDistanceKm: (_a = getNum(rows, "Activity", "Walking Running Distance")) != null ? _a : 0,
-      activeCalories: (_b = getNum(rows, "Activity", "Active Calories")) != null ? _b : 0,
-      exerciseMinutes: (_c = getNum(rows, "Activity", "Exercise Minutes")) != null ? _c : 0,
-      vo2Max: getNum(rows, "Activity", "VO2 Max"),
-      basalEnergyBurned: getNum(rows, "Activity", "Basal Energy Burned"),
-      standHours: getNum(rows, "Activity", "Stand Hours"),
-      flightsClimbed: getNum(rows, "Activity", "Flights Climbed")
+      steps: steps != null ? steps : 0,
+      walkingRunningDistanceKm: walkingRunningDistanceKm != null ? walkingRunningDistanceKm : 0,
+      walkingRunningDistance: distanceRow ? parseNumber(distanceRow.value) : void 0,
+      activeCalories: activeCalories != null ? activeCalories : 0,
+      exerciseMinutes: exerciseMinutes != null ? exerciseMinutes : 0,
+      vo2Max,
+      basalEnergyBurned,
+      standHours,
+      flightsClimbed
     };
-    const distM = getNum(rows, "Activity", "Walking Running Distance");
-    if (distM !== void 0 && distM > 100) {
-      day.activity.walkingRunningDistanceKm = distM / 1e3;
-    }
   }
+  const heartRateSamples = samplesFromRows(rows, [lookup("Heart", "Heart Rate Sample")]);
+  const hrvSamples = samplesFromRows(rows, [lookup("Heart", "HRV Sample")]);
+  const heartValues = heartRateSamples.map((sample) => sample.value);
   const restingHR = getNum(rows, "Heart", "Resting Heart Rate");
-  const avgHR = getNum(rows, "Heart", "Average Heart Rate");
-  if (restingHR !== void 0 || avgHR !== void 0) {
+  const avgHR = (_a = getNum(rows, "Heart", "Average Heart Rate")) != null ? _a : average(heartValues);
+  const heartRateMin = (_b = getNumFromLookups(rows, [
+    lookup("Heart", "Heart Rate Min"),
+    lookup("Heart", "Min Heart Rate")
+  ])) != null ? _b : heartValues.length ? Math.min(...heartValues) : void 0;
+  const heartRateMax = (_c = getNumFromLookups(rows, [
+    lookup("Heart", "Heart Rate Max"),
+    lookup("Heart", "Max Heart Rate")
+  ])) != null ? _c : heartValues.length ? Math.max(...heartValues) : void 0;
+  if (restingHR !== void 0 || avgHR !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || heartRateSamples.length || hrvSamples.length) {
     day.heart = {
       averageHeartRate: (_d = avgHR != null ? avgHR : restingHR) != null ? _d : 0,
-      heartRateMin: (_e = getNum(rows, "Heart", "Heart Rate Min")) != null ? _e : 0,
-      heartRateMax: (_f = getNum(rows, "Heart", "Heart Rate Max")) != null ? _f : 0,
-      heartRateSamples: [],
+      heartRateMin: (_f = (_e = heartRateMin != null ? heartRateMin : avgHR) != null ? _e : restingHR) != null ? _f : 0,
+      heartRateMax: (_h = (_g = heartRateMax != null ? heartRateMax : avgHR) != null ? _g : restingHR) != null ? _h : 0,
+      heartRateSamples,
+      hrvSamples,
       restingHeartRate: restingHR,
       walkingHeartRateAverage: getNum(rows, "Heart", "Walking Heart Rate Average"),
-      hrv: getNum(rows, "Heart", "HRV")
+      hrv: (_i = getNum(rows, "Heart", "HRV")) != null ? _i : average(hrvSamples.map((sample) => sample.value))
     };
   }
-  const sleepTotal = getNum(rows, "Sleep", "Total Duration");
-  if (sleepTotal !== void 0) {
+  const sleepStages = parseSleepStages(rows);
+  const sleepTotal = (_j = getNum(rows, "Sleep", "Total Duration")) != null ? _j : sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
+  const deepSleep = (_k = getNum(rows, "Sleep", "Deep Sleep")) != null ? _k : sumStageSeconds(sleepStages, "deep");
+  const remSleep = (_l = getNum(rows, "Sleep", "REM Sleep")) != null ? _l : sumStageSeconds(sleepStages, "rem");
+  const coreSleep = (_m = getNumFromLookups(rows, [
+    lookup("Sleep", "Core Sleep"),
+    lookup("Sleep", "Light Sleep")
+  ])) != null ? _m : sumStageSeconds(sleepStages, "core");
+  const awakeTime = (_n = getNum(rows, "Sleep", "Awake Time")) != null ? _n : sumStageSeconds(sleepStages, "awake");
+  if (sleepTotal > 0 || sleepStages.length) {
     day.sleep = {
-      sleepStages: [],
+      sleepStages,
       totalDuration: sleepTotal,
-      deepSleep: (_g = getNum(rows, "Sleep", "Deep Sleep")) != null ? _g : 0,
-      remSleep: (_h = getNum(rows, "Sleep", "REM Sleep")) != null ? _h : 0,
-      coreSleep: (_i = getNum(rows, "Sleep", "Core Sleep")) != null ? _i : 0,
-      awakeTime: getNum(rows, "Sleep", "Awake Time"),
-      bedtime: (_j = getString(rows, "Sleep", "Bedtime")) != null ? _j : "",
-      wakeTime: (_k = getString(rows, "Sleep", "Wake Time")) != null ? _k : ""
+      deepSleep,
+      remSleep,
+      coreSleep,
+      awakeTime,
+      bedtime: (_q = (_p = getString(rows, "Sleep", "Bedtime")) != null ? _p : (_o = sleepStages[0]) == null ? void 0 : _o.startDate) != null ? _q : "",
+      bedtimeISO: (_r = sleepStages[0]) == null ? void 0 : _r.startDate,
+      wakeTime: (_u = (_t = getString(rows, "Sleep", "Wake Time")) != null ? _t : (_s = sleepStages[sleepStages.length - 1]) == null ? void 0 : _s.endDate) != null ? _u : "",
+      wakeTimeISO: (_v = sleepStages[sleepStages.length - 1]) == null ? void 0 : _v.endDate
     };
   }
-  const respRate = getNum(rows, "Vitals", "Respiratory Rate");
-  const bloodOx = getNum(rows, "Vitals", "Blood Oxygen");
-  if (respRate !== void 0 || bloodOx !== void 0) {
+  const respiratorySamples = samplesFromRows(rows, [lookup("Vitals", "Respiratory Rate Sample")]);
+  const respiratoryValues = respiratorySamples.map((sample) => sample.value);
+  const respRateAvg = (_w = getNumFromLookups(rows, [
+    lookup("Vitals", "Respiratory Rate"),
+    lookup("Vitals", "Respiratory Rate Avg")
+  ])) != null ? _w : average(respiratoryValues);
+  const bloodOxygenSamples = samplesFromRows(
+    rows,
+    [
+      lookup("Vitals", "Blood Oxygen Sample"),
+      lookup("Vitals", "SpO2 Sample"),
+      lookup("Vitals", "SpO\u2082 Sample")
+    ],
+    normalizePercent
+  ).map((sample) => ({ ...sample, percent: sample.value }));
+  const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
+  const bloodOxAvg = (_x = normalizePercent(getNumFromLookups(rows, [
+    lookup("Vitals", "Blood Oxygen"),
+    lookup("Vitals", "Blood Oxygen Avg"),
+    lookup("Vitals", "SpO2"),
+    lookup("Vitals", "SpO2 Avg"),
+    lookup("Vitals", "SpO\u2082"),
+    lookup("Vitals", "SpO\u2082 Avg")
+  ]))) != null ? _x : average(bloodOxygenValues);
+  const bloodOxMin = (_y = normalizePercent(getNumFromLookups(rows, [
+    lookup("Vitals", "Blood Oxygen Min"),
+    lookup("Vitals", "SpO2 Min"),
+    lookup("Vitals", "SpO\u2082 Min")
+  ]))) != null ? _y : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_z = normalizePercent(getNumFromLookups(rows, [
+    lookup("Vitals", "Blood Oxygen Max"),
+    lookup("Vitals", "SpO2 Max"),
+    lookup("Vitals", "SpO\u2082 Max")
+  ]))) != null ? _z : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  if (respRateAvg !== void 0 || respiratorySamples.length || bloodOxAvg !== void 0 || bloodOxygenSamples.length) {
     day.vitals = {
-      respiratoryRate: respRate,
-      bloodOxygenPercent: bloodOx,
-      bloodOxygenAvg: bloodOx
+      respiratoryRate: respRateAvg,
+      respiratoryRateAvg: respRateAvg,
+      respiratoryRateMin: (_A = getNum(rows, "Vitals", "Respiratory Rate Min")) != null ? _A : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0,
+      respiratoryRateMax: (_B = getNum(rows, "Vitals", "Respiratory Rate Max")) != null ? _B : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0,
+      respiratoryRateSamples: respiratorySamples.length ? respiratorySamples : void 0,
+      bloodOxygenPercent: bloodOxAvg,
+      bloodOxygenAvg: bloodOxAvg,
+      bloodOxygenMin: bloodOxMin,
+      bloodOxygenMax: bloodOxMax,
+      bloodOxygenSamples: bloodOxygenSamples.length ? bloodOxygenSamples : void 0
     };
   }
   const walkSpeed = getNum(rows, "Mobility", "Walking Speed");
   if (walkSpeed !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_l = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _l : 0,
+      walkingAsymmetryPercentage: (_E = (_D = (_C = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _C : getNum(rows, "Mobility", "Walking Asymmetry Percent")) != null ? _D : getNum(rows, "Mobility", "Walking Asymmetry")) != null ? _E : 0,
       walkingStepLength: getNum(rows, "Mobility", "Walking Step Length"),
-      walkingDoubleSupportPercentage: getNum(rows, "Mobility", "Walking Double Support Percentage")
+      walkingDoubleSupportPercentage: (_F = getNum(rows, "Mobility", "Walking Double Support Percentage")) != null ? _F : getNum(rows, "Mobility", "Walking Double Support Percent")
     };
   }
-  const headphone = getNum(rows, "Hearing", "Headphone Audio Level");
+  const headphone = getNumFromLookups(rows, [
+    lookup("Hearing", "Headphone Audio Level"),
+    lookup("Hearing", "Headphone Audio")
+  ]);
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }
@@ -12760,7 +13011,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const max = Math.max(...values, 0);
   const nonZero = values.filter((v) => v > 0);
   const total = values.reduce((s, v) => s + v, 0);
-  const average = nonZero.length ? total / nonZero.length : 0;
+  const average2 = nonZero.length ? total / nonZero.length : 0;
   const goal = config.goal != null ? Number(config.goal) : void 0;
   const showAverage = config.showAverage === void 0 || config.showAverage === "true" || config.showAverage === 1 || config.showAverage === "1";
   const chartEffectiveMax = goal && goal > max ? goal : max;
@@ -12773,7 +13024,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const padR = 36;
   const plotTop = padT + kpiH;
   const plotH = H - plotTop - padB;
-  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average);
+  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average2);
   const subtitle = `${formatDate(days[0].date)} \u2013 ${formatDate(days[n - 1].date)}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -12793,8 +13044,8 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.textBaseline = "top";
     ctx.fillText(meta.formatValue(chartEffectiveMax), W - 4, plotTop);
   }
-  if (showAverage && average > 0 && chartEffectiveMax > 0) {
-    const y = plotTop + plotH - average / denom * plotH;
+  if (showAverage && average2 > 0 && chartEffectiveMax > 0) {
+    const y = plotTop + plotH - average2 / denom * plotH;
     ctx.save();
     ctx.strokeStyle = hexToRgba(theme.fg, 0.4);
     ctx.lineWidth = 1;
@@ -12808,7 +13059,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText(`avg ${meta.formatValue(average)}`, W - padR - 4, y - 2);
+    ctx.fillText(`avg ${meta.formatValue(average2)}`, W - padR - 4, y - 2);
   }
   if (goal && chartEffectiveMax > 0) {
     const y = plotTop + plotH - goal / denom * plotH;
@@ -12899,7 +13150,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
       value: meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(total),
       label: `Total ${meta.unit}`
     },
-    { value: meta.formatValue(average), label: "Daily avg" },
+    { value: meta.formatValue(average2), label: "Daily avg" },
     { value: meta.formatValue(best), label: `Best (${bestLabel})` }
   ]);
 };
@@ -15973,7 +16224,7 @@ function formatBytes(bytes) {
   if (kb < 1024) return `${kb.toFixed(1)} KB`;
   return `${(kb / 1024).toFixed(1)} MB`;
 }
-function parseCsvLine(line) {
+function parseCsvLine2(line) {
   const cells = [];
   let cell = "";
   let inQuotes = false;
@@ -16002,7 +16253,7 @@ function parseCsvPreview(content) {
   const rows = [];
   let truncatedColumns = false;
   for (const line of lines.slice(0, CSV_PREVIEW_MAX_ROWS)) {
-    const cells = parseCsvLine(line);
+    const cells = parseCsvLine2(line);
     if (cells.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
     rows.push(cells.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }

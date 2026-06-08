@@ -369,7 +369,7 @@ Because `last` is anchored on today by default, each new daily note shows the mo
 The plugin auto-detects the data format from the file extension. Each file should represent **one day** of health data and live inside your configured data folder.
 
 - `.json` — A `HealthDay` object (see `src/types.ts` for the full shape).
-- `.csv` — Section headers (`Heart`, `Sleep`, `Vitals`, `Activity`, `Mobility`, …) followed by `Metric,Value` rows. See `src/parsers/csv-parser.ts`.
+- `.csv` — Health.md row exports (`Date,Category,Metric,Value,Unit[,Timestamp]`). The parser accepts both historical plugin labels and current iOS/Android labels such as `Min Heart Rate`, `Cardio Fitness (VO2 Max)`, `Respiratory Rate Avg`, and granular sample rows. See `src/parsers/csv-parser.ts`.
 - `.md` — A markdown file with YAML frontmatter that uses fields like `heart_rate_avg`, `sleep_deep`, `steps`, etc. **Plain markdown without frontmatter is not parsed.** See `src/parsers/markdown-parser.ts`. This format is compatible with Obsidian Bases.
 
 The top-level `date` field on each day must be a `YYYY-MM-DD` ISO date — the date filter does fast lexicographic comparisons against this field.
