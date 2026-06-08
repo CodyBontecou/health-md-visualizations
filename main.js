@@ -9667,212 +9667,10 @@ function stripPathControlCharacters(value) {
 }
 
 // src/parsers/json-parser.ts
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function asRecord(value) {
-  return isRecord(value) ? value : void 0;
-}
-function asRecordArray(value) {
-  if (!Array.isArray(value)) return void 0;
-  return value.filter(isRecord);
-}
-function getNumber(record, key) {
-  const value = record[key];
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return void 0;
-}
-function getString(record, key) {
-  const value = record[key];
-  return typeof value === "string" ? value : void 0;
-}
-function firstNumber(record, ...keys) {
-  for (const key of keys) {
-    const value = getNumber(record, key);
-    if (value !== void 0) return value;
-  }
-  return void 0;
-}
-function firstString(record, ...keys) {
-  for (const key of keys) {
-    const value = getString(record, key);
-    if (value !== void 0) return value;
-  }
-  return void 0;
-}
-function copyIfMissing(record, targetKey, sourceKey) {
-  if (record[targetKey] === void 0 && record[sourceKey] !== void 0) {
-    record[targetKey] = record[sourceKey];
-  }
-}
-function toPercentScale(value) {
-  return value > 0 && value <= 1 ? value * 100 : value;
-}
-function normalizeClockTimestamp(raw, fallbackDate) {
-  var _a;
-  const value = raw.trim();
-  if (!value) return raw;
-  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
-  if (timeOnly) {
-    const hour = timeOnly[1].padStart(2, "0");
-    const minute = timeOnly[2];
-    const second = (_a = timeOnly[3]) != null ? _a : "00";
-    return `${fallbackDate}T${hour}:${minute}:${second}`;
-  }
-  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
-  const parsed = Date.parse(value);
-  if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
-  return raw;
-}
-function normalizeTimeSeriesSamples(value, date, valueKeys, valueNormalizer = (sampleValue) => sampleValue) {
-  const samples = asRecordArray(value);
-  if (!samples) return void 0;
-  for (const sample of samples) {
-    const timestamp = firstString(sample, "timestamp", "time", "startTime", "startDate");
-    if (timestamp !== void 0) {
-      sample.timestamp = normalizeClockTimestamp(timestamp, date);
-    }
-    const sampleValue = firstNumber(sample, ...valueKeys);
-    if (sampleValue !== void 0) {
-      sample.value = valueNormalizer(sampleValue);
-    }
-  }
-  return samples;
-}
-function normalizeSleepStages(value, date) {
-  var _a;
-  const stages = asRecordArray(value);
-  if (!stages) return void 0;
-  for (const stage of stages) {
-    const stageName = (_a = getString(stage, "stage")) == null ? void 0 : _a.toLowerCase();
-    if (stageName === "light") {
-      stage.stage = "core";
-    }
-    const start = firstString(stage, "startDate", "startTime", "timestamp", "time");
-    const end = firstString(stage, "endDate", "endTime");
-    if (start !== void 0) stage.startDate = normalizeClockTimestamp(start, date);
-    if (end !== void 0) stage.endDate = normalizeClockTimestamp(end, date);
-    const duration = firstNumber(stage, "durationSeconds", "duration", "durationSecs");
-    if (duration !== void 0) {
-      stage.durationSeconds = duration;
-    } else if (typeof stage.startDate === "string" && typeof stage.endDate === "string") {
-      const startMs = Date.parse(stage.startDate);
-      let endMs = Date.parse(stage.endDate);
-      if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
-        if (endMs <= startMs) endMs += 864e5;
-        if (endMs > startMs) {
-          stage.endDate = new Date(endMs).toISOString();
-          stage.durationSeconds = (endMs - startMs) / 1e3;
-        }
-      }
-    }
-  }
-  return stages;
-}
-function normalizeSleep(sleep, date) {
-  copyIfMissing(sleep, "sleepStages", "stages");
-  copyIfMissing(sleep, "coreSleep", "lightSleep");
-  copyIfMissing(sleep, "coreSleepFormatted", "lightSleepFormatted");
-  const stages = normalizeSleepStages(sleep.sleepStages, date);
-  if (stages) sleep.sleepStages = stages;
-}
-function normalizeActivity(day) {
-  const activity = asRecord(day.activity);
-  if (!activity) return;
-  const mobility = asRecord(day.mobility);
-  if (getNumber(activity, "vo2Max") === void 0 && mobility) {
-    const vo2Max = getNumber(mobility, "vo2Max");
-    if (vo2Max !== void 0) activity.vo2Max = vo2Max;
-  }
-  copyIfMissing(activity, "pushCount", "wheelchairPushes");
-}
-function normalizeHeart(heart, date) {
-  const heartRateSamples = normalizeTimeSeriesSamples(
-    heart.heartRateSamples,
-    date,
-    ["value", "bpm"]
-  );
-  if (heartRateSamples) heart.heartRateSamples = heartRateSamples;
-  const hrvSamples = normalizeTimeSeriesSamples(heart.hrvSamples, date, ["value", "ms"]);
-  if (hrvSamples) heart.hrvSamples = hrvSamples;
-}
-function normalizeVitals(vitals, date) {
-  const respiratoryRate = firstNumber(vitals, "respiratoryRateAvg", "respiratoryRate");
-  if (respiratoryRate !== void 0) {
-    vitals.respiratoryRateAvg = respiratoryRate;
-    vitals.respiratoryRate = respiratoryRate;
-  }
-  const bloodOxygenAvg = firstNumber(
-    vitals,
-    "bloodOxygenAvg",
-    "bloodOxygen",
-    "bloodOxygenPercent"
-  );
-  if (bloodOxygenAvg !== void 0) {
-    const percent = toPercentScale(bloodOxygenAvg);
-    vitals.bloodOxygenAvg = percent;
-    vitals.bloodOxygen = percent;
-    vitals.bloodOxygenPercent = percent;
-  }
-  const bloodOxygenMin = firstNumber(vitals, "bloodOxygenMin", "bloodOxygenMinPercent");
-  if (bloodOxygenMin !== void 0) {
-    const percent = toPercentScale(bloodOxygenMin);
-    vitals.bloodOxygenMin = percent;
-    vitals.bloodOxygenMinPercent = percent;
-  }
-  const bloodOxygenMax = firstNumber(vitals, "bloodOxygenMax", "bloodOxygenMaxPercent");
-  if (bloodOxygenMax !== void 0) {
-    const percent = toPercentScale(bloodOxygenMax);
-    vitals.bloodOxygenMax = percent;
-    vitals.bloodOxygenMaxPercent = percent;
-  }
-  const bloodOxygenSamples = normalizeTimeSeriesSamples(
-    vitals.bloodOxygenSamples,
-    date,
-    ["value", "percent"],
-    toPercentScale
-  );
-  if (bloodOxygenSamples) vitals.bloodOxygenSamples = bloodOxygenSamples;
-  const respiratoryRateSamples = normalizeTimeSeriesSamples(
-    vitals.respiratoryRateSamples,
-    date,
-    ["value", "breathsPerMin"]
-  );
-  if (respiratoryRateSamples) vitals.respiratoryRateSamples = respiratoryRateSamples;
-  const bloodGlucoseSamples = normalizeTimeSeriesSamples(
-    vitals.bloodGlucoseSamples,
-    date,
-    ["value", "mgPerDl"]
-  );
-  if (bloodGlucoseSamples) vitals.bloodGlucoseSamples = bloodGlucoseSamples;
-}
-function normalizeMindfulness(mindfulness) {
-  copyIfMissing(mindfulness, "mindfulMinutes", "mindfulnessMinutes");
-}
-function normalizeHealthDay(day) {
-  const date = typeof day.date === "string" ? day.date : String(day.date);
-  day.date = date;
-  const sleep = asRecord(day.sleep);
-  if (sleep) normalizeSleep(sleep, date);
-  normalizeActivity(day);
-  const heart = asRecord(day.heart);
-  if (heart) normalizeHeart(heart, date);
-  const vitals = asRecord(day.vitals);
-  if (vitals) normalizeVitals(vitals, date);
-  const mindfulness = asRecord(day.mindfulness);
-  if (mindfulness) normalizeMindfulness(mindfulness);
-  return day;
-}
 function parseJSON(content) {
   try {
     const parsed = JSON.parse(content);
-    if (parsed.type === "health-data" && parsed.date) {
-      return normalizeHealthDay(parsed);
-    }
+    if (parsed.type === "health-data" && parsed.date) return parsed;
     return null;
   } catch (e) {
     return null;
@@ -9881,7 +9679,6 @@ function parseJSON(content) {
 
 // src/parsers/csv-parser.ts
 function parseRows(content) {
-  var _a;
   const lines = content.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return [];
   const rows = [];
@@ -9893,179 +9690,89 @@ function parseRows(content) {
         category: parts[1].trim(),
         metric: parts[2].trim(),
         value: parts[3].trim(),
-        unit: parts[4].trim(),
-        timestamp: ((_a = parts[5]) == null ? void 0 : _a.trim()) || void 0
+        unit: parts[4].trim()
       });
     }
   }
   return rows;
 }
-function list(value) {
-  return Array.isArray(value) ? value : [value];
-}
-function normalizeLabel(value) {
-  return value.trim().toLowerCase();
-}
-function findRow(rows, category, metric) {
-  const categories = list(category).map(normalizeLabel);
-  const metrics = list(metric).map(normalizeLabel);
-  return rows.find(
-    (row) => categories.includes(normalizeLabel(row.category)) && metrics.includes(normalizeLabel(row.metric))
-  );
-}
-function matchingRows(rows, category, metric) {
-  const categories = list(category).map(normalizeLabel);
-  const metrics = list(metric).map(normalizeLabel);
-  return rows.filter(
-    (row) => categories.includes(normalizeLabel(row.category)) && metrics.includes(normalizeLabel(row.metric))
-  );
-}
 function getNum(rows, category, metric) {
-  const row = findRow(rows, category, metric);
+  const row = rows.find(
+    (r) => r.category.toLowerCase() === category.toLowerCase() && r.metric.toLowerCase() === metric.toLowerCase()
+  );
   if (!row) return void 0;
   const num = parseFloat(row.value);
   return isNaN(num) ? void 0 : num;
 }
-function getString2(rows, category, metric) {
-  var _a;
-  return (_a = findRow(rows, category, metric)) == null ? void 0 : _a.value;
-}
-function toPercentScale2(value) {
-  return value > 0 && value <= 1 ? value * 100 : value;
-}
-function maybePercentScale(value) {
-  return value === void 0 ? void 0 : toPercentScale2(value);
-}
-function normalizeTimestamp(raw, fallbackDate) {
-  var _a;
-  if (!raw) return void 0;
-  const value = raw.trim();
-  if (!value) return void 0;
-  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
-  if (timeOnly) {
-    return `${fallbackDate}T${timeOnly[1].padStart(2, "0")}:${timeOnly[2]}:${(_a = timeOnly[3]) != null ? _a : "00"}`;
-  }
-  return value;
-}
-function getSamples(rows, category, metric, valueNormalizer = (value) => value) {
-  return matchingRows(rows, category, metric).map((row) => {
-    const value = parseFloat(row.value);
-    const timestamp = normalizeTimestamp(row.timestamp, row.date);
-    if (isNaN(value) || !timestamp) return null;
-    return { timestamp, value: valueNormalizer(value) };
-  }).filter((sample) => sample !== null);
-}
-function parseSleepStageRows(rows) {
-  return matchingRows(rows, "Sleep", "Sleep Stage").map((row) => {
-    const match = /^(.+?)\s*\((\d+(?:\.\d+)?)s\)$/i.exec(row.value.trim());
-    if (!match) return null;
-    const startDate = normalizeTimestamp(row.timestamp, row.date);
-    if (!startDate) return null;
-    const durationSeconds = Number(match[2]);
-    if (!Number.isFinite(durationSeconds)) return null;
-    const startMs = Date.parse(startDate);
-    const endDate = Number.isFinite(startMs) ? new Date(startMs + durationSeconds * 1e3).toISOString() : startDate;
-    const rawStage = match[1].trim().toLowerCase();
-    const stage = rawStage === "light" ? "core" : rawStage;
-    return { stage, startDate, endDate, durationSeconds };
-  }).filter((stage) => stage !== null);
+function getString(rows, category, metric) {
+  const row = rows.find(
+    (r) => r.category.toLowerCase() === category.toLowerCase() && r.metric.toLowerCase() === metric.toLowerCase()
+  );
+  return row == null ? void 0 : row.value;
 }
 function buildDayFromRows(date, rows) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
   const day = {
     type: "health-data",
     date
   };
   const steps = getNum(rows, "Activity", "Steps");
   if (steps !== void 0) {
-    const distance = getNum(rows, "Activity", [
-      "Walking Running Distance",
-      "Walking + Running Distance"
-    ]);
     day.activity = {
       steps,
-      walkingRunningDistanceKm: distance != null ? distance : 0,
-      activeCalories: (_a = getNum(rows, "Activity", ["Active Calories", "Active Energy"])) != null ? _a : 0,
-      exerciseMinutes: (_b = getNum(rows, "Activity", ["Exercise Minutes", "Exercise Time"])) != null ? _b : 0,
-      vo2Max: (_c = getNum(rows, "Activity", ["VO2 Max", "Cardio Fitness (VO2 Max)"])) != null ? _c : getNum(rows, "Mobility", "VO2 Max"),
-      basalEnergyBurned: getNum(rows, "Activity", [
-        "Basal Energy Burned",
-        "Basal Energy",
-        "Basal Calories"
-      ]),
+      walkingRunningDistanceKm: (_a = getNum(rows, "Activity", "Walking Running Distance")) != null ? _a : 0,
+      activeCalories: (_b = getNum(rows, "Activity", "Active Calories")) != null ? _b : 0,
+      exerciseMinutes: (_c = getNum(rows, "Activity", "Exercise Minutes")) != null ? _c : 0,
+      vo2Max: getNum(rows, "Activity", "VO2 Max"),
+      basalEnergyBurned: getNum(rows, "Activity", "Basal Energy Burned"),
       standHours: getNum(rows, "Activity", "Stand Hours"),
-      flightsClimbed: getNum(rows, "Activity", ["Flights Climbed", "Floors Climbed"])
+      flightsClimbed: getNum(rows, "Activity", "Flights Climbed")
     };
-    if (distance !== void 0 && distance > 100) {
-      day.activity.walkingRunningDistanceKm = distance / 1e3;
+    const distM = getNum(rows, "Activity", "Walking Running Distance");
+    if (distM !== void 0 && distM > 100) {
+      day.activity.walkingRunningDistanceKm = distM / 1e3;
     }
   }
   const restingHR = getNum(rows, "Heart", "Resting Heart Rate");
   const avgHR = getNum(rows, "Heart", "Average Heart Rate");
-  const heartRateMin = getNum(rows, "Heart", ["Heart Rate Min", "Min Heart Rate"]);
-  const heartRateMax = getNum(rows, "Heart", ["Heart Rate Max", "Max Heart Rate"]);
-  const heartRateSamples = getSamples(rows, "Heart", "Heart Rate Sample");
-  const hrvSamples = getSamples(rows, "Heart", "HRV Sample");
-  if (restingHR !== void 0 || avgHR !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || heartRateSamples.length > 0 || hrvSamples.length > 0) {
+  if (restingHR !== void 0 || avgHR !== void 0) {
     day.heart = {
       averageHeartRate: (_d = avgHR != null ? avgHR : restingHR) != null ? _d : 0,
-      heartRateMin: heartRateMin != null ? heartRateMin : 0,
-      heartRateMax: heartRateMax != null ? heartRateMax : 0,
-      heartRateSamples,
+      heartRateMin: (_e = getNum(rows, "Heart", "Heart Rate Min")) != null ? _e : 0,
+      heartRateMax: (_f = getNum(rows, "Heart", "Heart Rate Max")) != null ? _f : 0,
+      heartRateSamples: [],
       restingHeartRate: restingHR,
       walkingHeartRateAverage: getNum(rows, "Heart", "Walking Heart Rate Average"),
-      hrv: getNum(rows, "Heart", ["HRV", "HRV (RMSSD)"]),
-      hrvSamples: hrvSamples.length > 0 ? hrvSamples : void 0
+      hrv: getNum(rows, "Heart", "HRV")
     };
   }
   const sleepTotal = getNum(rows, "Sleep", "Total Duration");
   if (sleepTotal !== void 0) {
     day.sleep = {
-      sleepStages: parseSleepStageRows(rows),
+      sleepStages: [],
       totalDuration: sleepTotal,
-      deepSleep: (_e = getNum(rows, "Sleep", "Deep Sleep")) != null ? _e : 0,
-      remSleep: (_f = getNum(rows, "Sleep", "REM Sleep")) != null ? _f : 0,
-      coreSleep: (_g = getNum(rows, "Sleep", ["Core Sleep", "Light Sleep"])) != null ? _g : 0,
+      deepSleep: (_g = getNum(rows, "Sleep", "Deep Sleep")) != null ? _g : 0,
+      remSleep: (_h = getNum(rows, "Sleep", "REM Sleep")) != null ? _h : 0,
+      coreSleep: (_i = getNum(rows, "Sleep", "Core Sleep")) != null ? _i : 0,
       awakeTime: getNum(rows, "Sleep", "Awake Time"),
-      bedtime: (_h = getString2(rows, "Sleep", "Bedtime")) != null ? _h : "",
-      wakeTime: (_i = getString2(rows, "Sleep", "Wake Time")) != null ? _i : ""
+      bedtime: (_j = getString(rows, "Sleep", "Bedtime")) != null ? _j : "",
+      wakeTime: (_k = getString(rows, "Sleep", "Wake Time")) != null ? _k : ""
     };
   }
-  const respRate = getNum(rows, "Vitals", ["Respiratory Rate", "Respiratory Rate Avg"]);
-  const respMin = getNum(rows, "Vitals", "Respiratory Rate Min");
-  const respMax = getNum(rows, "Vitals", "Respiratory Rate Max");
-  const bloodOx = maybePercentScale(getNum(rows, "Vitals", ["Blood Oxygen", "Blood Oxygen Avg"]));
-  const bloodOxMin = maybePercentScale(getNum(rows, "Vitals", "Blood Oxygen Min"));
-  const bloodOxMax = maybePercentScale(getNum(rows, "Vitals", "Blood Oxygen Max"));
-  const bloodOxygenSamples = getSamples(
-    rows,
-    "Vitals",
-    ["Blood Oxygen Sample", "SpO2 Sample"],
-    toPercentScale2
-  );
-  const respiratoryRateSamples = getSamples(rows, "Vitals", "Respiratory Rate Sample");
-  if (respRate !== void 0 || respMin !== void 0 || respMax !== void 0 || bloodOx !== void 0 || bloodOxMin !== void 0 || bloodOxMax !== void 0 || bloodOxygenSamples.length > 0 || respiratoryRateSamples.length > 0) {
+  const respRate = getNum(rows, "Vitals", "Respiratory Rate");
+  const bloodOx = getNum(rows, "Vitals", "Blood Oxygen");
+  if (respRate !== void 0 || bloodOx !== void 0) {
     day.vitals = {
       respiratoryRate: respRate,
-      respiratoryRateAvg: respRate,
-      respiratoryRateMin: respMin,
-      respiratoryRateMax: respMax,
       bloodOxygenPercent: bloodOx,
-      bloodOxygenAvg: bloodOx,
-      bloodOxygenMin: bloodOxMin,
-      bloodOxygenMax: bloodOxMax,
-      bloodOxygenSamples: bloodOxygenSamples.length > 0 ? bloodOxygenSamples : void 0,
-      respiratoryRateSamples: respiratoryRateSamples.length > 0 ? respiratoryRateSamples : void 0
+      bloodOxygenAvg: bloodOx
     };
   }
   const walkSpeed = getNum(rows, "Mobility", "Walking Speed");
   if (walkSpeed !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_j = getNum(rows, "Mobility", [
-        "Walking Asymmetry Percentage",
-        "Walking Asymmetry Percent"
-      ])) != null ? _j : 0,
+      walkingAsymmetryPercentage: (_l = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _l : 0,
       walkingStepLength: getNum(rows, "Mobility", "Walking Step Length"),
       walkingDoubleSupportPercentage: getNum(rows, "Mobility", "Walking Double Support Percentage")
     };
@@ -10177,12 +9884,8 @@ function getFirstStr(fm, ...keys) {
   }
   return void 0;
 }
-function toPercentScale3(value) {
-  if (value === void 0) return void 0;
-  return value > 0 && value <= 1 ? value * 100 : value;
-}
 function parseMarkdown(content) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
   const fm = parseFrontmatter(content);
   if (!fm) return null;
   const date = getStr(fm, "date");
@@ -10199,13 +9902,7 @@ function parseMarkdown(content) {
       activeCalories: (_e = (_d = getNum2(fm, "active_calories")) != null ? _d : getNum2(fm, "activity_active_calories")) != null ? _e : 0,
       exerciseMinutes: (_g = (_f = getNum2(fm, "exercise_minutes")) != null ? _f : getNum2(fm, "activity_exercise_minutes")) != null ? _g : 0,
       vo2Max: (_h = getNum2(fm, "vo2_max")) != null ? _h : getNum2(fm, "vo2max"),
-      basalEnergyBurned: getFirstNum(
-        fm,
-        "basal_energy_burned",
-        "basal_calories",
-        "basal_energy",
-        "basalEnergyBurned"
-      ),
+      basalEnergyBurned: getNum2(fm, "basal_energy_burned"),
       standHours: getNum2(fm, "stand_hours"),
       flightsClimbed: getNum2(fm, "flights_climbed")
     };
@@ -10243,32 +9940,14 @@ function parseMarkdown(content) {
   if (sleepTotal !== void 0) {
     const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
     const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
-    const coreH = getFirstNum(
-      fm,
-      "sleep_core_hours",
-      "sleepCoreHours",
-      "core_sleep_hours",
-      "sleep_light_hours",
-      "sleepLightHours",
-      "light_sleep_hours"
-    );
+    const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours");
     const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
     day.sleep = {
       sleepStages: [],
       totalDuration: sleepTotal,
       deepSleep: deepH !== void 0 ? deepH * 3600 : (_s = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _s : 0,
       remSleep: remH !== void 0 ? remH * 3600 : (_t = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _t : 0,
-      coreSleep: coreH !== void 0 ? coreH * 3600 : (_u = getFirstNum(
-        fm,
-        "sleep_core",
-        "sleepCore",
-        "coreSleep",
-        "core_sleep",
-        "sleep_light",
-        "sleepLight",
-        "lightSleep",
-        "light_sleep"
-      )) != null ? _u : 0,
+      coreSleep: coreH !== void 0 ? coreH * 3600 : (_u = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep")) != null ? _u : 0,
       awakeTime: awakeH !== void 0 ? awakeH * 3600 : getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time"),
       bedtime: (_v = getFirstStr(
         fm,
@@ -10314,44 +9993,25 @@ function parseMarkdown(content) {
       )
     };
   }
-  const respRate = getFirstNum(
-    fm,
-    "respiratory_rate",
-    "respiratory_rate_avg",
-    "vitals_respiratory_rate"
-  );
-  const respiratoryRateMin = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin");
-  const respiratoryRateMax = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax");
-  const bloodOx = toPercentScale3(getFirstNum(
-    fm,
-    "blood_oxygen",
-    "blood_oxygen_avg",
-    "vitals_blood_oxygen"
-  ));
-  const bloodOxygenMin = toPercentScale3(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"));
-  const bloodOxygenMax = toPercentScale3(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"));
-  if (respRate !== void 0 || respiratoryRateMin !== void 0 || respiratoryRateMax !== void 0 || bloodOx !== void 0 || bloodOxygenMin !== void 0 || bloodOxygenMax !== void 0) {
+  const respRate = (_x = getNum2(fm, "respiratory_rate")) != null ? _x : getNum2(fm, "vitals_respiratory_rate");
+  const bloodOx = (_z = (_y = getNum2(fm, "blood_oxygen")) != null ? _y : getNum2(fm, "blood_oxygen_avg")) != null ? _z : getNum2(fm, "vitals_blood_oxygen");
+  if (respRate !== void 0 || bloodOx !== void 0) {
     day.vitals = {
       respiratoryRate: respRate,
-      respiratoryRateAvg: respRate,
-      respiratoryRateMin,
-      respiratoryRateMax,
       bloodOxygenPercent: bloodOx,
-      bloodOxygenAvg: bloodOx,
-      bloodOxygenMin,
-      bloodOxygenMax
+      bloodOxygenAvg: bloodOx
     };
   }
-  const walkSpeed = (_x = getNum2(fm, "walking_speed")) != null ? _x : getNum2(fm, "mobility_walking_speed");
+  const walkSpeed = (_A = getNum2(fm, "walking_speed")) != null ? _A : getNum2(fm, "mobility_walking_speed");
   if (walkSpeed !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_A = (_z = (_y = getNum2(fm, "walking_asymmetry_percentage")) != null ? _y : getNum2(fm, "walking_asymmetry_percent")) != null ? _z : getNum2(fm, "walking_asymmetry")) != null ? _A : 0,
+      walkingAsymmetryPercentage: (_D = (_C = (_B = getNum2(fm, "walking_asymmetry_percentage")) != null ? _B : getNum2(fm, "walking_asymmetry_percent")) != null ? _C : getNum2(fm, "walking_asymmetry")) != null ? _D : 0,
       walkingStepLength: getNum2(fm, "walking_step_length"),
       walkingDoubleSupportPercentage: getNum2(fm, "walking_double_support_percentage")
     };
   }
-  const headphone = (_B = getNum2(fm, "headphone_audio_level")) != null ? _B : getNum2(fm, "hearing_headphone_audio_level");
+  const headphone = (_E = getNum2(fm, "headphone_audio_level")) != null ? _E : getNum2(fm, "hearing_headphone_audio_level");
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }
@@ -10500,8 +10160,8 @@ var DataLoader = class {
 };
 function mergeSourcePaths(...pathLists) {
   const paths = /* @__PURE__ */ new Set();
-  for (const list2 of pathLists) {
-    list2 == null ? void 0 : list2.forEach((path) => paths.add(path));
+  for (const list of pathLists) {
+    list == null ? void 0 : list.forEach((path) => paths.add(path));
   }
   return paths.size ? Array.from(paths).sort((a, b) => a.localeCompare(b)) : void 0;
 }
@@ -14716,7 +14376,7 @@ async function getFrontmatterForContext(plugin, ctx) {
       }
     }
   }
-  if (parsed && isRecord2(cached)) return { ...parsed, ...cached };
+  if (parsed && isRecord(cached)) return { ...parsed, ...cached };
   return cached != null ? cached : parsed;
 }
 function resolveFrontmatterDateVariables(config, frontmatter) {
@@ -14730,7 +14390,7 @@ function resolveFrontmatterDateVariables(config, frontmatter) {
     if (!variable) {
       return { error: `Invalid frontmatter variable in "${key}".` };
     }
-    if (!isRecord2(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
+    if (!isRecord(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
       return {
         error: `Missing frontmatter variable "${variable}" for "${key}". Add "${variable}" to this note's frontmatter or use a literal date.`
       };
@@ -15071,7 +14731,7 @@ function renderTooltipContent(tooltipEl, region) {
   });
 }
 var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-function isRecord2(value) {
+function isRecord(value) {
   return typeof value === "object" && value !== null;
 }
 function normalizeDataPointClickAction(value) {
@@ -15105,7 +14765,7 @@ function collectPayloadNavigation(payload, dates, sourcePaths) {
     payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
     return;
   }
-  if (!isRecord2(payload)) return;
+  if (!isRecord(payload)) return;
   const date = payload.date;
   if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
   const paths = payload.sourcePaths;
