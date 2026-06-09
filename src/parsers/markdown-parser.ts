@@ -1,4 +1,10 @@
-import { HealthDay, TimeSeriesSample } from "../types";
+import {
+	HealthDay,
+	TimeSeriesSample,
+	WorkoutEntry,
+	WorkoutHeartRateZone,
+	WorkoutInterval,
+} from "../types";
 
 interface ParsedFrontmatter {
 	frontmatter: Record<string, unknown> | null;
@@ -25,66 +31,191 @@ interface GranularMarkdownData {
 	sleepStages: NonNullable<HealthDay["sleep"]>["sleepStages"];
 }
 
+interface YamlLine {
+	indent: number;
+	text: string;
+}
+
+function countIndent(line: string): number {
+	const match = /^ */.exec(line);
+	return match ? match[0].length : 0;
+}
+
+function stripInlineComment(value: string): string {
+	let quote: string | null = null;
+	for (let i = 0; i < value.length; i++) {
+		const ch = value[i];
+		if ((ch === '"' || ch === "'") && value[i - 1] !== "\\") {
+			quote = quote === ch ? null : (quote ?? ch);
+		}
+		if (ch === "#" && !quote && (i === 0 || /\s/.test(value[i - 1]))) {
+			return value.slice(0, i).trimEnd();
+		}
+	}
+	return value;
+}
+
+function splitInlineArray(inner: string): string[] {
+	const parts: string[] = [];
+	let current = "";
+	let quote: string | null = null;
+	for (let i = 0; i < inner.length; i++) {
+		const ch = inner[i];
+		if ((ch === '"' || ch === "'") && inner[i - 1] !== "\\") {
+			quote = quote === ch ? null : (quote ?? ch);
+		}
+		if (ch === "," && !quote) {
+			parts.push(current.trim());
+			current = "";
+			continue;
+		}
+		current += ch;
+	}
+	if (current.trim()) parts.push(current.trim());
+	return parts;
+}
+
+function parseYamlScalar(raw: string): unknown {
+	let val = stripInlineComment(raw.trim());
+	if (!val) return null;
+
+	if (val.startsWith("[") && val.endsWith("]")) {
+		const inner = val.slice(1, -1);
+		return splitInlineArray(inner).map(parseYamlScalar);
+	}
+
+	if (
+		(val.startsWith('"') && val.endsWith('"')) ||
+		(val.startsWith("'") && val.endsWith("'"))
+	) {
+		val = val.slice(1, -1);
+		return val.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+	}
+
+	const lower = val.toLowerCase();
+	if (lower === "true") return true;
+	if (lower === "false") return false;
+	if (lower === "null" || lower === "~") return null;
+
+	const num = Number(val.replace(/,/g, ""));
+	if (!isNaN(num) && val !== "") return num;
+
+	return val;
+}
+
+function splitYamlKeyValue(text: string): [string, string] | null {
+	const colonIdx = text.indexOf(":");
+	if (colonIdx === -1) return null;
+	const key = text.slice(0, colonIdx).trim();
+	if (!key) return null;
+	return [key, text.slice(colonIdx + 1).trim()];
+}
+
+function parseYamlBlock(lines: YamlLine[], start: number, indent: number): { value: unknown; index: number } {
+	if (start >= lines.length) return { value: {}, index: start };
+	const first = lines[start];
+	if (first.indent < indent) return { value: {}, index: start };
+
+	if (first.indent === indent && first.text.startsWith("- ")) {
+		const arr: unknown[] = [];
+		let i = start;
+		while (i < lines.length && lines[i].indent === indent && lines[i].text.startsWith("- ")) {
+			const rest = lines[i].text.slice(2).trim();
+			if (!rest) {
+				const parsed = parseYamlBlock(lines, i + 1, indent + 2);
+				arr.push(parsed.value);
+				i = parsed.index;
+				continue;
+			}
+
+			const keyValue = splitYamlKeyValue(rest);
+			if (keyValue) {
+				const [key, rawValue] = keyValue;
+				const item: Record<string, unknown> = {};
+				if (rawValue) {
+					item[key] = parseYamlScalar(rawValue);
+					i++;
+				} else {
+					const parsed = parseYamlBlock(lines, i + 1, indent + 2);
+					item[key] = parsed.value;
+					i = parsed.index;
+				}
+
+				while (i < lines.length && lines[i].indent > indent) {
+					if (lines[i].indent < indent + 2) break;
+					const nested = splitYamlKeyValue(lines[i].text);
+					if (!nested) break;
+					const [nestedKey, nestedValue] = nested;
+					if (nestedValue) {
+						item[nestedKey] = parseYamlScalar(nestedValue);
+						i++;
+					} else {
+						const parsed = parseYamlBlock(lines, i + 1, lines[i].indent + 2);
+						item[nestedKey] = parsed.value;
+						i = parsed.index;
+					}
+				}
+				arr.push(item);
+				continue;
+			}
+
+			arr.push(parseYamlScalar(rest));
+			i++;
+		}
+		return { value: arr, index: i };
+	}
+
+	const obj: Record<string, unknown> = {};
+	let i = start;
+	while (i < lines.length && lines[i].indent >= indent) {
+		if (lines[i].indent > indent) break;
+		if (lines[i].text.startsWith("- ")) break;
+
+		const keyValue = splitYamlKeyValue(lines[i].text);
+		if (!keyValue) {
+			i++;
+			continue;
+		}
+		const [key, rawValue] = keyValue;
+		if (rawValue) {
+			obj[key] = parseYamlScalar(rawValue);
+			i++;
+			continue;
+		}
+
+		if (i + 1 < lines.length && lines[i + 1].indent > lines[i].indent) {
+			const parsed = parseYamlBlock(lines, i + 1, lines[i + 1].indent);
+			obj[key] = parsed.value;
+			i = parsed.index;
+		} else {
+			obj[key] = null;
+			i++;
+		}
+	}
+
+	return { value: obj, index: i };
+}
+
 /**
  * Minimal YAML frontmatter parser.
- * Handles scalar values (strings, numbers, booleans) and simple arrays.
- * Does not handle nested objects or multi-line values.
+ * Handles the subset emitted by Health.md: scalars, inline arrays, block arrays,
+ * and nested mappings such as `heart_rate_zones.zone1.seconds`.
  */
 function parseFrontmatter(content: string): ParsedFrontmatter {
 	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
 	if (!match) return { frontmatter: null, body: content };
 
 	const yaml = match[1];
-	const result: Record<string, unknown> = {};
-
-	for (const line of yaml.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith("#")) continue;
-
-		const colonIdx = trimmed.indexOf(":");
-		if (colonIdx === -1) continue;
-
-		const key = trimmed.slice(0, colonIdx).trim();
-		let val = trimmed.slice(colonIdx + 1).trim();
-
-		if (!val) continue;
-
-		// Array: [item1, item2]
-		if (val.startsWith("[") && val.endsWith("]")) {
-			const inner = val.slice(1, -1);
-			result[key] = inner
-				.split(",")
-				.map((s) => s.trim())
-				.filter(Boolean);
-			continue;
-		}
-
-		// Quoted string
-		if (
-			(val.startsWith('"') && val.endsWith('"')) ||
-			(val.startsWith("'") && val.endsWith("'"))
-		) {
-			result[key] = val.slice(1, -1);
-			continue;
-		}
-
-		// Boolean
-		if (val === "true") { result[key] = true; continue; }
-		if (val === "false") { result[key] = false; continue; }
-
-		// Number
-		const num = Number(val.replace(/,/g, ""));
-		if (!isNaN(num) && val !== "") {
-			result[key] = num;
-			continue;
-		}
-
-		// Plain string
-		result[key] = val;
-	}
+	const lines: YamlLine[] = yaml
+		.split(/\r?\n/)
+		.map((line) => ({ indent: countIndent(line), text: line.trim() }))
+		.filter((line) => line.text && !line.text.startsWith("#"));
+	const parsed = parseYamlBlock(lines, 0, 0).value;
 
 	return {
-		frontmatter: result,
+		frontmatter: typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+			? parsed as Record<string, unknown>
+			: {},
 		body: content.slice(match[0].length),
 	};
 }
@@ -110,6 +241,17 @@ function getNum(fm: Record<string, unknown>, key: string): number | undefined {
 function getStr(fm: Record<string, unknown>, key: string): string | undefined {
 	const v = fm[key];
 	if (typeof v === "string") return v;
+	if (v instanceof Date) {
+		const ms = v.getTime();
+		if (!Number.isFinite(ms)) return undefined;
+		const iso = v.toISOString();
+		const isMidnightUtc =
+			v.getUTCHours() === 0 &&
+			v.getUTCMinutes() === 0 &&
+			v.getUTCSeconds() === 0 &&
+			v.getUTCMilliseconds() === 0;
+		return isMidnightUtc ? iso.slice(0, 10) : iso.replace(/\.\d{3}Z$/, "Z");
+	}
 	if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
 		return String(v);
 	}
@@ -148,6 +290,44 @@ function getFirstStr(fm: Record<string, unknown>, ...keys: string[]): string | u
 		if (value !== undefined) return value;
 	}
 	return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeFrontmatter(
+	parsed: Record<string, unknown>,
+	cached: Record<string, unknown> | undefined
+): Record<string, unknown> {
+	if (!cached) return parsed;
+	return { ...parsed, ...cached };
+}
+
+function getBool(fm: Record<string, unknown>, key: string): boolean | undefined {
+	const value = fm[key];
+	if (typeof value === "boolean") return value;
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		if (normalized === "true") return true;
+		if (normalized === "false") return false;
+	}
+	return undefined;
+}
+
+function normalizeTags(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value
+			.flatMap((item) => normalizeTags(item))
+			.map((tag) => tag.replace(/^#/, ""));
+	}
+	if (typeof value === "string") {
+		return value
+			.split(/[\s,]+/)
+			.map((tag) => tag.trim().replace(/^#/, ""))
+			.filter(Boolean);
+	}
+	return [];
 }
 
 function normalizePercent(value: number | undefined): number | undefined {
@@ -364,6 +544,19 @@ function parseDurationSeconds(raw: string): number | undefined {
 	return found ? total : undefined;
 }
 
+function parseWorkoutDurationSeconds(raw: string): number | undefined {
+	const trimmed = raw.trim().toLowerCase();
+	let match = /^(\d{1,2}):(\d{2}):(\d{2})$/.exec(trimmed);
+	if (match) {
+		return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+	}
+	match = /^(\d{1,3}):(\d{2})$/.exec(trimmed);
+	if (match) {
+		return Number(match[1]) * 60 + Number(match[2]);
+	}
+	return parseDurationSeconds(raw);
+}
+
 function parseSleepStageRangeTable(
 	table: MarkdownTable,
 	date: string,
@@ -515,21 +708,281 @@ function sumStageSeconds(
 		.reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
 
+function recordStr(record: Record<string, unknown>, key: string): string | undefined {
+	const value = record[key];
+	if (typeof value === "string") return value;
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	return undefined;
+}
+
+function recordNum(record: Record<string, unknown>, key: string): number | undefined {
+	return parseNumberValue(record[key]);
+}
+
+function cleanDisplayValue(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	const trimmed = value.trim();
+	if (!trimmed || trimmed === "—" || trimmed === "-") return undefined;
+	return trimmed;
+}
+
+function formatDistanceField(
+	meters: number | undefined,
+	km: number | undefined,
+	mi: number | undefined
+): string | undefined {
+	if (km !== undefined) return `${km.toFixed(2)} km`;
+	if (mi !== undefined) return `${mi.toFixed(2)} mi`;
+	if (meters === undefined) return undefined;
+	if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
+	return `${Math.round(meters)} m`;
+}
+
+function parseDistanceToMeters(raw: string | undefined): number | undefined {
+	const value = cleanDisplayValue(raw);
+	if (!value) return undefined;
+	const n = parseNumberValue(value);
+	if (n === undefined) return undefined;
+	const normalized = value.toLowerCase();
+	if (/\bkm\b/.test(normalized)) return n * 1000;
+	if (/\bmi\b|miles?\b/.test(normalized)) return n * 1609.344;
+	if (/\byd\b|yards?\b/.test(normalized)) return n * 0.9144;
+	if (/\bm\b|meters?\b/.test(normalized)) return n;
+	return undefined;
+}
+
+function buildLocalDateTime(date: string, rawTime: string | undefined): string | undefined {
+	if (!rawTime) return undefined;
+	if (absoluteDateMs(rawTime) !== undefined) return rawTime;
+	const clock = parseClockTime(rawTime);
+	if (!clock) return undefined;
+	return `${date}T${pad2(clock.h)}:${pad2(clock.m)}:${pad2(clock.s)}`;
+}
+
+function addSecondsToTimestamp(timestamp: string | undefined, seconds: number): string | undefined {
+	if (!timestamp || !Number.isFinite(seconds) || seconds <= 0) return undefined;
+	const ms = Date.parse(timestamp);
+	if (!Number.isFinite(ms)) return undefined;
+	return new Date(ms + seconds * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+function frontmatterIndicatesWorkout(fm: Record<string, unknown>): boolean {
+	const type = normalizeLabel(getFirstStr(fm, "type", "Type") ?? "");
+	const metric = normalizeLabel(getFirstStr(fm, "metric", "Metric") ?? "");
+	const tags = normalizeTags(fm.tags ?? fm.tag).map((tag) => normalizeLabel(tag));
+	return (
+		type === "workout" ||
+		type === "workouts" ||
+		metric === "workouts" ||
+		tags.includes("workout") ||
+		tags.includes("healthmd")
+	);
+}
+
+function parseHeartRateZones(fm: Record<string, unknown>): WorkoutHeartRateZone[] {
+	const raw = fm.heart_rate_zones ?? fm.heartRateZones;
+	const zones: WorkoutHeartRateZone[] = [];
+
+	if (isRecord(raw)) {
+		const entries = Object.entries(raw).sort(([a], [b]) => {
+			const ai = parseNumberValue(a) ?? parseNumberValue(a.replace(/\D+/g, "")) ?? 0;
+			const bi = parseNumberValue(b) ?? parseNumberValue(b.replace(/\D+/g, "")) ?? 0;
+			return ai - bi || a.localeCompare(b);
+		});
+		entries.forEach(([key, value], idx) => {
+			if (!isRecord(value)) return;
+			const seconds = recordNum(value, "seconds") ?? 0;
+			const zoneIndex = parseNumberValue(key.replace(/\D+/g, "")) ?? idx + 1;
+			zones.push({
+				index: Math.round(zoneIndex),
+				key,
+				label: recordStr(value, "label") ?? `Zone ${idx + 1}`,
+				range: recordStr(value, "range"),
+				seconds,
+				durationFormatted: recordStr(value, "duration"),
+			});
+		});
+		return zones;
+	}
+
+	if (Array.isArray(raw)) {
+		raw.forEach((value, idx) => {
+			if (!isRecord(value)) return;
+			const seconds = recordNum(value, "seconds") ?? 0;
+			zones.push({
+				index: recordNum(value, "index") ?? idx + 1,
+				label: recordStr(value, "label") ?? `Zone ${idx + 1}`,
+				range: recordStr(value, "range"),
+				seconds,
+				durationFormatted: recordStr(value, "duration"),
+			});
+		});
+	}
+
+	return zones;
+}
+
+function parseWorkoutIntervals(body: string): { laps: WorkoutInterval[]; splits: WorkoutInterval[] } {
+	const laps: WorkoutInterval[] = [];
+	const splits: WorkoutInterval[] = [];
+
+	for (const table of parseMarkdownTables(body)) {
+		const context = normalizeLabel(table.context);
+		const target = context.includes("lap")
+			? laps
+			: context.includes("split")
+				? splits
+				: null;
+		if (!target) continue;
+
+		const headers = normalizedHeaders(table);
+		const indexIndex = findHeaderIndex(headers, (header) => header === "#" || header.includes("lap") || header.includes("split"));
+		const distanceIndex = findHeaderIndex(headers, (header) => header.includes("distance"));
+		const timeIndex = findHeaderIndex(headers, (header) => header === "time" || header.includes("duration"));
+		const paceIndex = findHeaderIndex(headers, (header) => header.includes("pace"));
+		const speedIndex = findHeaderIndex(headers, (header) => header.includes("speed"));
+		const avgHrIndex = findHeaderIndex(headers, (header) => header.includes("avg hr") || header.includes("average hr") || header.includes("avg heart"));
+		const maxHrIndex = findHeaderIndex(headers, (header) => header.includes("max hr") || header.includes("maximum hr") || header.includes("max heart"));
+		const avgPowerIndex = findHeaderIndex(headers, (header) => header.includes("avg power") || header.includes("average power"));
+		const avgCadenceIndex = findHeaderIndex(headers, (header) => header.includes("avg cadence") || header.includes("average cadence"));
+
+		for (const row of table.rows) {
+			const distanceFormatted = cleanDisplayValue(distanceIndex === -1 ? undefined : row[distanceIndex]);
+			const duration = timeIndex === -1 ? undefined : parseWorkoutDurationSeconds(row[timeIndex] ?? "");
+			const cadenceDisplay = cleanDisplayValue(avgCadenceIndex === -1 ? undefined : row[avgCadenceIndex]);
+			const interval: WorkoutInterval = {
+				index: Math.round(parseNumberValue(indexIndex === -1 ? undefined : row[indexIndex]) ?? target.length + 1),
+				duration: duration ?? 0,
+				distance: parseDistanceToMeters(distanceFormatted),
+				distanceFormatted,
+				paceFormatted: cleanDisplayValue(paceIndex === -1 ? undefined : row[paceIndex]),
+				speedFormatted: cleanDisplayValue(speedIndex === -1 ? undefined : row[speedIndex]),
+				avgHeartRate: parseNumberValue(avgHrIndex === -1 ? undefined : row[avgHrIndex]),
+				maxHeartRate: parseNumberValue(maxHrIndex === -1 ? undefined : row[maxHrIndex]),
+				avgPower: parseNumberValue(avgPowerIndex === -1 ? undefined : row[avgPowerIndex]),
+				avgCadence: parseNumberValue(cadenceDisplay),
+				cadenceUnit: cadenceDisplay?.toLowerCase().includes("rpm") ? "rpm" : cadenceDisplay?.toLowerCase().includes("spm") ? "spm" : undefined,
+			};
+			target.push(interval);
+		}
+	}
+
+	return { laps, splits };
+}
+
+function parseWorkoutEntry(
+	fm: Record<string, unknown>,
+	body: string,
+	date: string
+): WorkoutEntry | null {
+	if (!frontmatterIndicatesWorkout(fm)) return null;
+
+	const activityType = getFirstStr(fm, "activity_type", "activityType", "workout_type", "workoutType", "value");
+	const sport = getFirstStr(fm, "sport", "workout_sport");
+	const type = sport ?? activityType ?? "Workout";
+
+	const durationFromString = getFirstStr(fm, "duration", "durationFormatted");
+	const durationSeconds = getFirstNum(fm, "duration_sec", "duration_seconds", "durationSeconds");
+	const durationMinutes = getFirstNum(fm, "duration_minutes", "duration_min");
+	const duration = durationSeconds ??
+		(durationMinutes !== undefined ? durationMinutes * 60 : undefined) ??
+		(durationFromString ? parseWorkoutDurationSeconds(durationFromString) : undefined) ??
+		0;
+
+	const rawStart = getFirstStr(fm, "datetime", "start_datetime", "startTimeISO", "start_time_iso", "startTime");
+	const startTimeISO = rawStart && absoluteDateMs(rawStart) !== undefined
+		? rawStart
+		: buildLocalDateTime(date, rawStart ?? getFirstStr(fm, "time", "start_time", "start"));
+	const endTimeISO = getFirstStr(fm, "end_datetime", "endTimeISO", "end_time_iso") ?? addSecondsToTimestamp(startTimeISO, duration);
+
+	const distanceKm = getFirstNum(fm, "distance_km", "distanceKm");
+	const distanceMi = getFirstNum(fm, "distance_mi", "distanceMi");
+	const distanceMeters = getFirstNum(fm, "distance_m", "distance_meters", "distanceMeters") ??
+		(distanceKm !== undefined ? distanceKm * 1000 : undefined) ??
+		(distanceMi !== undefined ? distanceMi * 1609.344 : undefined);
+	const legacyDistance = getFirstNum(fm, "distance");
+	const distanceFormatted = getFirstStr(fm, "distance_formatted", "distanceFormatted") ??
+		formatDistanceField(distanceMeters, distanceKm, distanceMi);
+
+	const { laps, splits } = parseWorkoutIntervals(body);
+	const zones = parseHeartRateZones(fm);
+	const avgPaceFormatted = getFirstStr(
+		fm,
+		"pace_per_km",
+		"pace_per_mi",
+		"pace_per_100m",
+		"pace_per_100yd",
+		"avg_pace",
+		"avgPaceFormatted"
+	);
+	const avgSpeedFormatted = getFirstStr(
+		fm,
+		"speed_kmh_formatted",
+		"speed_mph_formatted",
+		"avg_speed",
+		"avgSpeedFormatted"
+	);
+
+	const workout: WorkoutEntry = {
+		type,
+		activityType,
+		sport,
+		duration,
+		durationFormatted: durationFromString,
+		calories: getFirstNum(fm, "calories", "active_calories", "energy_kcal"),
+		distance: distanceMeters ?? legacyDistance,
+		distanceMeters,
+		distanceKm,
+		distanceMi,
+		distanceFormatted,
+		startTime: startTimeISO,
+		startTimeISO,
+		endTimeISO,
+		isIndoor: getBool(fm, "is_indoor"),
+		locationType: getFirstStr(fm, "location_type", "locationType"),
+		avgPaceFormatted,
+		avgSpeedFormatted,
+		speedKmh: getFirstNum(fm, "speed_kmh", "speedKmh"),
+		speedMph: getFirstNum(fm, "speed_mph", "speedMph"),
+		avgHeartRate: getFirstNum(fm, "hr_avg", "avg_heart_rate", "average_heart_rate", "avgHeartRate"),
+		maxHeartRate: getFirstNum(fm, "hr_max", "max_heart_rate", "maxHeartRate"),
+		minHeartRate: getFirstNum(fm, "hr_min", "min_heart_rate", "minHeartRate"),
+		avgRunningCadence: getFirstNum(fm, "cadence_avg_spm", "avg_running_cadence", "avgRunningCadence"),
+		avgCyclingCadence: getFirstNum(fm, "cadence_avg_rpm", "avg_cycling_cadence", "avgCyclingCadence"),
+		avgStrideLength: getFirstNum(fm, "avg_stride_length_m", "avgStrideLength"),
+		avgGroundContactTime: getFirstNum(fm, "avg_ground_contact_ms", "avgGroundContactTime"),
+		avgVerticalOscillation: getFirstNum(fm, "avg_vertical_oscillation_cm", "avgVerticalOscillation"),
+		avgPower: getFirstNum(fm, "power_avg_w", "avg_power_w", "avgPower"),
+		maxPower: getFirstNum(fm, "power_max_w", "max_power_w", "maxPower"),
+		elevationGainMeters: getFirstNum(fm, "ascent_m", "elevation_gain_m", "elevationGainMeters"),
+		elevationLossMeters: getFirstNum(fm, "descent_m", "elevation_loss_m", "elevationLossMeters"),
+		heartRateZones: zones.length ? zones : undefined,
+		laps: laps.length ? laps : undefined,
+		splits: splits.length ? splits : undefined,
+	};
+
+	return workout;
+}
+
 /**
  * Parse a Markdown or Bases file into a HealthDay.
  * Supports both:
  * - Bases format: flat YAML keys like sleep_total_hours, steps
  * - Markdown format: frontmatter with date/type fields plus optional granular tables
  */
-export function parseMarkdown(content: string): HealthDay | null {
+export function parseMarkdown(
+	content: string,
+	cachedFrontmatter?: Record<string, unknown>
+): HealthDay | null {
 	const parsed = parseFrontmatter(content);
-	const fm = parsed.frontmatter ?? {};
+	const fm = mergeFrontmatter(parsed.frontmatter ?? {}, cachedFrontmatter);
 
 	// Must have a date. Health.md normally emits `date`, but accept a few common
 	// aliases and a title/body ISO date so markdown exports without metadata can
 	// still contribute granular tables.
-	const date = getFirstStr(fm, "date", "Date", "day", "Day") ?? extractDateFromContent(content);
-	if (!date) return null;
+	const rawDate = getFirstStr(fm, "date", "Date", "day", "Day") ?? extractDateFromContent(content);
+	if (!rawDate) return null;
+	const date = rawDate.slice(0, 10);
 
 	const granular = parseGranularMarkdownData(parsed.body, date);
 
@@ -537,6 +990,11 @@ export function parseMarkdown(content: string): HealthDay | null {
 		type: "health-data",
 		date,
 	};
+
+	const workout = parseWorkoutEntry(fm, parsed.body, date);
+	if (workout) {
+		day.workouts = [workout];
+	}
 
 	// --- Activity ---
 	// Bases keys: steps, active_calories, exercise_minutes, walking_running_km, vo2_max, etc.
@@ -806,6 +1264,6 @@ export function parseMarkdown(content: string): HealthDay | null {
 
 	// Only return if we found at least some health data beyond just a date
 	const hasData =
-		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.hearing;
+		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.hearing;
 	return hasData ? day : null;
 }

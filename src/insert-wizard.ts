@@ -118,7 +118,7 @@ const CATEGORIES: VisualizationCategory[] = [
 	{
 		id: "workouts",
 		label: "Workouts",
-		description: "Workout logs, heart-rate series, and GPS route maps.",
+		description: "Workout logs, detailed zones, interval tables, trends, and GPS route maps.",
 	},
 ];
 
@@ -175,6 +175,15 @@ const HEART_RANGE_METRICS: SelectOption[] = [
 const OXYGEN_RANGE_METRICS: SelectOption[] = [
 	{ value: "blood-oxygen", label: "Blood oxygen" },
 	{ value: "respiratory-rate", label: "Respiratory rate" },
+];
+
+const WORKOUT_TREND_METRICS: SelectOption[] = [
+	{ value: "all", label: "All workout metrics" },
+	{ value: "duration", label: "Duration" },
+	{ value: "distance", label: "Distance" },
+	{ value: "calories", label: "Calories" },
+	{ value: "hr_avg", label: "Average heart rate" },
+	{ value: "power_avg", label: "Average power" },
 ];
 
 const VISUALIZATIONS: VisualizationOption[] = [
@@ -565,6 +574,98 @@ const VISUALIZATIONS: VisualizationOption[] = [
 				placeholder: "190",
 				optional: true,
 				validation: "positive-number",
+			},
+		],
+	},
+	{
+		type: "workout-zones",
+		label: "Workout zones",
+		category: "workouts",
+		description: "Stacked heart-rate zone time from detailed workout notes.",
+		defaultLast: 30,
+		defaultHeight: 180,
+		params: [
+			{
+				kind: "text",
+				key: "date",
+				label: "Workout date",
+				desc: "Optional workout day to select, in YYYY-MM-DD format.",
+				placeholder: "2026-03-27",
+				optional: true,
+				validation: "date",
+			},
+			{
+				kind: "text",
+				key: "workout",
+				label: "Workout index",
+				desc: "Zero-based workout number on that day. 0 means first workout.",
+				defaultValue: "0",
+				validation: "non-negative-integer",
+			},
+			{
+				kind: "text",
+				key: "maxHeartRate",
+				label: "Max heart rate",
+				desc: "Optional BPM used to derive zones from samples when frontmatter zones are absent.",
+				placeholder: "190",
+				optional: true,
+				validation: "positive-number",
+			},
+		],
+	},
+	{
+		type: "workout-trends",
+		label: "Workout trends",
+		category: "workouts",
+		description: "Trends for duration, distance, calories, average HR, and power.",
+		defaultLast: 90,
+		defaultHeight: 420,
+		params: [
+			{
+				kind: "select",
+				key: "metric",
+				label: "Metric",
+				desc: "Choose all workout trend panels or focus one metric.",
+				options: WORKOUT_TREND_METRICS,
+				defaultValue: "all",
+			},
+		],
+	},
+	{
+		type: "workout-intervals",
+		label: "Workout intervals",
+		category: "workouts",
+		description: "HTML table for detailed workout laps and splits.",
+		defaultLast: 30,
+		params: [
+			{
+				kind: "text",
+				key: "date",
+				label: "Workout date",
+				desc: "Optional workout day to select, in YYYY-MM-DD format.",
+				placeholder: "2026-03-27",
+				optional: true,
+				validation: "date",
+			},
+			{
+				kind: "text",
+				key: "workout",
+				label: "Workout index",
+				desc: "Zero-based workout number on that day. 0 means first workout.",
+				defaultValue: "0",
+				validation: "non-negative-integer",
+			},
+			{
+				kind: "select",
+				key: "kind",
+				label: "Interval kind",
+				desc: "Show laps, splits, or whichever detailed tables are available.",
+				options: [
+					{ value: "auto", label: "Auto" },
+					{ value: "laps", label: "Laps" },
+					{ value: "splits", label: "Splits" },
+				],
+				defaultValue: "auto",
 			},
 		],
 	},

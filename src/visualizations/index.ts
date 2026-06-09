@@ -21,7 +21,10 @@ import { renderSleepSchedule } from "./sleep-schedule";
 import { renderWeekdayAverage } from "./weekday-average";
 import { renderOxygenRange } from "./oxygen-range";
 import { renderWorkoutHeartRate } from "./workout-heart-rate";
+import { renderWorkoutZones } from "./workout-zones";
+import { renderWorkoutTrends } from "./workout-trends";
 import { renderWorkoutMap } from "./workout-map";
+import { renderWorkoutIntervals } from "./workout-intervals";
 
 export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"heart-terrain": renderHeartTerrain,
@@ -43,6 +46,9 @@ export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"weekday-average": renderWeekdayAverage,
 	"oxygen-range": renderOxygenRange,
 	"workout-heart-rate": renderWorkoutHeartRate,
+	"workout-zones": renderWorkoutZones,
+	"workout-heart-rate-zones": renderWorkoutZones,
+	"workout-trends": renderWorkoutTrends,
 };
 
 export const HTML_VISUALIZATIONS: Record<string, HtmlRenderFn> = {
@@ -50,4 +56,6 @@ export const HTML_VISUALIZATIONS: Record<string, HtmlRenderFn> = {
 	"summary-card": renderSummaryCard,
 	"trend-tile": renderTrendTile,
 	"workout-map": renderWorkoutMap,
+	"workout-intervals": renderWorkoutIntervals,
+	"workout-laps": renderWorkoutIntervals,
 };

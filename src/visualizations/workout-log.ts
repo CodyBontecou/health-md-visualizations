@@ -1,6 +1,7 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate, formatDuration } from "../canvas-utils";
 import { renderInlineStats } from "../dom-utils";
+import { formatWorkoutDistance, workoutDistanceMeters } from "../workout-utils";
 
 // Map workout type names to short display labels
 const TYPE_LABELS: Record<string, string> = {
@@ -58,9 +59,11 @@ export const renderWorkoutLog: RenderFn = (
 		type: string;
 		duration: number;
 		calories: number;
-		distance?: number;
+		distanceMeters?: number;
 		durationFormatted?: string;
 		distanceFormatted?: string;
+		avgHeartRate?: number;
+		avgPower?: number;
 	}
 	const entries: Entry[] = [];
 	for (const day of data) {
@@ -69,12 +72,14 @@ export const renderWorkoutLog: RenderFn = (
 			if (!w.duration) continue;
 			entries.push({
 				date: day.date,
-				type: w.type || "Workout",
+				type: w.activityType || w.type || "Workout",
 				duration: w.duration,
 				calories: w.calories || 0,
-				distance: w.distance,
+				distanceMeters: workoutDistanceMeters(w),
 				durationFormatted: w.durationFormatted,
-				distanceFormatted: w.distanceFormatted,
+				distanceFormatted: formatWorkoutDistance(w, day),
+				avgHeartRate: w.avgHeartRate,
+				avgPower: w.avgPower,
 			});
 		}
 	}
@@ -156,9 +161,11 @@ export const renderWorkoutLog: RenderFn = (
 			details: [
 				{ label: "Duration", value: entry.durationFormatted ?? formatDuration(entry.duration) },
 				...(entry.calories ? [{ label: "Calories", value: `${Math.round(entry.calories)} kcal` }] : []),
-				...(entry.distance != null
-					? [{ label: "Distance", value: entry.distanceFormatted ?? `${entry.distance.toFixed(2)} km` }]
+				...(entry.distanceMeters != null
+					? [{ label: "Distance", value: entry.distanceFormatted ?? `${(entry.distanceMeters / 1000).toFixed(2)} km` }]
 					: []),
+				...(entry.avgHeartRate != null ? [{ label: "Avg HR", value: `${Math.round(entry.avgHeartRate)} BPM` }] : []),
+				...(entry.avgPower != null ? [{ label: "Avg Power", value: `${Math.round(entry.avgPower)} W` }] : []),
 			],
 			payload: entry,
 		});

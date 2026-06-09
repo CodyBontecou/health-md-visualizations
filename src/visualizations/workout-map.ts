@@ -1,10 +1,11 @@
 import * as L from "leaflet";
 import { HealthDay, HtmlRenderFn, ResolvedTheme, RoutePoint, VizConfig } from "../types";
 import {
-	formatDistance,
 	formatElevation,
 	formatPace,
+	formatWorkoutDistance,
 	pickWorkout,
+	workoutDistanceMeters,
 } from "../workout-utils";
 import { formatDuration } from "../canvas-utils";
 
@@ -127,14 +128,16 @@ function renderHeader(
 		cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
 	};
 
-	if (workout.distance != null) {
-		addStat("Distance", formatDistance(workout.distance, day, workout.distanceFormatted));
+	const distanceMeters = workoutDistanceMeters(workout);
+	const distanceDisplay = formatWorkoutDistance(workout, day);
+	if (distanceDisplay) {
+		addStat("Distance", distanceDisplay);
 	}
 	addStat("Duration", workout.durationFormatted ?? formatDuration(workout.duration));
-	if (workout.distance != null && workout.duration > 0) {
+	if (distanceMeters != null && workout.duration > 0) {
 		addStat(
-			"Avg pace",
-			formatPace(workout.distance, workout.duration, day, workout.avgPaceFormatted)
+			workout.avgSpeedFormatted ? "Avg speed" : "Avg pace",
+			workout.avgSpeedFormatted ?? formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted)
 		);
 	}
 	if (workout.elevationGainMeters != null) {

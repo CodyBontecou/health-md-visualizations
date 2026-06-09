@@ -10,7 +10,7 @@ use `last` by itself when you want a dashboard that always follows today.
 
 > **Tip:** Every canvas chart supports hover tooltips and click-to-pin. The
 > HTML/SVG/Leaflet renderers (`intro-stats`, `summary-card`, `trend-tile`,
-> `workout-map`) do not use the canvas tooltip layer.
+> `workout-map`, `workout-intervals`) do not use the canvas tooltip layer.
 
 ---
 
@@ -63,7 +63,10 @@ Notes:
 | `sleep-polar` | Clock-face sleep stages | sleep stages | none |
 | `walking-symmetry` | Walking speed and asymmetry | mobility | none |
 | `workout-log` | Workout list / duration bars | workouts | none |
-| `workout-heart-rate` | Heart rate during one workout | workout heart-rate series | `date`, `workout`, `maxHeartRate` |
+| `workout-heart-rate` | Heart rate during one workout | workout heart-rate series or detailed HR zones | `date`, `workout`, `maxHeartRate` |
+| `workout-zones` | Stacked heart-rate zone time | detailed workout `heart_rate_zones` or samples + max HR | `date`, `workout`, `maxHeartRate` |
+| `workout-trends` | Workout metrics over time | workouts | `metric` |
+| `workout-intervals` | Lap/split table | detailed workout laps/splits | `date`, `workout`, `kind` |
 | `workout-map` | GPS route map for one workout | workout route | `date`, `workout`, `colorBy` |
 
 ---
@@ -561,9 +564,10 @@ height: 240
 
 Heart-rate time series for one selected workout, including optional heart-rate
 zone bands. The renderer first uses per-workout `timeSeries.heartRate`; when that
-is missing it tries daily `heart.heartRateSamples` that fall inside the workout
-start/end time. If no sample series is available, it renders a visible
-min/average/max summary chart when those stats are present.
+is missing it renders detailed Health.md `heart_rate_zones` if present, then tries
+daily `heart.heartRateSamples` that fall inside the workout start/end time. If no
+sample series or zones are available, it renders a visible min/average/max summary
+chart when those stats are present.
 
 | Argument | Values | Default | Effect |
 | --- | --- | --- | --- |
@@ -580,6 +584,66 @@ maxHeartRate: 190
 from: 2026-05-16
 to: 2026-05-16
 height: 260
+```
+
+### `workout-zones`
+
+Stacked heart-rate zone time for one selected workout. New detailed Health.md
+workout notes include `heart_rate_zones` in frontmatter; older sample-based
+workouts can still render zones when `maxHeartRate` is configured.
+
+| Argument | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `date` | `YYYY-MM-DD` | most recent filtered workout day | Selects a specific workout day. |
+| `workout` | zero-based number | `0` | Selects which workout on that day to render. |
+| `maxHeartRate` | BPM | plugin setting | Used only when zones must be derived from heart-rate samples. |
+
+```health-viz
+type: workout-zones
+date: 2026-03-27
+from: 2026-03-27
+to: 2026-03-27
+height: 180
+```
+
+### `workout-trends`
+
+Small-multiple workout trends for duration, distance, calories, average heart
+rate, and average power. Set `metric` to focus one panel.
+
+| Argument | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `metric` | `all`, `duration`, `distance`, `calories`, `hr_avg`, `power_avg` | `all` | Chooses all trend panels or one metric. |
+
+```health-viz
+type: workout-trends
+last: 90
+height: 420
+```
+
+```health-viz
+type: workout-trends
+metric: distance
+last: 90
+height: 240
+```
+
+### `workout-intervals`
+
+HTML table for detailed workout laps and splits exported by Health.md.
+
+| Argument | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `date` | `YYYY-MM-DD` | most recent filtered workout day | Selects a specific workout day. |
+| `workout` | zero-based number | `0` | Selects which workout on that day to render. |
+| `kind` | `auto`, `laps`, `splits` | `auto` | Chooses which interval tables to show. |
+
+```health-viz
+type: workout-intervals
+date: 2026-03-27
+from: 2026-03-27
+to: 2026-03-27
+kind: auto
 ```
 
 ### `workout-map`

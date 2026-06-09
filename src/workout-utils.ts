@@ -1,4 +1,4 @@
-import { HealthDay, VizConfig, WorkoutEntry } from "./types";
+import { HealthDay, VizConfig, WorkoutEntry, WorkoutInterval } from "./types";
 
 export interface PickedWorkout {
 	day: HealthDay;
@@ -48,6 +48,33 @@ export function resolveUnits(day: HealthDay): UnitSystem {
 	return day.units === "imperial" ? "imperial" : "metric";
 }
 
+function parseDistanceFormatted(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const match = /([-+]?\d*\.?\d+(?:e[-+]?\d+)?)/i.exec(value.replace(/,/g, ""));
+	if (!match) return undefined;
+	const n = Number(match[1]);
+	if (!Number.isFinite(n)) return undefined;
+	const normalized = value.toLowerCase();
+	if (/\bkm\b/.test(normalized)) return n * 1000;
+	if (/\bmi\b|miles?\b/.test(normalized)) return n * 1609.344;
+	if (/\byd\b|yards?\b/.test(normalized)) return n * 0.9144;
+	if (/\bm\b|meters?\b/.test(normalized)) return n;
+	return undefined;
+}
+
+export function workoutDistanceMeters(workout: WorkoutEntry): number | undefined {
+	if (workout.distanceMeters != null) return workout.distanceMeters;
+	if (workout.distanceKm != null) return workout.distanceKm * 1000;
+	if (workout.distanceMi != null) return workout.distanceMi * 1609.344;
+	const formattedMeters = parseDistanceFormatted(workout.distanceFormatted);
+	if (formattedMeters != null) return formattedMeters;
+	if (workout.distance == null) return undefined;
+	// Historical bundled JSON workouts store kilometers in `distance`; newer
+	// detailed Markdown uses meters. Without a formatted unit, values over 100 are
+	// much more likely to be meters than kilometers.
+	return workout.distance > 100 ? workout.distance : workout.distance * 1000;
+}
+
 // Distance: prefer pre-formatted; else convert from meters.
 export function formatDistance(
 	meters: number,
@@ -61,6 +88,15 @@ export function formatDistance(
 	}
 	const km = meters / 1000;
 	return km >= 10 ? `${km.toFixed(1)} km` : `${km.toFixed(2)} km`;
+}
+
+export function formatWorkoutDistance(workout: WorkoutEntry, day: HealthDay): string | undefined {
+	const meters = workoutDistanceMeters(workout);
+	return meters == null ? undefined : formatDistance(meters, day, workout.distanceFormatted);
+}
+
+export function intervalRateDisplay(interval: WorkoutInterval): string | undefined {
+	return interval.paceFormatted ?? interval.speedFormatted;
 }
 
 // Pace: prefer pre-formatted; else compute from meters + seconds.

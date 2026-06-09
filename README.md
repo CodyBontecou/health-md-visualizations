@@ -159,7 +159,7 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 </tr>
 <tr>
 <td><a href="examples/images/visualizations/workout-heart-rate.png"><img src="examples/images/visualizations/workout-heart-rate.png" alt="workout-heart-rate visualization" width="420"></a></td>
-<td><p><strong><code>workout-heart-rate</code></strong></p><p>Heart-rate time series and optional zone bands for one workout. Falls back to daily samples in the workout window, then to a min/avg/max summary chart.</p><p><strong>Extra arguments:</strong> <code>date</code>, <code>workout</code>, <code>maxHeartRate</code>.</p></td>
+<td><p><strong><code>workout-heart-rate</code></strong></p><p>Heart-rate time series and optional zone bands for one workout. Falls back to detailed Health.md zone exports, daily samples in the workout window, then a min/avg/max summary chart.</p><p><strong>Extra arguments:</strong> <code>date</code>, <code>workout</code>, <code>maxHeartRate</code>.</p></td>
 </tr>
 <tr>
 <td><a href="examples/images/visualizations/workout-map.png"><img src="examples/images/visualizations/workout-map.png" alt="workout-map visualization" width="420"></a></td>
@@ -167,7 +167,9 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 </tr>
 </table>
 
-All canvas chart types support hover tooltips. Click behavior is configurable: keep the default click-to-pin tooltip behavior, open the source health data file for a point, or open the matching Daily Note. JSON and CSV source files open in a built-in Health.md read-only viewer inside Obsidian, so source navigation does not launch your OS default editor. Aggregate canvas regions that cover multiple dates, such as `weekday-average` bars, navigate to the latest matching date in the rendered range. The `intro-stats`, `summary-card`, `trend-tile`, and `workout-map` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
+Detailed Health.md individual workout notes are discovered from `type: workout`, `metric: workouts`, or workout/healthmd tags. The plugin normalizes their frontmatter, heart-rate zones, laps, and splits for `workout-log`, `workout-heart-rate`, `workout-zones`, `workout-trends`, and the HTML `workout-intervals` table.
+
+All canvas chart types support hover tooltips. Click behavior is configurable: keep the default click-to-pin tooltip behavior, open the source health data file for a point, or open the matching Daily Note. JSON and CSV source files open in a built-in Health.md read-only viewer inside Obsidian, so source navigation does not launch your OS default editor. Aggregate canvas regions that cover multiple dates, such as `weekday-average` bars, navigate to the latest matching date in the rendered range. The `intro-stats`, `summary-card`, `trend-tile`, `workout-map`, and `workout-intervals` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
 
 ### Bundled examples
 

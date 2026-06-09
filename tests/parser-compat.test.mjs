@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -370,6 +370,100 @@ workouts: [running]
 	assert.equal(day.mobility?.walkingDoubleSupportPercentage, 22.5);
 	assert.equal(day.mobility?.walkingAsymmetryPercentage, 1.2);
 	assert.equal(day.hearing?.headphoneAudioLevel, 64.5);
+});
+
+test("Markdown parser reads detailed Health.md workout notes", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = await readFile(path.join(process.cwd(), "tests/fixtures/detailed-workout.md"), "utf8");
+
+	const day = parseMarkdown(markdown);
+
+	assert.ok(day);
+	assert.equal(day.date, "2026-03-27");
+	assert.equal(day.workouts?.length, 1);
+	const workout = day.workouts?.[0];
+	assert.ok(workout);
+	assert.equal(workout.type, "cycling");
+	assert.equal(workout.activityType, "Cycling");
+	assert.equal(workout.sport, "cycling");
+	assert.equal(workout.duration, 300);
+	assert.equal(workout.durationFormatted, "5:00");
+	assert.equal(workout.startTimeISO, "2026-03-27T10:30:00Z");
+	assert.equal(workout.endTimeISO, "2026-03-27T10:35:00Z");
+	assert.equal(workout.distanceMeters, 1000);
+	assert.equal(workout.distanceKm, 1);
+	assert.equal(workout.distanceMi, 0.62);
+	assert.equal(workout.distanceFormatted, "1.00 km");
+	assert.equal(workout.avgSpeedFormatted, "12.0 km/h");
+	assert.equal(workout.speedKmh, 12);
+	assert.equal(workout.speedMph, 7.5);
+	assert.equal(workout.calories, 50);
+	assert.equal(workout.avgHeartRate, 150);
+	assert.equal(workout.maxHeartRate, 200);
+	assert.equal(workout.minHeartRate, 100);
+	assert.equal(workout.avgRunningCadence, 178);
+	assert.equal(workout.avgCyclingCadence, 84);
+	assert.equal(workout.avgPower, 120);
+	assert.equal(workout.maxPower, 140);
+	assert.equal(workout.elevationGainMeters, 12);
+	assert.equal(workout.elevationLossMeters, 5);
+	assert.equal(workout.heartRateZones?.length, 5);
+	assert.deepEqual(workout.heartRateZones?.[0], {
+		index: 1,
+		key: "zone1",
+		label: "Recovery",
+		range: "100-119",
+		seconds: 60,
+		durationFormatted: "1:00",
+	});
+	assert.equal(workout.laps?.length, 2);
+	assert.equal(workout.laps?.[0].duration, 150);
+	assert.equal(workout.laps?.[0].distance, 500);
+	assert.equal(workout.laps?.[0].paceFormatted, "5:00 /km");
+	assert.equal(workout.laps?.[0].avgHeartRate, 145);
+	assert.equal(workout.laps?.[0].maxHeartRate, 180);
+	assert.equal(workout.laps?.[0].avgPower, 110);
+	assert.equal(workout.laps?.[0].avgCadence, 82);
+	assert.equal(workout.laps?.[0].cadenceUnit, "rpm");
+	assert.equal(workout.splits?.length, 1);
+	assert.equal(workout.splits?.[0].speedFormatted, "12.0 km/h");
+	assert.equal(workout.splits?.[0].distance, 1000);
+});
+
+test("Markdown parser reads legacy simple individual workout notes", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = `---
+date: 2026-03-28
+time: "06:05"
+datetime: 2026-03-28T06:05:00Z
+type: workouts
+metric: workouts
+value: "Running"
+workout_type: Running
+duration_minutes: 30
+calories: 310
+distance_meters: 5000
+avg_heart_rate: 142
+max_heart_rate: 172
+min_heart_rate: 105
+avg_running_cadence: 168
+avg_power_w: 240
+max_power_w: 410
+---
+`;
+
+	const day = parseMarkdown(markdown);
+
+	assert.ok(day);
+	const workout = day.workouts?.[0];
+	assert.ok(workout);
+	assert.equal(workout.type, "Running");
+	assert.equal(workout.duration, 1800);
+	assert.equal(workout.distanceMeters, 5000);
+	assert.equal(workout.distanceFormatted, "5.00 km");
+	assert.equal(workout.avgHeartRate, 142);
+	assert.equal(workout.avgRunningCadence, 168);
+	assert.equal(workout.avgPower, 240);
 });
 
 test("Markdown parser reads granular Health.md tables and derives aggregates", async () => {

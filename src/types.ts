@@ -3,19 +3,32 @@ export interface TimeSeriesSample {
 	value: number;
 }
 
-export interface WorkoutLap {
+export interface WorkoutInterval {
 	index: number;
+	/** Duration in seconds. */
 	duration: number;
+	/** Distance in meters when the source unit can be normalized. */
 	distance?: number;
+	distanceFormatted?: string;
 	paceFormatted?: string;
+	speedFormatted?: string;
+	avgHeartRate?: number;
+	maxHeartRate?: number;
+	avgPower?: number;
+	avgCadence?: number;
+	cadenceUnit?: string;
 }
 
-export interface WorkoutSplit {
+export type WorkoutLap = WorkoutInterval;
+export type WorkoutSplit = WorkoutInterval;
+
+export interface WorkoutHeartRateZone {
 	index: number;
-	duration: number;
-	distance: number;
-	paceFormatted?: string;
-	avgHeartRate?: number;
+	key?: string;
+	label: string;
+	range?: string;
+	seconds: number;
+	durationFormatted?: string;
 }
 
 export interface RoutePoint {
@@ -41,16 +54,26 @@ export interface WorkoutTimeSeries {
 
 export interface WorkoutEntry {
 	type: string;
+	activityType?: string;
+	sport?: string;
 	duration: number;
 	durationFormatted?: string;
 	calories?: number;
+	/** Historical JSON exports may store kilometers here; new Markdown exports use meters. Prefer distanceMeters for new code. */
 	distance?: number;
+	distanceMeters?: number;
+	distanceKm?: number;
+	distanceMi?: number;
 	distanceFormatted?: string;
 	startTime?: string;
 	startTimeISO?: string;
 	endTimeISO?: string;
+	isIndoor?: boolean;
+	locationType?: string;
 	avgPaceFormatted?: string;
 	avgSpeedFormatted?: string;
+	speedKmh?: number;
+	speedMph?: number;
 	avgHeartRate?: number;
 	maxHeartRate?: number;
 	minHeartRate?: number;
@@ -63,6 +86,7 @@ export interface WorkoutEntry {
 	maxPower?: number;
 	elevationGainMeters?: number;
 	elevationLossMeters?: number;
+	heartRateZones?: WorkoutHeartRateZone[];
 	laps?: WorkoutLap[];
 	splits?: WorkoutSplit[];
 	route?: RoutePoint[];

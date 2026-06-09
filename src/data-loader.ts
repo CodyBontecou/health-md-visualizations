@@ -1,4 +1,4 @@
-import { Vault, TFile, TFolder } from "obsidian";
+import { MetadataCache, Vault, TFile, TFolder } from "obsidian";
 import {
 	dataFolderMaxDepth,
 	matchesDataFilePath,
@@ -8,6 +8,7 @@ import {
 	HealthMdSettings,
 	DataFormat,
 	DataFolderGranularity,
+	WorkoutEntry,
 } from "./types";
 import { parseJSON } from "./parsers/json-parser";
 import { parseCSV } from "./parsers/csv-parser";
@@ -32,7 +33,11 @@ export class DataLoader {
 	private lastLoad = 0;
 	private TTL = 30_000;
 
-	constructor(private vault: Vault, private settings: HealthMdSettings) {}
+	constructor(
+		private vault: Vault,
+		private settings: HealthMdSettings,
+		private metadataCache?: MetadataCache
+	) {}
 
 	async load(): Promise<HealthDay[]> {
 		if (this.cache && Date.now() - this.lastLoad < this.TTL) {
@@ -61,7 +66,8 @@ export class DataLoader {
 					}
 					case "markdown":
 					case "bases": {
-						const day = parseMarkdown(content);
+						const cachedFrontmatter = this.metadataCache?.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+						const day = parseMarkdown(content, cachedFrontmatter);
 						if (day) days.push(withSourcePath(day, file.path));
 						break;
 					}
@@ -135,7 +141,24 @@ export class DataLoader {
 			0,
 			files
 		);
-		return files.sort((a, b) => a.path.localeCompare(b.path));
+
+		// Health.md's individual workout exporter commonly writes Markdown notes
+		// into metric-specific subfolders. Keep the existing flat JSON/CSV behavior,
+		// but always allow Markdown workout notes a modest recursive search so they
+		// are discovered without requiring users to change the folder granularity.
+		this.collectMatchingFiles(
+			folder,
+			folder.path,
+			pattern,
+			Math.max(4, dataFolderMaxDepth(granularity, this.settings.dataFolderCustomPathTemplate)),
+			0,
+			files,
+			"md"
+		);
+
+		const byPath = new Map<string, TFile>();
+		for (const file of files) byPath.set(file.path, file);
+		return Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
 	}
 
 	private collectMatchingFiles(
@@ -144,11 +167,15 @@ export class DataLoader {
 		pattern: string,
 		maxDepth: number,
 		depth: number,
-		files: TFile[]
+		files: TFile[],
+		extension?: string
 	): void {
 		for (const child of folder.children) {
 			if (child instanceof TFile) {
-				if (this.matchesDataFile(child, rootPath, pattern)) {
+				if (
+					(!extension || child.extension === extension) &&
+					this.matchesDataFile(child, rootPath, pattern)
+				) {
 					files.push(child);
 				}
 				continue;
@@ -161,7 +188,8 @@ export class DataLoader {
 					pattern,
 					maxDepth,
 					depth + 1,
-					files
+					files,
+					extension
 				);
 			}
 		}
@@ -193,6 +221,68 @@ function withSourcePath(day: HealthDay, path: string): HealthDay {
 	};
 }
 
+function workoutDetailScore(workout: WorkoutEntry): number {
+	let score = 0;
+	for (const value of Object.values(workout)) {
+		if (Array.isArray(value)) score += value.length * 3;
+		else if (value && typeof value === "object") score += Object.keys(value).length * 2;
+		else if (value !== undefined && value !== null && value !== "") score += 1;
+	}
+	return score;
+}
+
+function workoutKey(workout: WorkoutEntry): string {
+	const type = (workout.sport ?? workout.type ?? "workout").toLowerCase().trim();
+	const start = workout.startTimeISO ?? workout.startTime ?? "";
+	const duration = Number.isFinite(workout.duration) ? Math.round(workout.duration) : 0;
+	const distance = workout.distanceMeters ?? workout.distance ?? 0;
+	return `${start}|${type}|${duration}|${Math.round(distance)}`;
+}
+
+function preferArray<T>(next: T[] | undefined, prev: T[] | undefined): T[] | undefined {
+	if (next && next.length) return next;
+	return prev && prev.length ? prev : undefined;
+}
+
+function mergeWorkoutEntries(a: WorkoutEntry, b: WorkoutEntry): WorkoutEntry {
+	const preferred = workoutDetailScore(b) >= workoutDetailScore(a) ? b : a;
+	const fallback = preferred === b ? a : b;
+	const merged: Record<string, unknown> = { ...fallback };
+	for (const [key, value] of Object.entries(preferred)) {
+		if (value !== undefined && value !== null) merged[key] = value;
+	}
+
+	return {
+		...(merged as unknown as WorkoutEntry),
+		heartRateZones: preferArray(preferred.heartRateZones, fallback.heartRateZones),
+		laps: preferArray(preferred.laps, fallback.laps),
+		splits: preferArray(preferred.splits, fallback.splits),
+		route: preferArray(preferred.route, fallback.route),
+		timeSeries: preferred.timeSeries ?? fallback.timeSeries,
+	};
+}
+
+function mergeWorkouts(a: WorkoutEntry[] | undefined, b: WorkoutEntry[] | undefined): WorkoutEntry[] | undefined {
+	const all = [...(a ?? []), ...(b ?? [])];
+	if (!all.length) return undefined;
+	const byKey = new Map<string, WorkoutEntry>();
+	const unkeyed: WorkoutEntry[] = [];
+	for (const workout of all) {
+		const key = workoutKey(workout);
+		if (key.startsWith("|") || key.includes("||0|0")) {
+			unkeyed.push(workout);
+			continue;
+		}
+		const existing = byKey.get(key);
+		byKey.set(key, existing ? mergeWorkoutEntries(existing, workout) : workout);
+	}
+	return [...Array.from(byKey.values()), ...unkeyed].sort((left, right) => {
+		const aStart = left.startTimeISO ?? left.startTime ?? "";
+		const bStart = right.startTimeISO ?? right.startTime ?? "";
+		return aStart.localeCompare(bStart);
+	});
+}
+
 /** Merge two HealthDay objects for the same date, preferring non-null fields */
 function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 	return {
@@ -205,7 +295,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		vitals: a.vitals ?? b.vitals,
 		sleep: a.sleep ?? b.sleep,
 		mobility: a.mobility ?? b.mobility,
-		workouts: a.workouts ?? b.workouts,
+		workouts: mergeWorkouts(a.workouts, b.workouts),
 		hearing: a.hearing ?? b.hearing,
 	};
 }

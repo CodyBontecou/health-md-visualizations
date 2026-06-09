@@ -168,7 +168,7 @@ export default class HealthMdPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
-		this.dataLoader = new DataLoader(this.app.vault, this.settings);
+		this.dataLoader = new DataLoader(this.app.vault, this.settings, this.app.metadataCache);
 
 		this.registerMarkdownCodeBlockProcessor(
 			"health-viz",

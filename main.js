@@ -10054,45 +10054,152 @@ function parseCSV(content) {
 }
 
 // src/parsers/markdown-parser.ts
+function countIndent(line) {
+  const match = /^ */.exec(line);
+  return match ? match[0].length : 0;
+}
+function stripInlineComment(value) {
+  let quote = null;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if ((ch === '"' || ch === "'") && value[i - 1] !== "\\") {
+      quote = quote === ch ? null : quote != null ? quote : ch;
+    }
+    if (ch === "#" && !quote && (i === 0 || /\s/.test(value[i - 1]))) {
+      return value.slice(0, i).trimEnd();
+    }
+  }
+  return value;
+}
+function splitInlineArray(inner) {
+  const parts = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if ((ch === '"' || ch === "'") && inner[i - 1] !== "\\") {
+      quote = quote === ch ? null : quote != null ? quote : ch;
+    }
+    if (ch === "," && !quote) {
+      parts.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+function parseYamlScalar(raw) {
+  let val = stripInlineComment(raw.trim());
+  if (!val) return null;
+  if (val.startsWith("[") && val.endsWith("]")) {
+    const inner = val.slice(1, -1);
+    return splitInlineArray(inner).map(parseYamlScalar);
+  }
+  if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
+    val = val.slice(1, -1);
+    return val.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  const lower = val.toLowerCase();
+  if (lower === "true") return true;
+  if (lower === "false") return false;
+  if (lower === "null" || lower === "~") return null;
+  const num = Number(val.replace(/,/g, ""));
+  if (!isNaN(num) && val !== "") return num;
+  return val;
+}
+function splitYamlKeyValue(text) {
+  const colonIdx = text.indexOf(":");
+  if (colonIdx === -1) return null;
+  const key = text.slice(0, colonIdx).trim();
+  if (!key) return null;
+  return [key, text.slice(colonIdx + 1).trim()];
+}
+function parseYamlBlock(lines, start, indent) {
+  if (start >= lines.length) return { value: {}, index: start };
+  const first = lines[start];
+  if (first.indent < indent) return { value: {}, index: start };
+  if (first.indent === indent && first.text.startsWith("- ")) {
+    const arr = [];
+    let i2 = start;
+    while (i2 < lines.length && lines[i2].indent === indent && lines[i2].text.startsWith("- ")) {
+      const rest = lines[i2].text.slice(2).trim();
+      if (!rest) {
+        const parsed = parseYamlBlock(lines, i2 + 1, indent + 2);
+        arr.push(parsed.value);
+        i2 = parsed.index;
+        continue;
+      }
+      const keyValue = splitYamlKeyValue(rest);
+      if (keyValue) {
+        const [key, rawValue] = keyValue;
+        const item = {};
+        if (rawValue) {
+          item[key] = parseYamlScalar(rawValue);
+          i2++;
+        } else {
+          const parsed = parseYamlBlock(lines, i2 + 1, indent + 2);
+          item[key] = parsed.value;
+          i2 = parsed.index;
+        }
+        while (i2 < lines.length && lines[i2].indent > indent) {
+          if (lines[i2].indent < indent + 2) break;
+          const nested = splitYamlKeyValue(lines[i2].text);
+          if (!nested) break;
+          const [nestedKey, nestedValue] = nested;
+          if (nestedValue) {
+            item[nestedKey] = parseYamlScalar(nestedValue);
+            i2++;
+          } else {
+            const parsed = parseYamlBlock(lines, i2 + 1, lines[i2].indent + 2);
+            item[nestedKey] = parsed.value;
+            i2 = parsed.index;
+          }
+        }
+        arr.push(item);
+        continue;
+      }
+      arr.push(parseYamlScalar(rest));
+      i2++;
+    }
+    return { value: arr, index: i2 };
+  }
+  const obj = {};
+  let i = start;
+  while (i < lines.length && lines[i].indent >= indent) {
+    if (lines[i].indent > indent) break;
+    if (lines[i].text.startsWith("- ")) break;
+    const keyValue = splitYamlKeyValue(lines[i].text);
+    if (!keyValue) {
+      i++;
+      continue;
+    }
+    const [key, rawValue] = keyValue;
+    if (rawValue) {
+      obj[key] = parseYamlScalar(rawValue);
+      i++;
+      continue;
+    }
+    if (i + 1 < lines.length && lines[i + 1].indent > lines[i].indent) {
+      const parsed = parseYamlBlock(lines, i + 1, lines[i + 1].indent);
+      obj[key] = parsed.value;
+      i = parsed.index;
+    } else {
+      obj[key] = null;
+      i++;
+    }
+  }
+  return { value: obj, index: i };
+}
 function parseFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!match) return { frontmatter: null, body: content };
   const yaml = match[1];
-  const result = {};
-  for (const line of yaml.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const colonIdx = trimmed.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = trimmed.slice(0, colonIdx).trim();
-    let val = trimmed.slice(colonIdx + 1).trim();
-    if (!val) continue;
-    if (val.startsWith("[") && val.endsWith("]")) {
-      const inner = val.slice(1, -1);
-      result[key] = inner.split(",").map((s) => s.trim()).filter(Boolean);
-      continue;
-    }
-    if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
-      result[key] = val.slice(1, -1);
-      continue;
-    }
-    if (val === "true") {
-      result[key] = true;
-      continue;
-    }
-    if (val === "false") {
-      result[key] = false;
-      continue;
-    }
-    const num = Number(val.replace(/,/g, ""));
-    if (!isNaN(num) && val !== "") {
-      result[key] = num;
-      continue;
-    }
-    result[key] = val;
-  }
+  const lines = yaml.split(/\r?\n/).map((line) => ({ indent: countIndent(line), text: line.trim() })).filter((line) => line.text && !line.text.startsWith("#"));
+  const parsed = parseYamlBlock(lines, 0, 0).value;
   return {
-    frontmatter: result,
+    frontmatter: typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : {},
     body: content.slice(match[0].length)
   };
 }
@@ -10114,6 +10221,13 @@ function getNum2(fm, key) {
 function getStr(fm, key) {
   const v = fm[key];
   if (typeof v === "string") return v;
+  if (v instanceof Date) {
+    const ms = v.getTime();
+    if (!Number.isFinite(ms)) return void 0;
+    const iso = v.toISOString();
+    const isMidnightUtc = v.getUTCHours() === 0 && v.getUTCMinutes() === 0 && v.getUTCSeconds() === 0 && v.getUTCMilliseconds() === 0;
+    return isMidnightUtc ? iso.slice(0, 10) : iso.replace(/\.\d{3}Z$/, "Z");
+  }
   if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
     return String(v);
   }
@@ -10143,6 +10257,32 @@ function getFirstStr(fm, ...keys) {
     if (value !== void 0) return value;
   }
   return void 0;
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function mergeFrontmatter(parsed, cached) {
+  if (!cached) return parsed;
+  return { ...parsed, ...cached };
+}
+function getBool(fm, key) {
+  const value = fm[key];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return void 0;
+}
+function normalizeTags(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeTags(item)).map((tag) => tag.replace(/^#/, ""));
+  }
+  if (typeof value === "string") {
+    return value.split(/[\s,]+/).map((tag) => tag.trim().replace(/^#/, "")).filter(Boolean);
+  }
+  return [];
 }
 function normalizePercent2(value) {
   if (value === void 0) return void 0;
@@ -10318,6 +10458,18 @@ function parseDurationSeconds(raw) {
   }
   return found ? total : void 0;
 }
+function parseWorkoutDurationSeconds(raw) {
+  const trimmed = raw.trim().toLowerCase();
+  let match = /^(\d{1,2}):(\d{2}):(\d{2})$/.exec(trimmed);
+  if (match) {
+    return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  }
+  match = /^(\d{1,3}):(\d{2})$/.exec(trimmed);
+  if (match) {
+    return Number(match[1]) * 60 + Number(match[2]);
+  }
+  return parseDurationSeconds(raw);
+}
 function parseSleepStageRangeTable(table, date, startIndex, endIndex, stageIndex) {
   const stages = [];
   let dayOffset = 0;
@@ -10429,17 +10581,234 @@ function parseGranularMarkdownData(body, date) {
 function sumStageSeconds2(stages, stageName) {
   return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
-function parseMarkdown(content) {
+function recordStr(record, key) {
+  const value = record[key];
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return void 0;
+}
+function recordNum(record, key) {
+  return parseNumberValue(record[key]);
+}
+function cleanDisplayValue(value) {
+  if (!value) return void 0;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "\u2014" || trimmed === "-") return void 0;
+  return trimmed;
+}
+function formatDistanceField(meters, km, mi) {
+  if (km !== void 0) return `${km.toFixed(2)} km`;
+  if (mi !== void 0) return `${mi.toFixed(2)} mi`;
+  if (meters === void 0) return void 0;
+  if (meters >= 1e3) return `${(meters / 1e3).toFixed(2)} km`;
+  return `${Math.round(meters)} m`;
+}
+function parseDistanceToMeters(raw) {
+  const value = cleanDisplayValue(raw);
+  if (!value) return void 0;
+  const n = parseNumberValue(value);
+  if (n === void 0) return void 0;
+  const normalized = value.toLowerCase();
+  if (/\bkm\b/.test(normalized)) return n * 1e3;
+  if (/\bmi\b|miles?\b/.test(normalized)) return n * 1609.344;
+  if (/\byd\b|yards?\b/.test(normalized)) return n * 0.9144;
+  if (/\bm\b|meters?\b/.test(normalized)) return n;
+  return void 0;
+}
+function buildLocalDateTime(date, rawTime) {
+  if (!rawTime) return void 0;
+  if (absoluteDateMs(rawTime) !== void 0) return rawTime;
+  const clock = parseClockTime(rawTime);
+  if (!clock) return void 0;
+  return `${date}T${pad2(clock.h)}:${pad2(clock.m)}:${pad2(clock.s)}`;
+}
+function addSecondsToTimestamp(timestamp, seconds) {
+  if (!timestamp || !Number.isFinite(seconds) || seconds <= 0) return void 0;
+  const ms = Date.parse(timestamp);
+  if (!Number.isFinite(ms)) return void 0;
+  return new Date(ms + seconds * 1e3).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+function frontmatterIndicatesWorkout(fm) {
+  var _a, _b, _c;
+  const type = normalizeLabel2((_a = getFirstStr(fm, "type", "Type")) != null ? _a : "");
+  const metric = normalizeLabel2((_b = getFirstStr(fm, "metric", "Metric")) != null ? _b : "");
+  const tags = normalizeTags((_c = fm.tags) != null ? _c : fm.tag).map((tag) => normalizeLabel2(tag));
+  return type === "workout" || type === "workouts" || metric === "workouts" || tags.includes("workout") || tags.includes("healthmd");
+}
+function parseHeartRateZones(fm) {
+  var _a;
+  const raw = (_a = fm.heart_rate_zones) != null ? _a : fm.heartRateZones;
+  const zones = [];
+  if (isRecord(raw)) {
+    const entries = Object.entries(raw).sort(([a], [b]) => {
+      var _a2, _b, _c, _d;
+      const ai = (_b = (_a2 = parseNumberValue(a)) != null ? _a2 : parseNumberValue(a.replace(/\D+/g, ""))) != null ? _b : 0;
+      const bi = (_d = (_c = parseNumberValue(b)) != null ? _c : parseNumberValue(b.replace(/\D+/g, ""))) != null ? _d : 0;
+      return ai - bi || a.localeCompare(b);
+    });
+    entries.forEach(([key, value], idx) => {
+      var _a2, _b, _c;
+      if (!isRecord(value)) return;
+      const seconds = (_a2 = recordNum(value, "seconds")) != null ? _a2 : 0;
+      const zoneIndex = (_b = parseNumberValue(key.replace(/\D+/g, ""))) != null ? _b : idx + 1;
+      zones.push({
+        index: Math.round(zoneIndex),
+        key,
+        label: (_c = recordStr(value, "label")) != null ? _c : `Zone ${idx + 1}`,
+        range: recordStr(value, "range"),
+        seconds,
+        durationFormatted: recordStr(value, "duration")
+      });
+    });
+    return zones;
+  }
+  if (Array.isArray(raw)) {
+    raw.forEach((value, idx) => {
+      var _a2, _b, _c;
+      if (!isRecord(value)) return;
+      const seconds = (_a2 = recordNum(value, "seconds")) != null ? _a2 : 0;
+      zones.push({
+        index: (_b = recordNum(value, "index")) != null ? _b : idx + 1,
+        label: (_c = recordStr(value, "label")) != null ? _c : `Zone ${idx + 1}`,
+        range: recordStr(value, "range"),
+        seconds,
+        durationFormatted: recordStr(value, "duration")
+      });
+    });
+  }
+  return zones;
+}
+function parseWorkoutIntervals(body) {
+  var _a, _b;
+  const laps = [];
+  const splits = [];
+  for (const table of parseMarkdownTables(body)) {
+    const context = normalizeLabel2(table.context);
+    const target = context.includes("lap") ? laps : context.includes("split") ? splits : null;
+    if (!target) continue;
+    const headers = normalizedHeaders(table);
+    const indexIndex = findHeaderIndex(headers, (header) => header === "#" || header.includes("lap") || header.includes("split"));
+    const distanceIndex = findHeaderIndex(headers, (header) => header.includes("distance"));
+    const timeIndex = findHeaderIndex(headers, (header) => header === "time" || header.includes("duration"));
+    const paceIndex = findHeaderIndex(headers, (header) => header.includes("pace"));
+    const speedIndex = findHeaderIndex(headers, (header) => header.includes("speed"));
+    const avgHrIndex = findHeaderIndex(headers, (header) => header.includes("avg hr") || header.includes("average hr") || header.includes("avg heart"));
+    const maxHrIndex = findHeaderIndex(headers, (header) => header.includes("max hr") || header.includes("maximum hr") || header.includes("max heart"));
+    const avgPowerIndex = findHeaderIndex(headers, (header) => header.includes("avg power") || header.includes("average power"));
+    const avgCadenceIndex = findHeaderIndex(headers, (header) => header.includes("avg cadence") || header.includes("average cadence"));
+    for (const row of table.rows) {
+      const distanceFormatted = cleanDisplayValue(distanceIndex === -1 ? void 0 : row[distanceIndex]);
+      const duration = timeIndex === -1 ? void 0 : parseWorkoutDurationSeconds((_a = row[timeIndex]) != null ? _a : "");
+      const cadenceDisplay = cleanDisplayValue(avgCadenceIndex === -1 ? void 0 : row[avgCadenceIndex]);
+      const interval = {
+        index: Math.round((_b = parseNumberValue(indexIndex === -1 ? void 0 : row[indexIndex])) != null ? _b : target.length + 1),
+        duration: duration != null ? duration : 0,
+        distance: parseDistanceToMeters(distanceFormatted),
+        distanceFormatted,
+        paceFormatted: cleanDisplayValue(paceIndex === -1 ? void 0 : row[paceIndex]),
+        speedFormatted: cleanDisplayValue(speedIndex === -1 ? void 0 : row[speedIndex]),
+        avgHeartRate: parseNumberValue(avgHrIndex === -1 ? void 0 : row[avgHrIndex]),
+        maxHeartRate: parseNumberValue(maxHrIndex === -1 ? void 0 : row[maxHrIndex]),
+        avgPower: parseNumberValue(avgPowerIndex === -1 ? void 0 : row[avgPowerIndex]),
+        avgCadence: parseNumberValue(cadenceDisplay),
+        cadenceUnit: (cadenceDisplay == null ? void 0 : cadenceDisplay.toLowerCase().includes("rpm")) ? "rpm" : (cadenceDisplay == null ? void 0 : cadenceDisplay.toLowerCase().includes("spm")) ? "spm" : void 0
+      };
+      target.push(interval);
+    }
+  }
+  return { laps, splits };
+}
+function parseWorkoutEntry(fm, body, date) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  if (!frontmatterIndicatesWorkout(fm)) return null;
+  const activityType = getFirstStr(fm, "activity_type", "activityType", "workout_type", "workoutType", "value");
+  const sport = getFirstStr(fm, "sport", "workout_sport");
+  const type = (_a = sport != null ? sport : activityType) != null ? _a : "Workout";
+  const durationFromString = getFirstStr(fm, "duration", "durationFormatted");
+  const durationSeconds = getFirstNum(fm, "duration_sec", "duration_seconds", "durationSeconds");
+  const durationMinutes = getFirstNum(fm, "duration_minutes", "duration_min");
+  const duration = (_c = (_b = durationSeconds != null ? durationSeconds : durationMinutes !== void 0 ? durationMinutes * 60 : void 0) != null ? _b : durationFromString ? parseWorkoutDurationSeconds(durationFromString) : void 0) != null ? _c : 0;
+  const rawStart = getFirstStr(fm, "datetime", "start_datetime", "startTimeISO", "start_time_iso", "startTime");
+  const startTimeISO = rawStart && absoluteDateMs(rawStart) !== void 0 ? rawStart : buildLocalDateTime(date, rawStart != null ? rawStart : getFirstStr(fm, "time", "start_time", "start"));
+  const endTimeISO = (_d = getFirstStr(fm, "end_datetime", "endTimeISO", "end_time_iso")) != null ? _d : addSecondsToTimestamp(startTimeISO, duration);
+  const distanceKm = getFirstNum(fm, "distance_km", "distanceKm");
+  const distanceMi = getFirstNum(fm, "distance_mi", "distanceMi");
+  const distanceMeters = (_f = (_e = getFirstNum(fm, "distance_m", "distance_meters", "distanceMeters")) != null ? _e : distanceKm !== void 0 ? distanceKm * 1e3 : void 0) != null ? _f : distanceMi !== void 0 ? distanceMi * 1609.344 : void 0;
+  const legacyDistance = getFirstNum(fm, "distance");
+  const distanceFormatted = (_g = getFirstStr(fm, "distance_formatted", "distanceFormatted")) != null ? _g : formatDistanceField(distanceMeters, distanceKm, distanceMi);
+  const { laps, splits } = parseWorkoutIntervals(body);
+  const zones = parseHeartRateZones(fm);
+  const avgPaceFormatted = getFirstStr(
+    fm,
+    "pace_per_km",
+    "pace_per_mi",
+    "pace_per_100m",
+    "pace_per_100yd",
+    "avg_pace",
+    "avgPaceFormatted"
+  );
+  const avgSpeedFormatted = getFirstStr(
+    fm,
+    "speed_kmh_formatted",
+    "speed_mph_formatted",
+    "avg_speed",
+    "avgSpeedFormatted"
+  );
+  const workout = {
+    type,
+    activityType,
+    sport,
+    duration,
+    durationFormatted: durationFromString,
+    calories: getFirstNum(fm, "calories", "active_calories", "energy_kcal"),
+    distance: distanceMeters != null ? distanceMeters : legacyDistance,
+    distanceMeters,
+    distanceKm,
+    distanceMi,
+    distanceFormatted,
+    startTime: startTimeISO,
+    startTimeISO,
+    endTimeISO,
+    isIndoor: getBool(fm, "is_indoor"),
+    locationType: getFirstStr(fm, "location_type", "locationType"),
+    avgPaceFormatted,
+    avgSpeedFormatted,
+    speedKmh: getFirstNum(fm, "speed_kmh", "speedKmh"),
+    speedMph: getFirstNum(fm, "speed_mph", "speedMph"),
+    avgHeartRate: getFirstNum(fm, "hr_avg", "avg_heart_rate", "average_heart_rate", "avgHeartRate"),
+    maxHeartRate: getFirstNum(fm, "hr_max", "max_heart_rate", "maxHeartRate"),
+    minHeartRate: getFirstNum(fm, "hr_min", "min_heart_rate", "minHeartRate"),
+    avgRunningCadence: getFirstNum(fm, "cadence_avg_spm", "avg_running_cadence", "avgRunningCadence"),
+    avgCyclingCadence: getFirstNum(fm, "cadence_avg_rpm", "avg_cycling_cadence", "avgCyclingCadence"),
+    avgStrideLength: getFirstNum(fm, "avg_stride_length_m", "avgStrideLength"),
+    avgGroundContactTime: getFirstNum(fm, "avg_ground_contact_ms", "avgGroundContactTime"),
+    avgVerticalOscillation: getFirstNum(fm, "avg_vertical_oscillation_cm", "avgVerticalOscillation"),
+    avgPower: getFirstNum(fm, "power_avg_w", "avg_power_w", "avgPower"),
+    maxPower: getFirstNum(fm, "power_max_w", "max_power_w", "maxPower"),
+    elevationGainMeters: getFirstNum(fm, "ascent_m", "elevation_gain_m", "elevationGainMeters"),
+    elevationLossMeters: getFirstNum(fm, "descent_m", "elevation_loss_m", "elevationLossMeters"),
+    heartRateZones: zones.length ? zones : void 0,
+    laps: laps.length ? laps : void 0,
+    splits: splits.length ? splits : void 0
+  };
+  return workout;
+}
+function parseMarkdown(content, cachedFrontmatter) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
   const parsed = parseFrontmatter(content);
-  const fm = (_a = parsed.frontmatter) != null ? _a : {};
-  const date = (_b = getFirstStr(fm, "date", "Date", "day", "Day")) != null ? _b : extractDateFromContent(content);
-  if (!date) return null;
+  const fm = mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter);
+  const rawDate = (_b = getFirstStr(fm, "date", "Date", "day", "Day")) != null ? _b : extractDateFromContent(content);
+  if (!rawDate) return null;
+  const date = rawDate.slice(0, 10);
   const granular = parseGranularMarkdownData(parsed.body, date);
   const day = {
     type: "health-data",
     date
   };
+  const workout = parseWorkoutEntry(fm, parsed.body, date);
+  if (workout) {
+    day.workouts = [workout];
+  }
   const steps = getFirstNum(fm, "steps", "activity_steps");
   const walkingRunningDistanceKm = getFirstNum(
     fm,
@@ -10633,7 +11002,7 @@ function parseMarkdown(content) {
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }
-  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.hearing;
+  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.hearing;
   return hasData ? day : null;
 }
 
@@ -10653,14 +11022,16 @@ function detectFormat(extension, configFormat) {
   }
 }
 var DataLoader = class {
-  constructor(vault, settings) {
+  constructor(vault, settings, metadataCache) {
     this.vault = vault;
     this.settings = settings;
+    this.metadataCache = metadataCache;
     this.cache = null;
     this.lastLoad = 0;
     this.TTL = 3e4;
   }
   async load() {
+    var _a, _b;
     if (this.cache && Date.now() - this.lastLoad < this.TTL) {
       return this.cache;
     }
@@ -10684,7 +11055,8 @@ var DataLoader = class {
           }
           case "markdown":
           case "bases": {
-            const day = parseMarkdown(content);
+            const cachedFrontmatter = (_b = (_a = this.metadataCache) == null ? void 0 : _a.getFileCache(file)) == null ? void 0 : _b.frontmatter;
+            const day = parseMarkdown(content, cachedFrontmatter);
             if (day) days.push(withSourcePath(day, file.path));
             break;
           }
@@ -10744,12 +11116,23 @@ var DataLoader = class {
       0,
       files
     );
-    return files.sort((a, b) => a.path.localeCompare(b.path));
+    this.collectMatchingFiles(
+      folder,
+      folder.path,
+      pattern,
+      Math.max(4, dataFolderMaxDepth(granularity, this.settings.dataFolderCustomPathTemplate)),
+      0,
+      files,
+      "md"
+    );
+    const byPath = /* @__PURE__ */ new Map();
+    for (const file of files) byPath.set(file.path, file);
+    return Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
   }
-  collectMatchingFiles(folder, rootPath, pattern, maxDepth, depth, files) {
+  collectMatchingFiles(folder, rootPath, pattern, maxDepth, depth, files, extension) {
     for (const child of folder.children) {
       if (child instanceof import_obsidian.TFile) {
-        if (this.matchesDataFile(child, rootPath, pattern)) {
+        if ((!extension || child.extension === extension) && this.matchesDataFile(child, rootPath, pattern)) {
           files.push(child);
         }
         continue;
@@ -10761,7 +11144,8 @@ var DataLoader = class {
           pattern,
           maxDepth,
           depth + 1,
-          files
+          files,
+          extension
         );
       }
     }
@@ -10789,8 +11173,67 @@ function withSourcePath(day, path) {
     sourcePaths: mergeSourcePaths(day.sourcePaths, [path])
   };
 }
+function workoutDetailScore(workout) {
+  let score = 0;
+  for (const value of Object.values(workout)) {
+    if (Array.isArray(value)) score += value.length * 3;
+    else if (value && typeof value === "object") score += Object.keys(value).length * 2;
+    else if (value !== void 0 && value !== null && value !== "") score += 1;
+  }
+  return score;
+}
+function workoutKey(workout) {
+  var _a, _b, _c, _d, _e, _f;
+  const type = ((_b = (_a = workout.sport) != null ? _a : workout.type) != null ? _b : "workout").toLowerCase().trim();
+  const start = (_d = (_c = workout.startTimeISO) != null ? _c : workout.startTime) != null ? _d : "";
+  const duration = Number.isFinite(workout.duration) ? Math.round(workout.duration) : 0;
+  const distance = (_f = (_e = workout.distanceMeters) != null ? _e : workout.distance) != null ? _f : 0;
+  return `${start}|${type}|${duration}|${Math.round(distance)}`;
+}
+function preferArray(next, prev) {
+  if (next && next.length) return next;
+  return prev && prev.length ? prev : void 0;
+}
+function mergeWorkoutEntries(a, b) {
+  var _a;
+  const preferred = workoutDetailScore(b) >= workoutDetailScore(a) ? b : a;
+  const fallback = preferred === b ? a : b;
+  const merged = { ...fallback };
+  for (const [key, value] of Object.entries(preferred)) {
+    if (value !== void 0 && value !== null) merged[key] = value;
+  }
+  return {
+    ...merged,
+    heartRateZones: preferArray(preferred.heartRateZones, fallback.heartRateZones),
+    laps: preferArray(preferred.laps, fallback.laps),
+    splits: preferArray(preferred.splits, fallback.splits),
+    route: preferArray(preferred.route, fallback.route),
+    timeSeries: (_a = preferred.timeSeries) != null ? _a : fallback.timeSeries
+  };
+}
+function mergeWorkouts(a, b) {
+  const all = [...a != null ? a : [], ...b != null ? b : []];
+  if (!all.length) return void 0;
+  const byKey = /* @__PURE__ */ new Map();
+  const unkeyed = [];
+  for (const workout of all) {
+    const key = workoutKey(workout);
+    if (key.startsWith("|") || key.includes("||0|0")) {
+      unkeyed.push(workout);
+      continue;
+    }
+    const existing = byKey.get(key);
+    byKey.set(key, existing ? mergeWorkoutEntries(existing, workout) : workout);
+  }
+  return [...Array.from(byKey.values()), ...unkeyed].sort((left, right) => {
+    var _a, _b, _c, _d;
+    const aStart = (_b = (_a = left.startTimeISO) != null ? _a : left.startTime) != null ? _b : "";
+    const bStart = (_d = (_c = right.startTimeISO) != null ? _c : right.startTime) != null ? _d : "";
+    return aStart.localeCompare(bStart);
+  });
+}
 function mergeDays(a, b) {
-  var _a, _b, _c, _d, _e, _f, _g, _h;
+  var _a, _b, _c, _d, _e, _f, _g;
   return {
     type: "health-data",
     date: a.date,
@@ -10801,8 +11244,8 @@ function mergeDays(a, b) {
     vitals: (_d = a.vitals) != null ? _d : b.vitals,
     sleep: (_e = a.sleep) != null ? _e : b.sleep,
     mobility: (_f = a.mobility) != null ? _f : b.mobility,
-    workouts: (_g = a.workouts) != null ? _g : b.workouts,
-    hearing: (_h = a.hearing) != null ? _h : b.hearing
+    workouts: mergeWorkouts(a.workouts, b.workouts),
+    hearing: (_g = a.hearing) != null ? _g : b.hearing
   };
 }
 
@@ -12167,6 +12610,111 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   ]);
 };
 
+// src/workout-utils.ts
+function pickWorkout(data, config) {
+  const dateKey = config.date != null ? String(config.date).trim() : "";
+  const indexRaw = config.workout;
+  const index = typeof indexRaw === "number" ? indexRaw : indexRaw != null ? parseInt(String(indexRaw), 10) : 0;
+  const idx = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0;
+  if (dateKey) {
+    const day = data.find((d) => d.date === dateKey);
+    if (!day || !day.workouts || !day.workouts.length) return null;
+    const w = day.workouts[idx];
+    if (!w) return null;
+    return { day, workout: w, indexInDay: idx };
+  }
+  for (let i = data.length - 1; i >= 0; i--) {
+    const day = data[i];
+    if (day.workouts && day.workouts.length > idx) {
+      return { day, workout: day.workouts[idx], indexInDay: idx };
+    }
+  }
+  return null;
+}
+function resolveUnits(day) {
+  return day.units === "imperial" ? "imperial" : "metric";
+}
+function parseDistanceFormatted(value) {
+  if (!value) return void 0;
+  const match = /([-+]?\d*\.?\d+(?:e[-+]?\d+)?)/i.exec(value.replace(/,/g, ""));
+  if (!match) return void 0;
+  const n = Number(match[1]);
+  if (!Number.isFinite(n)) return void 0;
+  const normalized = value.toLowerCase();
+  if (/\bkm\b/.test(normalized)) return n * 1e3;
+  if (/\bmi\b|miles?\b/.test(normalized)) return n * 1609.344;
+  if (/\byd\b|yards?\b/.test(normalized)) return n * 0.9144;
+  if (/\bm\b|meters?\b/.test(normalized)) return n;
+  return void 0;
+}
+function workoutDistanceMeters(workout) {
+  if (workout.distanceMeters != null) return workout.distanceMeters;
+  if (workout.distanceKm != null) return workout.distanceKm * 1e3;
+  if (workout.distanceMi != null) return workout.distanceMi * 1609.344;
+  const formattedMeters = parseDistanceFormatted(workout.distanceFormatted);
+  if (formattedMeters != null) return formattedMeters;
+  if (workout.distance == null) return void 0;
+  return workout.distance > 100 ? workout.distance : workout.distance * 1e3;
+}
+function formatDistance(meters, day, preFormatted) {
+  if (preFormatted) return preFormatted;
+  if (resolveUnits(day) === "imperial") {
+    const mi = meters / 1609.344;
+    return mi >= 10 ? `${mi.toFixed(1)} mi` : `${mi.toFixed(2)} mi`;
+  }
+  const km = meters / 1e3;
+  return km >= 10 ? `${km.toFixed(1)} km` : `${km.toFixed(2)} km`;
+}
+function formatWorkoutDistance(workout, day) {
+  const meters = workoutDistanceMeters(workout);
+  return meters == null ? void 0 : formatDistance(meters, day, workout.distanceFormatted);
+}
+function intervalRateDisplay(interval) {
+  var _a;
+  return (_a = interval.paceFormatted) != null ? _a : interval.speedFormatted;
+}
+function formatPace(meters, seconds, day, preFormatted) {
+  if (preFormatted) return preFormatted;
+  if (!meters || !seconds) return "\u2014";
+  const unitDistance = resolveUnits(day) === "imperial" ? 1609.344 : 1e3;
+  const secPerUnit = seconds / (meters / unitDistance);
+  const m = Math.floor(secPerUnit / 60);
+  const s = Math.round(secPerUnit % 60);
+  const suffix = resolveUnits(day) === "imperial" ? "/mi" : "/km";
+  return `${m}:${s.toString().padStart(2, "0")}${suffix}`;
+}
+function formatElevation(meters, day) {
+  if (resolveUnits(day) === "imperial") {
+    return `${Math.round(meters * 3.28084)} ft`;
+  }
+  return `${Math.round(meters)} m`;
+}
+function elapsedSeconds(startTime, sampleTimestamp) {
+  if (!startTime) return NaN;
+  const start = Date.parse(startTime);
+  const sample = Date.parse(sampleTimestamp);
+  if (!Number.isFinite(start) || !Number.isFinite(sample)) return NaN;
+  return (sample - start) / 1e3;
+}
+function formatElapsed(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "\u2014";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor(seconds % 3600 / 60);
+  const s = Math.floor(seconds % 60);
+  const pad = (n) => n.toString().padStart(2, "0");
+  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+  return `${m}:${pad(s)}`;
+}
+function drawEmptyState(ctx, w, h, bg, muted, message) {
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = muted;
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(message, w / 2, h / 2);
+}
+
 // src/visualizations/workout-log.ts
 var TYPE_LABELS = {
   running: "Run",
@@ -12210,12 +12758,14 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       if (!w.duration) continue;
       entries.push({
         date: day.date,
-        type: w.type || "Workout",
+        type: w.activityType || w.type || "Workout",
         duration: w.duration,
         calories: w.calories || 0,
-        distance: w.distance,
+        distanceMeters: workoutDistanceMeters(w),
         durationFormatted: w.durationFormatted,
-        distanceFormatted: w.distanceFormatted
+        distanceFormatted: formatWorkoutDistance(w, day),
+        avgHeartRate: w.avgHeartRate,
+        avgPower: w.avgPower
       });
     }
   }
@@ -12281,7 +12831,9 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       details: [
         { label: "Duration", value: (_a = entry.durationFormatted) != null ? _a : formatDuration(entry.duration) },
         ...entry.calories ? [{ label: "Calories", value: `${Math.round(entry.calories)} kcal` }] : [],
-        ...entry.distance != null ? [{ label: "Distance", value: (_b = entry.distanceFormatted) != null ? _b : `${entry.distance.toFixed(2)} km` }] : []
+        ...entry.distanceMeters != null ? [{ label: "Distance", value: (_b = entry.distanceFormatted) != null ? _b : `${(entry.distanceMeters / 1e3).toFixed(2)} km` }] : [],
+        ...entry.avgHeartRate != null ? [{ label: "Avg HR", value: `${Math.round(entry.avgHeartRate)} BPM` }] : [],
+        ...entry.avgPower != null ? [{ label: "Avg Power", value: `${Math.round(entry.avgPower)} W` }] : []
       ],
       payload: entry
     });
@@ -14158,80 +14710,142 @@ var renderOxygenRange = (ctx, data, W, H, config, theme, statsEl, hits) => {
   renderRangeChart(ctx, data, W, H, theme, statsEl, hits, specFor(metric));
 };
 
-// src/workout-utils.ts
-function pickWorkout(data, config) {
-  const dateKey = config.date != null ? String(config.date).trim() : "";
-  const indexRaw = config.workout;
-  const index = typeof indexRaw === "number" ? indexRaw : indexRaw != null ? parseInt(String(indexRaw), 10) : 0;
-  const idx = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0;
-  if (dateKey) {
-    const day = data.find((d) => d.date === dateKey);
-    if (!day || !day.workouts || !day.workouts.length) return null;
-    const w = day.workouts[idx];
-    if (!w) return null;
-    return { day, workout: w, indexInDay: idx };
+// src/visualizations/workout-zones.ts
+var ZONE_HUES = [210, 180, 120, 40, 0];
+var DEFAULT_ZONE_LABELS = ["Recovery", "Aerobic", "Tempo", "Threshold", "Max"];
+var DEFAULT_ZONE_FRACTIONS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.01];
+function resolveMaxHeartRate(config, theme) {
+  const cfg = config.maxHeartRate;
+  if (typeof cfg === "number" && cfg > 0) return cfg;
+  if (typeof cfg === "string") {
+    const n = parseInt(cfg, 10);
+    if (Number.isFinite(n) && n > 0) return n;
   }
-  for (let i = data.length - 1; i >= 0; i--) {
-    const day = data[i];
-    if (day.workouts && day.workouts.length > idx) {
-      return { day, workout: day.workouts[idx], indexInDay: idx };
+  return theme.maxHeartRate;
+}
+function formatZoneDuration(zone) {
+  var _a;
+  return (_a = zone.durationFormatted) != null ? _a : formatDuration(zone.seconds);
+}
+function zonesFromSamples(samples, maxHr) {
+  if (!samples.length || !maxHr) return [];
+  const zones = DEFAULT_ZONE_LABELS.map((label, idx) => ({
+    index: idx + 1,
+    label,
+    range: `${Math.round(maxHr * DEFAULT_ZONE_FRACTIONS[idx])}-${Math.round(maxHr * DEFAULT_ZONE_FRACTIONS[idx + 1])}`,
+    seconds: 0
+  }));
+  for (let i = 0; i < samples.length; i++) {
+    const current = samples[i];
+    const next = samples[i + 1];
+    const currentMs = Date.parse(current.timestamp);
+    const nextMs = next ? Date.parse(next.timestamp) : NaN;
+    const seconds = Number.isFinite(currentMs) && Number.isFinite(nextMs) ? Math.max(1, Math.min(300, (nextMs - currentMs) / 1e3)) : 60;
+    const frac = current.value / maxHr;
+    let zoneIndex = zones.findIndex((zone, idx) => frac >= DEFAULT_ZONE_FRACTIONS[idx] && frac < DEFAULT_ZONE_FRACTIONS[idx + 1]);
+    if (zoneIndex === -1 && frac >= 1) zoneIndex = zones.length - 1;
+    if (zoneIndex !== -1) zones[zoneIndex].seconds += seconds;
+  }
+  return zones.filter((zone) => zone.seconds > 0);
+}
+var renderWorkoutZones = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a, _b, _c, _d;
+  const picked = pickWorkout(data, config);
+  if (!picked) {
+    drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No workout found");
+    statsEl.empty();
+    return;
+  }
+  const { day, workout } = picked;
+  const zones = ((_a = workout.heartRateZones) != null ? _a : []).filter((zone) => zone.seconds > 0);
+  const fallbackZones = zones.length ? [] : zonesFromSamples((_c = (_b = workout.timeSeries) == null ? void 0 : _b.heartRate) != null ? _c : [], resolveMaxHeartRate(config, theme));
+  const visibleZones = zones.length ? zones : fallbackZones;
+  if (!visibleZones.length) {
+    drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No heart-rate zones for this workout");
+    statsEl.empty();
+    return;
+  }
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const total = visibleZones.reduce((sum, zone) => sum + zone.seconds, 0);
+  const padX = 28;
+  const titleY = 14;
+  const barY = Math.max(52, H * 0.32);
+  const barH = Math.min(34, Math.max(22, H * 0.14));
+  const barW = W - padX * 2;
+  const radius = barH / 2;
+  ctx.fillStyle = theme.fg;
+  ctx.font = "600 13px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(`${(_d = workout.activityType) != null ? _d : workout.type} zones`, padX, titleY);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "10px sans-serif";
+  ctx.fillText(day.date, padX, titleY + 18);
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(padX, barY, barW, barH, radius);
+  ctx.clip();
+  let x = padX;
+  visibleZones.forEach((zone) => {
+    const w = zone.seconds / total * barW;
+    const hue = ZONE_HUES[(zone.index - 1 + ZONE_HUES.length) % ZONE_HUES.length];
+    ctx.fillStyle = `hsl(${hue},70%,${theme.isDark ? 52 : 46}%)`;
+    ctx.fillRect(x, barY, Math.max(0, w), barH);
+    if (w > 42) {
+      ctx.fillStyle = hexToRgba("#ffffff", 0.92);
+      ctx.font = "700 10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`Z${zone.index}`, x + w / 2, barY + barH / 2);
     }
-  }
-  return null;
-}
-function resolveUnits(day) {
-  return day.units === "imperial" ? "imperial" : "metric";
-}
-function formatDistance(meters, day, preFormatted) {
-  if (preFormatted) return preFormatted;
-  if (resolveUnits(day) === "imperial") {
-    const mi = meters / 1609.344;
-    return mi >= 10 ? `${mi.toFixed(1)} mi` : `${mi.toFixed(2)} mi`;
-  }
-  const km = meters / 1e3;
-  return km >= 10 ? `${km.toFixed(1)} km` : `${km.toFixed(2)} km`;
-}
-function formatPace(meters, seconds, day, preFormatted) {
-  if (preFormatted) return preFormatted;
-  if (!meters || !seconds) return "\u2014";
-  const unitDistance = resolveUnits(day) === "imperial" ? 1609.344 : 1e3;
-  const secPerUnit = seconds / (meters / unitDistance);
-  const m = Math.floor(secPerUnit / 60);
-  const s = Math.round(secPerUnit % 60);
-  const suffix = resolveUnits(day) === "imperial" ? "/mi" : "/km";
-  return `${m}:${s.toString().padStart(2, "0")}${suffix}`;
-}
-function formatElevation(meters, day) {
-  if (resolveUnits(day) === "imperial") {
-    return `${Math.round(meters * 3.28084)} ft`;
-  }
-  return `${Math.round(meters)} m`;
-}
-function elapsedSeconds(startTime, sampleTimestamp) {
-  if (!startTime) return NaN;
-  const start = Date.parse(startTime);
-  const sample = Date.parse(sampleTimestamp);
-  if (!Number.isFinite(start) || !Number.isFinite(sample)) return NaN;
-  return (sample - start) / 1e3;
-}
-function formatElapsed(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "\u2014";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor(seconds % 3600 / 60);
-  const s = Math.floor(seconds % 60);
-  const pad = (n) => n.toString().padStart(2, "0");
-  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
-  return `${m}:${pad(s)}`;
-}
-function drawEmptyState(ctx, w, h, bg, muted, message) {
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = muted;
-  ctx.font = "12px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(message, w / 2, h / 2);
-}
+    hits.add({
+      shape: "rect",
+      x,
+      y: barY,
+      w: Math.max(1, w),
+      h: barH,
+      title: `Zone ${zone.index} \u2014 ${zone.label}`,
+      details: [
+        { label: "Time", value: formatZoneDuration(zone) },
+        { label: "Share", value: `${Math.round(zone.seconds / total * 100)}%` },
+        ...zone.range ? [{ label: "Range", value: `${zone.range} bpm` }] : []
+      ],
+      payload: day
+    });
+    x += w;
+  });
+  ctx.restore();
+  const legendY = barY + barH + 22;
+  const colW = barW / visibleZones.length;
+  visibleZones.forEach((zone, idx) => {
+    const hue = ZONE_HUES[(zone.index - 1 + ZONE_HUES.length) % ZONE_HUES.length];
+    const lx = padX + idx * colW;
+    ctx.fillStyle = `hsl(${hue},70%,${theme.isDark ? 58 : 42}%)`;
+    ctx.beginPath();
+    ctx.arc(lx + 5, legendY + 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = theme.fg;
+    ctx.font = "700 10px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(`Z${zone.index}`, lx + 14, legendY - 1);
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.fillText(formatZoneDuration(zone), lx + 14, legendY + 12);
+  });
+  const dominant = visibleZones.reduce((best, zone) => zone.seconds > best.seconds ? zone : best, visibleZones[0]);
+  renderInlineStats(statsEl, [
+    [
+      { text: "Zone time " },
+      { text: formatDuration(total), strong: true }
+    ],
+    [
+      { text: "Dominant " },
+      { text: `Z${dominant.index} ${dominant.label}`, strong: true }
+    ]
+  ]);
+};
 
 // src/visualizations/workout-heart-rate.ts
 var ZONES = [
@@ -14249,7 +14863,7 @@ function zoneFor(bpm, maxHr) {
   if (frac >= 1) return ZONES[ZONES.length - 1];
   return null;
 }
-function resolveMaxHeartRate(config, theme) {
+function resolveMaxHeartRate2(config, theme) {
   const cfg = config.maxHeartRate;
   if (typeof cfg === "number" && cfg > 0) return cfg;
   if (typeof cfg === "string") {
@@ -14423,7 +15037,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   }
 }
 var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => {
-  var _a;
+  var _a, _b;
   const picked = pickWorkout(data, config);
   if (!picked) {
     drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No workout found");
@@ -14431,7 +15045,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     return;
   }
   const { workout } = picked;
-  const maxHr = resolveMaxHeartRate(config, theme);
+  const maxHr = resolveMaxHeartRate2(config, theme);
   const workoutStart = (_a = workout.startTimeISO) != null ? _a : workout.startTime;
   const sources = heartRateSampleSources(picked);
   let pts = [];
@@ -14445,6 +15059,10 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     }
   }
   if (!pts.length) {
+    if ((_b = workout.heartRateZones) == null ? void 0 : _b.some((zone) => zone.seconds > 0)) {
+      renderWorkoutZones(ctx, data, W, H, config, theme, statsEl, hits);
+      return;
+    }
     const avg5 = workout.avgHeartRate;
     const lo2 = workout.minHeartRate;
     const hi2 = workout.maxHeartRate;
@@ -14627,6 +15245,232 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   renderInlineStats(statsEl, rows);
 };
 
+// src/visualizations/workout-trends.ts
+var METRICS5 = [
+  {
+    key: "duration",
+    label: "Duration",
+    unit: "min",
+    color: (theme) => theme.colors.accent,
+    value: (workout) => workout.duration > 0 ? workout.duration / 60 : void 0,
+    format: (value) => formatDuration(value * 60)
+  },
+  {
+    key: "distance",
+    label: "Distance",
+    unit: "km",
+    color: (theme) => theme.colors.secondary,
+    value: (workout) => {
+      const meters = workoutDistanceMeters(workout);
+      return meters == null ? void 0 : meters / 1e3;
+    },
+    format: (value) => `${value.toFixed(value >= 10 ? 1 : 2)} km`
+  },
+  {
+    key: "calories",
+    label: "Calories",
+    unit: "kcal",
+    color: () => "#f97316",
+    value: (workout) => workout.calories,
+    format: (value) => `${Math.round(value)} kcal`
+  },
+  {
+    key: "hr_avg",
+    label: "Avg HR",
+    unit: "bpm",
+    color: (theme) => theme.colors.heart,
+    value: (workout) => workout.avgHeartRate,
+    format: (value) => `${Math.round(value)} BPM`
+  },
+  {
+    key: "power_avg",
+    label: "Avg Power",
+    unit: "W",
+    color: () => "#a855f7",
+    value: (workout) => workout.avgPower,
+    format: (value) => `${Math.round(value)} W`
+  }
+];
+function metricAliases(raw) {
+  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  switch (normalized) {
+    case "hr":
+    case "heart_rate":
+    case "avg_heart_rate":
+      return "hr_avg";
+    case "power":
+    case "avg_power":
+      return "power_avg";
+    case "cal":
+    case "energy":
+      return "calories";
+    default:
+      return normalized;
+  }
+}
+function collectWorkoutPoints(data) {
+  var _a, _b, _c;
+  const points = [];
+  for (const day of data) {
+    for (const workout of (_a = day.workouts) != null ? _a : []) {
+      const timestamp = (_c = (_b = workout.startTimeISO) != null ? _b : workout.startTime) != null ? _c : `${day.date}T00:00:00`;
+      const ms = Date.parse(timestamp);
+      points.push({
+        day,
+        workout,
+        timestamp,
+        ms: Number.isFinite(ms) ? ms : Date.parse(`${day.date}T00:00:00`)
+      });
+    }
+  }
+  return points.sort((a, b) => a.ms - b.ms);
+}
+function niceStep(range) {
+  if (range <= 5) return 1;
+  if (range <= 20) return 5;
+  if (range <= 60) return 10;
+  if (range <= 200) return 25;
+  return 50;
+}
+function drawPanel(ctx, points, metric, x, y, w, h, theme, hits) {
+  const values = [];
+  for (const point of points) {
+    const value = metric.value(point.workout);
+    if (value !== void 0 && Number.isFinite(value)) {
+      values.push({ ...point, value });
+    }
+  }
+  if (!values.length) return;
+  const minMs = values[0].ms;
+  const maxMs = values[values.length - 1].ms;
+  let minValue = Math.min(...values.map((point) => point.value));
+  let maxValue = Math.max(...values.map((point) => point.value));
+  if (minValue === maxValue) {
+    minValue = Math.max(0, minValue * 0.8 - 1);
+    maxValue = maxValue * 1.2 + 1;
+  }
+  if (minValue > 0) minValue = Math.max(0, minValue - (maxValue - minValue) * 0.12);
+  maxValue += (maxValue - minValue) * 0.12;
+  const xFor = (ms) => x + (ms - minMs) / (maxMs - minMs || 1) * w;
+  const yFor = (value) => y + (1 - (value - minValue) / (maxValue - minValue || 1)) * h;
+  const color = metric.color(theme);
+  ctx.fillStyle = theme.fg;
+  ctx.font = "600 11px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(metric.label, x, y - 18);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "9px sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(metric.unit, x + w, y - 17);
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
+  ctx.lineWidth = 1;
+  const step = niceStep(maxValue - minValue);
+  const start = Math.ceil(minValue / step) * step;
+  for (let tick = start; tick <= maxValue; tick += step) {
+    const ty = yFor(tick);
+    ctx.beginPath();
+    ctx.moveTo(x, ty);
+    ctx.lineTo(x + w, ty);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  values.forEach((point, index) => {
+    const px = xFor(point.ms);
+    const py = yFor(point.value);
+    if (index === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+  ctx.fillStyle = color;
+  values.forEach((point) => {
+    var _a;
+    const px = xFor(point.ms);
+    const py = yFor(point.value);
+    ctx.beginPath();
+    ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    hits.add({
+      shape: "circle",
+      cx: px,
+      cy: py,
+      r: 8,
+      title: `${formatDate(point.day.date)} \u2014 ${(_a = point.workout.activityType) != null ? _a : point.workout.type}`,
+      details: [
+        { label: metric.label, value: metric.format(point.value) },
+        { label: "Duration", value: formatDuration(point.workout.duration) },
+        ...point.workout.calories != null ? [{ label: "Calories", value: `${Math.round(point.workout.calories)} kcal` }] : []
+      ],
+      payload: point.day
+    });
+  });
+  ctx.fillStyle = theme.muted;
+  ctx.font = "8px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(formatDate(values[0].day.date), x, y + h + 4);
+  ctx.textAlign = "right";
+  ctx.fillText(formatDate(values[values.length - 1].day.date), x + w, y + h + 4);
+}
+var renderWorkoutTrends = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const points = collectWorkoutPoints(data);
+  if (!points.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("No workouts in range", W / 2, H / 2);
+    statsEl.empty();
+    return;
+  }
+  const metricRaw = config.metric == null ? "all" : String(config.metric);
+  const requested = metricAliases(metricRaw);
+  const metrics = requested === "all" ? METRICS5.filter((metric) => points.some((point) => metric.value(point.workout) !== void 0)) : METRICS5.filter((metric) => metric.key === requested);
+  if (!metrics.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`No workout data for metric: ${metricRaw}`, W / 2, H / 2);
+    statsEl.empty();
+    return;
+  }
+  const padL = 34;
+  const padR = 18;
+  const padT = 34;
+  const padB = 22;
+  const gap = metrics.length > 1 ? 34 : 18;
+  const panelH = (H - padT - padB - gap * (metrics.length - 1)) / metrics.length;
+  const panelW = W - padL - padR;
+  ctx.fillStyle = theme.fg;
+  ctx.font = "700 13px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("Workout trends", padL, 10);
+  metrics.forEach((metric, index) => {
+    drawPanel(ctx, points, metric, padL, padT + index * (panelH + gap), panelW, Math.max(24, panelH), theme, hits);
+  });
+  const totalDuration = points.reduce((sum, point) => sum + (point.workout.duration || 0), 0);
+  const totalDistanceMeters = points.reduce((sum, point) => {
+    var _a;
+    return sum + ((_a = workoutDistanceMeters(point.workout)) != null ? _a : 0);
+  }, 0);
+  renderInlineStats(statsEl, [
+    [{ text: `${points.length} workouts` }],
+    [
+      { text: "Total time " },
+      { text: formatDuration(totalDuration), strong: true }
+    ],
+    ...totalDistanceMeters > 0 ? [[{ text: "Distance " }, { text: `${(totalDistanceMeters / 1e3).toFixed(1)} km`, strong: true }]] : []
+  ]);
+};
+
 // src/visualizations/workout-map.ts
 var L2 = __toESM(require_leaflet_src());
 var MAX_POINTS = 1500;
@@ -14705,7 +15549,7 @@ function totalRouteDistance(route) {
   return d;
 }
 function renderHeader(host, day, workout) {
-  var _a;
+  var _a, _b;
   const header = host.createDiv({ cls: "health-md-workout-header" });
   const title = header.createDiv({ cls: "health-md-workout-title" });
   title.textContent = workout.type ? workout.type.charAt(0).toUpperCase() + workout.type.slice(1) : "Workout";
@@ -14715,14 +15559,16 @@ function renderHeader(host, day, workout) {
     cell.createDiv({ cls: "health-md-workout-stat-label", text: label });
     cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
   };
-  if (workout.distance != null) {
-    addStat("Distance", formatDistance(workout.distance, day, workout.distanceFormatted));
+  const distanceMeters = workoutDistanceMeters(workout);
+  const distanceDisplay = formatWorkoutDistance(workout, day);
+  if (distanceDisplay) {
+    addStat("Distance", distanceDisplay);
   }
   addStat("Duration", (_a = workout.durationFormatted) != null ? _a : formatDuration(workout.duration));
-  if (workout.distance != null && workout.duration > 0) {
+  if (distanceMeters != null && workout.duration > 0) {
     addStat(
-      "Avg pace",
-      formatPace(workout.distance, workout.duration, day, workout.avgPaceFormatted)
+      workout.avgSpeedFormatted ? "Avg speed" : "Avg pace",
+      (_b = workout.avgSpeedFormatted) != null ? _b : formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted)
     );
   }
   if (workout.elevationGainMeters != null) {
@@ -14898,6 +15744,84 @@ var renderWorkoutMap = (data, el, config, theme) => {
   }
 };
 
+// src/visualizations/workout-intervals.ts
+function titleCase(value) {
+  return value.split(/\s+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+function renderEmptyMessage2(host, message) {
+  const msg = host.createDiv({ cls: "health-md-workout-empty" });
+  msg.textContent = message;
+}
+function renderHeader2(host, day, workout) {
+  var _a, _b;
+  const header = host.createDiv({ cls: "health-md-workout-header" });
+  const title = header.createDiv({ cls: "health-md-workout-title" });
+  title.textContent = `${titleCase((_a = workout.activityType) != null ? _a : workout.type)} \u2014 ${day.date}`;
+  const stats = header.createDiv({ cls: "health-md-workout-stats" });
+  const addStat = (label, value) => {
+    if (!value) return;
+    const cell = stats.createDiv({ cls: "health-md-workout-stat" });
+    cell.createDiv({ cls: "health-md-workout-stat-label", text: label });
+    cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
+  };
+  addStat("Duration", (_b = workout.durationFormatted) != null ? _b : formatDuration(workout.duration));
+  addStat("Distance", formatWorkoutDistance(workout, day));
+  addStat("Avg HR", workout.avgHeartRate != null ? `${Math.round(workout.avgHeartRate)} BPM` : void 0);
+  addStat("Avg Power", workout.avgPower != null ? `${Math.round(workout.avgPower)} W` : void 0);
+}
+function formatMaybeNumber(value, suffix) {
+  return value == null ? "\u2014" : `${Math.round(value)} ${suffix}`;
+}
+function renderIntervalTable(host, label, rows) {
+  host.createEl("h4", { text: label, cls: "health-md-workout-table-heading" });
+  const wrapper = host.createDiv({ cls: "health-md-workout-table-wrap" });
+  const table = wrapper.createEl("table", { cls: "health-md-workout-table" });
+  const thead = table.createEl("thead");
+  const headerRow = thead.createEl("tr");
+  ["#", "Distance", "Time", "Pace / Speed", "Avg HR", "Max HR", "Avg Power", "Avg Cadence"].forEach((heading) => {
+    headerRow.createEl("th", { text: heading });
+  });
+  const tbody = table.createEl("tbody");
+  rows.forEach((row) => {
+    var _a, _b, _c;
+    const tr = tbody.createEl("tr");
+    tr.createEl("td", { text: String(row.index) });
+    tr.createEl("td", { text: (_a = row.distanceFormatted) != null ? _a : row.distance != null ? `${(row.distance / 1e3).toFixed(2)} km` : "\u2014" });
+    tr.createEl("td", { text: row.duration ? formatDuration(row.duration) : "\u2014" });
+    tr.createEl("td", { text: (_b = intervalRateDisplay(row)) != null ? _b : "\u2014" });
+    tr.createEl("td", { text: formatMaybeNumber(row.avgHeartRate, "BPM") });
+    tr.createEl("td", { text: formatMaybeNumber(row.maxHeartRate, "BPM") });
+    tr.createEl("td", { text: formatMaybeNumber(row.avgPower, "W") });
+    tr.createEl("td", { text: row.avgCadence == null ? "\u2014" : `${Math.round(row.avgCadence)} ${(_c = row.cadenceUnit) != null ? _c : ""}`.trim() });
+  });
+}
+var renderWorkoutIntervals = (data, el, config, _theme) => {
+  var _a, _b, _c, _d;
+  el.addClass("health-md-workout-container");
+  const picked = pickWorkout(data, config);
+  if (!picked) {
+    renderEmptyMessage2(el, "No workout found");
+    return;
+  }
+  const { day, workout } = picked;
+  renderHeader2(el, day, workout);
+  const kind = String((_b = (_a = config.kind) != null ? _a : config.table) != null ? _b : "auto").trim().toLowerCase();
+  const showLaps = kind === "auto" || kind === "laps" || kind === "lap";
+  const showSplits = kind === "auto" || kind === "splits" || kind === "split";
+  let rendered = false;
+  if (showLaps && ((_c = workout.laps) == null ? void 0 : _c.length)) {
+    renderIntervalTable(el, "Laps", workout.laps);
+    rendered = true;
+  }
+  if (showSplits && ((_d = workout.splits) == null ? void 0 : _d.length)) {
+    renderIntervalTable(el, "Splits", workout.splits);
+    rendered = true;
+  }
+  if (!rendered) {
+    renderEmptyMessage2(el, "No laps or splits were included for this workout.");
+  }
+};
+
 // src/visualizations/index.ts
 var VISUALIZATIONS = {
   "heart-terrain": renderHeartTerrain,
@@ -14918,13 +15842,18 @@ var VISUALIZATIONS = {
   "sleep-schedule": renderSleepSchedule,
   "weekday-average": renderWeekdayAverage,
   "oxygen-range": renderOxygenRange,
-  "workout-heart-rate": renderWorkoutHeartRate
+  "workout-heart-rate": renderWorkoutHeartRate,
+  "workout-zones": renderWorkoutZones,
+  "workout-heart-rate-zones": renderWorkoutZones,
+  "workout-trends": renderWorkoutTrends
 };
 var HTML_VISUALIZATIONS = {
   "intro-stats": renderIntroStats,
   "summary-card": renderSummaryCard,
   "trend-tile": renderTrendTile,
-  "workout-map": renderWorkoutMap
+  "workout-map": renderWorkoutMap,
+  "workout-intervals": renderWorkoutIntervals,
+  "workout-laps": renderWorkoutIntervals
 };
 
 // src/renderer.ts
@@ -14994,7 +15923,7 @@ async function getFrontmatterForContext(plugin, ctx) {
       }
     }
   }
-  if (parsed && isRecord(cached)) return { ...parsed, ...cached };
+  if (parsed && isRecord2(cached)) return { ...parsed, ...cached };
   return cached != null ? cached : parsed;
 }
 function resolveFrontmatterDateVariables(config, frontmatter) {
@@ -15008,7 +15937,7 @@ function resolveFrontmatterDateVariables(config, frontmatter) {
     if (!variable) {
       return { error: `Invalid frontmatter variable in "${key}".` };
     }
-    if (!isRecord(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
+    if (!isRecord2(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
       return {
         error: `Missing frontmatter variable "${variable}" for "${key}". Add "${variable}" to this note's frontmatter or use a literal date.`
       };
@@ -15349,7 +16278,7 @@ function renderTooltipContent(tooltipEl, region) {
   });
 }
 var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null;
 }
 function normalizeDataPointClickAction(value) {
@@ -15383,7 +16312,7 @@ function collectPayloadNavigation(payload, dates, sourcePaths) {
     payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
     return;
   }
-  if (!isRecord(payload)) return;
+  if (!isRecord2(payload)) return;
   const date = payload.date;
   if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
   const paths = payload.sourcePaths;
@@ -15727,7 +16656,7 @@ var CATEGORIES = [
   {
     id: "workouts",
     label: "Workouts",
-    description: "Workout logs, heart-rate series, and GPS route maps."
+    description: "Workout logs, detailed zones, interval tables, trends, and GPS route maps."
   }
 ];
 var SUMMARY_METRICS = [
@@ -15777,6 +16706,14 @@ var HEART_RANGE_METRICS = [
 var OXYGEN_RANGE_METRICS = [
   { value: "blood-oxygen", label: "Blood oxygen" },
   { value: "respiratory-rate", label: "Respiratory rate" }
+];
+var WORKOUT_TREND_METRICS = [
+  { value: "all", label: "All workout metrics" },
+  { value: "duration", label: "Duration" },
+  { value: "distance", label: "Distance" },
+  { value: "calories", label: "Calories" },
+  { value: "hr_avg", label: "Average heart rate" },
+  { value: "power_avg", label: "Average power" }
 ];
 var VISUALIZATIONS2 = [
   {
@@ -16166,6 +17103,98 @@ var VISUALIZATIONS2 = [
         placeholder: "190",
         optional: true,
         validation: "positive-number"
+      }
+    ]
+  },
+  {
+    type: "workout-zones",
+    label: "Workout zones",
+    category: "workouts",
+    description: "Stacked heart-rate zone time from detailed workout notes.",
+    defaultLast: 30,
+    defaultHeight: 180,
+    params: [
+      {
+        kind: "text",
+        key: "date",
+        label: "Workout date",
+        desc: "Optional workout day to select, in YYYY-MM-DD format.",
+        placeholder: "2026-03-27",
+        optional: true,
+        validation: "date"
+      },
+      {
+        kind: "text",
+        key: "workout",
+        label: "Workout index",
+        desc: "Zero-based workout number on that day. 0 means first workout.",
+        defaultValue: "0",
+        validation: "non-negative-integer"
+      },
+      {
+        kind: "text",
+        key: "maxHeartRate",
+        label: "Max heart rate",
+        desc: "Optional BPM used to derive zones from samples when frontmatter zones are absent.",
+        placeholder: "190",
+        optional: true,
+        validation: "positive-number"
+      }
+    ]
+  },
+  {
+    type: "workout-trends",
+    label: "Workout trends",
+    category: "workouts",
+    description: "Trends for duration, distance, calories, average HR, and power.",
+    defaultLast: 90,
+    defaultHeight: 420,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose all workout trend panels or focus one metric.",
+        options: WORKOUT_TREND_METRICS,
+        defaultValue: "all"
+      }
+    ]
+  },
+  {
+    type: "workout-intervals",
+    label: "Workout intervals",
+    category: "workouts",
+    description: "HTML table for detailed workout laps and splits.",
+    defaultLast: 30,
+    params: [
+      {
+        kind: "text",
+        key: "date",
+        label: "Workout date",
+        desc: "Optional workout day to select, in YYYY-MM-DD format.",
+        placeholder: "2026-03-27",
+        optional: true,
+        validation: "date"
+      },
+      {
+        kind: "text",
+        key: "workout",
+        label: "Workout index",
+        desc: "Zero-based workout number on that day. 0 means first workout.",
+        defaultValue: "0",
+        validation: "non-negative-integer"
+      },
+      {
+        kind: "select",
+        key: "kind",
+        label: "Interval kind",
+        desc: "Show laps, splits, or whichever detailed tables are available.",
+        options: [
+          { value: "auto", label: "Auto" },
+          { value: "laps", label: "Laps" },
+          { value: "splits", label: "Splits" }
+        ],
+        defaultValue: "auto"
       }
     ]
   },
@@ -16838,7 +17867,7 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
   }
   async onload() {
     await this.loadSettings();
-    this.dataLoader = new DataLoader(this.app.vault, this.settings);
+    this.dataLoader = new DataLoader(this.app.vault, this.settings, this.app.metadataCache);
     this.registerMarkdownCodeBlockProcessor(
       "health-viz",
       (source, el, ctx) => renderCodeBlock(this, source, el, ctx)

@@ -334,6 +334,49 @@
 	border-radius: 6px;
 }
 
+.health-md-workout-table-heading {
+	margin: 4px 0 0;
+	font-size: 0.95em;
+}
+
+.health-md-workout-table-wrap {
+	overflow-x: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+}
+
+.health-md-workout-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-variant-numeric: tabular-nums;
+	font-size: 0.86em;
+}
+
+.health-md-workout-table th,
+.health-md-workout-table td {
+	padding: 7px 9px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	text-align: right;
+	white-space: nowrap;
+}
+
+.health-md-workout-table th {
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 0.75em;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.health-md-workout-table th:first-child,
+.health-md-workout-table td:first-child {
+	text-align: left;
+}
+
+.health-md-workout-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+
 /* Minimal Leaflet styles scoped to Health.md workout maps.
    Keep this scoped and lint-friendly for Obsidian community plugin CSS checks. */
 

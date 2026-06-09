@@ -1,6 +1,7 @@
 import { HealthDay, HitRegistry, RenderFn, ResolvedTheme, TimeSeriesSample, VizConfig } from "../types";
 import { hexToRgba } from "../canvas-utils";
 import { renderInlineStats, renderStatBoxes } from "../dom-utils";
+import { renderWorkoutZones } from "./workout-zones";
 import {
 	drawEmptyState,
 	elapsedSeconds,
@@ -287,6 +288,11 @@ export const renderWorkoutHeartRate: RenderFn = (
 	}
 
 	if (!pts.length) {
+		if (workout.heartRateZones?.some((zone) => zone.seconds > 0)) {
+			renderWorkoutZones(ctx, data, W, H, config, theme, statsEl, hits);
+			return;
+		}
+
 		// Fall back to visible summary aggregates when the export does not contain
 		// a usable sample series for this workout.
 		const avg = workout.avgHeartRate;
