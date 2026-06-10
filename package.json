@@ -12,6 +12,7 @@
 		"build": "node esbuild.config.mjs production",
 		"test": "node scripts/check-data-folder-layout.mjs && node --test tests/*.test.mjs",
 		"generate:mock-health": "node scripts/generate-mock-health-data.mjs",
+		"generate:mock-android": "node scripts/generate-mock-android-export.mjs",
 		"prepare:submission": "npm run build && node scripts/prepare-obsidian-submission.mjs"
 	},
 	"keywords": [],

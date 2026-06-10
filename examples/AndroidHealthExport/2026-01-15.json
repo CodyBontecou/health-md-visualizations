@@ -1,0 +1,1084 @@
+{
+  "date": "2026-01-15",
+  "type": "health-data",
+  "units": "metric",
+  "sleep": {
+    "totalDuration": 27232,
+    "totalDurationFormatted": "7h 34m",
+    "bedtime": "22:31",
+    "bedtimeISO": "2026-01-14T22:31:00",
+    "wakeTime": "06:39",
+    "wakeTimeISO": "2026-01-15T06:39:00",
+    "deepSleep": 4165,
+    "deepSleepFormatted": "1h 9m",
+    "remSleep": 3729,
+    "remSleepFormatted": "1h 2m",
+    "coreSleep": 19338,
+    "coreSleepFormatted": "5h 22m",
+    "lightSleep": 19338,
+    "lightSleepFormatted": "5h 22m",
+    "awakeTime": 2026,
+    "awakeTimeFormatted": "34m",
+    "inBedTime": 29258,
+    "inBedTimeFormatted": "8h 8m",
+    "sleepStages": [
+      {
+        "stage": "awake",
+        "startDate": "2026-01-14T22:31:00",
+        "endDate": "2026-01-14T22:39:00",
+        "durationSeconds": 472
+      },
+      {
+        "stage": "light",
+        "startDate": "2026-01-14T22:39:00",
+        "endDate": "2026-01-15T00:00:00",
+        "durationSeconds": 4885
+      },
+      {
+        "stage": "deep",
+        "startDate": "2026-01-15T00:00:00",
+        "endDate": "2026-01-15T00:36:00",
+        "durationSeconds": 2130
+      },
+      {
+        "stage": "light",
+        "startDate": "2026-01-15T00:36:00",
+        "endDate": "2026-01-15T01:12:00",
+        "durationSeconds": 2185
+      },
+      {
+        "stage": "rem",
+        "startDate": "2026-01-15T01:12:00",
+        "endDate": "2026-01-15T01:31:00",
+        "durationSeconds": 1161
+      },
+      {
+        "stage": "awake",
+        "startDate": "2026-01-15T01:31:00",
+        "endDate": "2026-01-15T01:35:00",
+        "durationSeconds": 230
+      },
+      {
+        "stage": "light",
+        "startDate": "2026-01-15T01:35:00",
+        "endDate": "2026-01-15T03:15:00",
+        "durationSeconds": 5959
+      },
+      {
+        "stage": "deep",
+        "startDate": "2026-01-15T03:15:00",
+        "endDate": "2026-01-15T03:49:00",
+        "durationSeconds": 2035
+      },
+      {
+        "stage": "light",
+        "startDate": "2026-01-15T03:49:00",
+        "endDate": "2026-01-15T04:33:00",
+        "durationSeconds": 2686
+      },
+      {
+        "stage": "rem",
+        "startDate": "2026-01-15T04:33:00",
+        "endDate": "2026-01-15T05:16:00",
+        "durationSeconds": 2568
+      },
+      {
+        "stage": "awake",
+        "startDate": "2026-01-15T05:16:00",
+        "endDate": "2026-01-15T05:18:00",
+        "durationSeconds": 94
+      },
+      {
+        "stage": "light",
+        "startDate": "2026-01-15T05:18:00",
+        "endDate": "2026-01-15T06:18:00",
+        "durationSeconds": 3623
+      },
+      {
+        "stage": "awake",
+        "startDate": "2026-01-15T06:18:00",
+        "endDate": "2026-01-15T06:22:00",
+        "durationSeconds": 214
+      },
+      {
+        "stage": "awake",
+        "startDate": "2026-01-15T06:22:00",
+        "endDate": "2026-01-15T06:39:00",
+        "durationSeconds": 1016
+      }
+    ]
+  },
+  "activity": {
+    "steps": 7339,
+    "activeCalories": 443,
+    "totalCalories": 2016,
+    "basalEnergyBurned": 1573,
+    "exerciseMinutes": 33,
+    "flightsClimbed": 4,
+    "walkingRunningDistance": 5637,
+    "walkingRunningDistanceKm": 5.64,
+    "elevationGained": 24,
+    "vo2Max": 42.5,
+    "stepSamples": [
+      {
+        "timestamp": "2026-01-15T07:00:00",
+        "value": 92
+      },
+      {
+        "timestamp": "2026-01-15T08:00:00",
+        "value": 259
+      },
+      {
+        "timestamp": "2026-01-15T09:00:00",
+        "value": 505
+      },
+      {
+        "timestamp": "2026-01-15T10:00:00",
+        "value": 733
+      },
+      {
+        "timestamp": "2026-01-15T11:00:00",
+        "value": 1120
+      },
+      {
+        "timestamp": "2026-01-15T12:00:00",
+        "value": 1526
+      },
+      {
+        "timestamp": "2026-01-15T13:00:00",
+        "value": 1955
+      },
+      {
+        "timestamp": "2026-01-15T14:00:00",
+        "value": 2386
+      },
+      {
+        "timestamp": "2026-01-15T15:00:00",
+        "value": 2995
+      },
+      {
+        "timestamp": "2026-01-15T16:00:00",
+        "value": 3572
+      },
+      {
+        "timestamp": "2026-01-15T17:00:00",
+        "value": 4060
+      },
+      {
+        "timestamp": "2026-01-15T18:00:00",
+        "value": 4480
+      },
+      {
+        "timestamp": "2026-01-15T19:00:00",
+        "value": 4842
+      },
+      {
+        "timestamp": "2026-01-15T20:00:00",
+        "value": 5096
+      },
+      {
+        "timestamp": "2026-01-15T21:00:00",
+        "value": 5249
+      },
+      {
+        "timestamp": "2026-01-15T22:00:00",
+        "value": 7339
+      }
+    ]
+  },
+  "heart": {
+    "restingHeartRate": 60,
+    "averageHeartRate": 71.1,
+    "walkingHeartRateAverage": 93,
+    "heartRateMin": 56,
+    "heartRateMax": 99,
+    "hrv": 41.6,
+    "heartRateSamples": [
+      {
+        "timestamp": "2026-01-15T00:00:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T00:15:00",
+        "value": 57
+      },
+      {
+        "timestamp": "2026-01-15T00:30:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T00:45:00",
+        "value": 60
+      },
+      {
+        "timestamp": "2026-01-15T01:00:00",
+        "value": 60
+      },
+      {
+        "timestamp": "2026-01-15T01:15:00",
+        "value": 63
+      },
+      {
+        "timestamp": "2026-01-15T01:30:00",
+        "value": 58
+      },
+      {
+        "timestamp": "2026-01-15T01:45:00",
+        "value": 63
+      },
+      {
+        "timestamp": "2026-01-15T02:00:00",
+        "value": 62
+      },
+      {
+        "timestamp": "2026-01-15T02:15:00",
+        "value": 64
+      },
+      {
+        "timestamp": "2026-01-15T02:30:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T02:45:00",
+        "value": 56
+      },
+      {
+        "timestamp": "2026-01-15T03:00:00",
+        "value": 56
+      },
+      {
+        "timestamp": "2026-01-15T03:15:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T03:30:00",
+        "value": 60
+      },
+      {
+        "timestamp": "2026-01-15T03:45:00",
+        "value": 62
+      },
+      {
+        "timestamp": "2026-01-15T04:00:00",
+        "value": 63
+      },
+      {
+        "timestamp": "2026-01-15T04:15:00",
+        "value": 56
+      },
+      {
+        "timestamp": "2026-01-15T04:30:00",
+        "value": 62
+      },
+      {
+        "timestamp": "2026-01-15T04:45:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T05:00:00",
+        "value": 59
+      },
+      {
+        "timestamp": "2026-01-15T05:15:00",
+        "value": 57
+      },
+      {
+        "timestamp": "2026-01-15T05:30:00",
+        "value": 59
+      },
+      {
+        "timestamp": "2026-01-15T05:45:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T06:00:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T06:15:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T06:30:00",
+        "value": 57
+      },
+      {
+        "timestamp": "2026-01-15T06:45:00",
+        "value": 75
+      },
+      {
+        "timestamp": "2026-01-15T07:00:00",
+        "value": 67
+      },
+      {
+        "timestamp": "2026-01-15T07:15:00",
+        "value": 64
+      },
+      {
+        "timestamp": "2026-01-15T07:30:00",
+        "value": 66
+      },
+      {
+        "timestamp": "2026-01-15T07:45:00",
+        "value": 68
+      },
+      {
+        "timestamp": "2026-01-15T08:00:00",
+        "value": 74
+      },
+      {
+        "timestamp": "2026-01-15T08:15:00",
+        "value": 68
+      },
+      {
+        "timestamp": "2026-01-15T08:30:00",
+        "value": 67
+      },
+      {
+        "timestamp": "2026-01-15T08:45:00",
+        "value": 75
+      },
+      {
+        "timestamp": "2026-01-15T09:00:00",
+        "value": 71
+      },
+      {
+        "timestamp": "2026-01-15T09:15:00",
+        "value": 70
+      },
+      {
+        "timestamp": "2026-01-15T09:30:00",
+        "value": 73
+      },
+      {
+        "timestamp": "2026-01-15T09:45:00",
+        "value": 73
+      },
+      {
+        "timestamp": "2026-01-15T10:00:00",
+        "value": 80
+      },
+      {
+        "timestamp": "2026-01-15T10:15:00",
+        "value": 79
+      },
+      {
+        "timestamp": "2026-01-15T10:30:00",
+        "value": 75
+      },
+      {
+        "timestamp": "2026-01-15T10:45:00",
+        "value": 74
+      },
+      {
+        "timestamp": "2026-01-15T11:00:00",
+        "value": 82
+      },
+      {
+        "timestamp": "2026-01-15T11:15:00",
+        "value": 71
+      },
+      {
+        "timestamp": "2026-01-15T11:30:00",
+        "value": 77
+      },
+      {
+        "timestamp": "2026-01-15T11:45:00",
+        "value": 83
+      },
+      {
+        "timestamp": "2026-01-15T12:00:00",
+        "value": 79
+      },
+      {
+        "timestamp": "2026-01-15T12:15:00",
+        "value": 83
+      },
+      {
+        "timestamp": "2026-01-15T12:30:00",
+        "value": 77
+      },
+      {
+        "timestamp": "2026-01-15T12:45:00",
+        "value": 77
+      },
+      {
+        "timestamp": "2026-01-15T13:00:00",
+        "value": 80
+      },
+      {
+        "timestamp": "2026-01-15T13:15:00",
+        "value": 82
+      },
+      {
+        "timestamp": "2026-01-15T13:30:00",
+        "value": 75
+      },
+      {
+        "timestamp": "2026-01-15T13:45:00",
+        "value": 80
+      },
+      {
+        "timestamp": "2026-01-15T14:00:00",
+        "value": 78
+      },
+      {
+        "timestamp": "2026-01-15T14:15:00",
+        "value": 75
+      },
+      {
+        "timestamp": "2026-01-15T14:30:00",
+        "value": 81
+      },
+      {
+        "timestamp": "2026-01-15T14:45:00",
+        "value": 78
+      },
+      {
+        "timestamp": "2026-01-15T15:00:00",
+        "value": 81
+      },
+      {
+        "timestamp": "2026-01-15T15:15:00",
+        "value": 84
+      },
+      {
+        "timestamp": "2026-01-15T15:30:00",
+        "value": 79
+      },
+      {
+        "timestamp": "2026-01-15T15:45:00",
+        "value": 72
+      },
+      {
+        "timestamp": "2026-01-15T16:00:00",
+        "value": 74
+      },
+      {
+        "timestamp": "2026-01-15T16:15:00",
+        "value": 75
+      },
+      {
+        "timestamp": "2026-01-15T16:30:00",
+        "value": 82
+      },
+      {
+        "timestamp": "2026-01-15T16:45:00",
+        "value": 83
+      },
+      {
+        "timestamp": "2026-01-15T17:00:00",
+        "value": 76
+      },
+      {
+        "timestamp": "2026-01-15T17:15:00",
+        "value": 83
+      },
+      {
+        "timestamp": "2026-01-15T17:30:00",
+        "value": 79
+      },
+      {
+        "timestamp": "2026-01-15T17:45:00",
+        "value": 98
+      },
+      {
+        "timestamp": "2026-01-15T18:00:00",
+        "value": 99
+      },
+      {
+        "timestamp": "2026-01-15T18:15:00",
+        "value": 92
+      },
+      {
+        "timestamp": "2026-01-15T18:30:00",
+        "value": 77
+      },
+      {
+        "timestamp": "2026-01-15T18:45:00",
+        "value": 82
+      },
+      {
+        "timestamp": "2026-01-15T19:00:00",
+        "value": 80
+      },
+      {
+        "timestamp": "2026-01-15T19:15:00",
+        "value": 76
+      },
+      {
+        "timestamp": "2026-01-15T19:30:00",
+        "value": 74
+      },
+      {
+        "timestamp": "2026-01-15T19:45:00",
+        "value": 74
+      },
+      {
+        "timestamp": "2026-01-15T20:00:00",
+        "value": 75
+      },
+      {
+        "timestamp": "2026-01-15T20:15:00",
+        "value": 77
+      },
+      {
+        "timestamp": "2026-01-15T20:30:00",
+        "value": 77
+      },
+      {
+        "timestamp": "2026-01-15T20:45:00",
+        "value": 68
+      },
+      {
+        "timestamp": "2026-01-15T21:00:00",
+        "value": 72
+      },
+      {
+        "timestamp": "2026-01-15T21:15:00",
+        "value": 78
+      },
+      {
+        "timestamp": "2026-01-15T21:30:00",
+        "value": 71
+      },
+      {
+        "timestamp": "2026-01-15T21:45:00",
+        "value": 75
+      },
+      {
+        "timestamp": "2026-01-15T22:00:00",
+        "value": 76
+      },
+      {
+        "timestamp": "2026-01-15T22:15:00",
+        "value": 69
+      },
+      {
+        "timestamp": "2026-01-15T22:30:00",
+        "value": 69
+      },
+      {
+        "timestamp": "2026-01-15T22:45:00",
+        "value": 65
+      },
+      {
+        "timestamp": "2026-01-15T23:00:00",
+        "value": 61
+      },
+      {
+        "timestamp": "2026-01-15T23:15:00",
+        "value": 56
+      },
+      {
+        "timestamp": "2026-01-15T23:30:00",
+        "value": 56
+      },
+      {
+        "timestamp": "2026-01-15T23:45:00",
+        "value": 59
+      }
+    ],
+    "hrvSamples": [
+      {
+        "timestamp": "2026-01-15T02:20:00",
+        "value": 44.4
+      },
+      {
+        "timestamp": "2026-01-15T04:10:00",
+        "value": 44
+      }
+    ]
+  },
+  "vitals": {
+    "respiratoryRateAvg": 15,
+    "respiratoryRate": 15,
+    "respiratoryRateMin": 14.5,
+    "respiratoryRateMax": 15.6,
+    "bloodOxygenAvg": 0.974,
+    "bloodOxygen": 0.974,
+    "bloodOxygenPercent": 97.4,
+    "bloodOxygenMin": 0.968,
+    "bloodOxygenMinPercent": 96.8,
+    "bloodOxygenMax": 0.981,
+    "bloodOxygenMaxPercent": 98.1,
+    "bodyTemperatureAvg": 36.61,
+    "bodyTemperature": 36.61,
+    "bodyTemperatureMin": 36.55,
+    "bodyTemperatureMax": 36.67,
+    "bloodPressureSystolicAvg": 116,
+    "bloodPressureSystolic": 116,
+    "bloodPressureSystolicMin": 115,
+    "bloodPressureSystolicMax": 116,
+    "bloodPressureDiastolicAvg": 75,
+    "bloodPressureDiastolic": 75,
+    "bloodPressureDiastolicMin": 72,
+    "bloodPressureDiastolicMax": 77,
+    "bloodGlucoseAvg": 114.6,
+    "bloodGlucose": 114.6,
+    "bloodGlucoseMin": 113.5,
+    "bloodGlucoseMax": 115.4,
+    "basalBodyTemperature": 36.51,
+    "skinTemperatureDelta": 0.24,
+    "bloodOxygenSamples": [
+      {
+        "timestamp": "2026-01-15T00:50:00",
+        "value": 0.97
+      },
+      {
+        "timestamp": "2026-01-15T02:05:00",
+        "value": 0.97
+      },
+      {
+        "timestamp": "2026-01-15T03:30:00",
+        "value": 0.976
+      },
+      {
+        "timestamp": "2026-01-15T04:50:00",
+        "value": 0.977
+      },
+      {
+        "timestamp": "2026-01-15T06:10:00",
+        "value": 0.979
+      },
+      {
+        "timestamp": "2026-01-15T07:35:00",
+        "value": 0.968
+      },
+      {
+        "timestamp": "2026-01-15T15:30:00",
+        "value": 0.981
+      },
+      {
+        "timestamp": "2026-01-15T22:05:00",
+        "value": 0.969
+      }
+    ],
+    "bloodPressureSamples": [
+      {
+        "timestamp": "2026-01-15T08:15:00",
+        "systolic": 115,
+        "diastolic": 77
+      },
+      {
+        "timestamp": "2026-01-15T20:30:00",
+        "systolic": 116,
+        "diastolic": 72
+      }
+    ],
+    "bloodGlucoseSamples": [
+      {
+        "timestamp": "2026-01-15T08:20:00",
+        "value": 114.8
+      },
+      {
+        "timestamp": "2026-01-15T13:10:00",
+        "value": 113.5
+      },
+      {
+        "timestamp": "2026-01-15T19:40:00",
+        "value": 115.4
+      }
+    ],
+    "respiratoryRateSamples": [
+      {
+        "timestamp": "2026-01-15T00:50:00",
+        "value": 14.6
+      },
+      {
+        "timestamp": "2026-01-15T02:05:00",
+        "value": 15.1
+      },
+      {
+        "timestamp": "2026-01-15T03:30:00",
+        "value": 15.3
+      },
+      {
+        "timestamp": "2026-01-15T04:50:00",
+        "value": 15.4
+      },
+      {
+        "timestamp": "2026-01-15T06:10:00",
+        "value": 15.6
+      },
+      {
+        "timestamp": "2026-01-15T07:35:00",
+        "value": 14.7
+      },
+      {
+        "timestamp": "2026-01-15T15:30:00",
+        "value": 14.9
+      },
+      {
+        "timestamp": "2026-01-15T22:05:00",
+        "value": 14.5
+      }
+    ],
+    "bodyTemperatureSamples": [
+      {
+        "timestamp": "2026-01-15T07:00:00",
+        "value": 36.67
+      },
+      {
+        "timestamp": "2026-01-15T21:15:00",
+        "value": 36.55
+      }
+    ]
+  },
+  "body": {
+    "weight": 75.5,
+    "height": 1.78,
+    "bmi": 23.8,
+    "bodyFatPercentage": 0.186,
+    "bodyFatPercent": 18.6,
+    "leanBodyMass": 61.5,
+    "bodyWaterMass": 44,
+    "boneMass": 3.19
+  },
+  "nutrition": {
+    "dietaryEnergy": 2372,
+    "protein": 107,
+    "carbohydrates": 304.6,
+    "fat": 76.3,
+    "saturatedFat": 19.1,
+    "monounsaturatedFat": 28.1,
+    "polyunsaturatedFat": 13.9,
+    "unsaturatedFat": 42,
+    "transFat": 0.2,
+    "fiber": 25.5,
+    "sugar": 67.2,
+    "sodium": 2154,
+    "potassium": 3186,
+    "calcium": 917,
+    "iron": 10,
+    "magnesium": 411,
+    "zinc": 11.8,
+    "phosphorus": 1379,
+    "iodine": 124,
+    "selenium": 85.1,
+    "copper": 1.31,
+    "manganese": 1.93,
+    "chromium": 41,
+    "molybdenum": 38,
+    "chloride": 2133,
+    "vitaminA": 942,
+    "vitaminB6": 1.45,
+    "vitaminB12": 3.89,
+    "vitaminC": 69,
+    "vitaminD": 21.7,
+    "vitaminE": 11.8,
+    "vitaminK": 81,
+    "thiamin": 1.78,
+    "riboflavin": 1.91,
+    "niacin": 14.2,
+    "folate": 431,
+    "folicAcid": 136,
+    "pantothenicAcid": 5.31,
+    "biotin": 41,
+    "cholesterol": 157,
+    "water": 2.83,
+    "caffeine": 256
+  },
+  "vitamins": {
+    "vitamin_a_ug": 942,
+    "vitamin_b6_mg": 1.45,
+    "vitamin_b12_ug": 3.89,
+    "vitamin_c_mg": 69,
+    "vitamin_d_ug": 21.7,
+    "vitamin_e_mg": 11.8,
+    "vitamin_k_ug": 81,
+    "thiamin_mg": 1.78,
+    "riboflavin_mg": 1.91,
+    "niacin_mg": 14.2,
+    "folate_ug": 431,
+    "biotin_ug": 41,
+    "pantothenic_acid_mg": 5.31
+  },
+  "minerals": {
+    "calcium_mg": 917,
+    "iron_mg": 10,
+    "potassium_mg": 3186,
+    "magnesium_mg": 411,
+    "phosphorus_mg": 1379,
+    "zinc_mg": 11.8,
+    "selenium_ug": 85.1,
+    "copper_mg": 1.31,
+    "manganese_mg": 1.93,
+    "chromium_ug": 41,
+    "molybdenum_ug": 38,
+    "chloride_mg": 2133,
+    "iodine_ug": 124
+  },
+  "mobility": {
+    "walkingSpeed": 1.29,
+    "vo2Max": 42.5,
+    "stepsCadenceAvg": 109
+  },
+  "reproductiveHealth": {
+    "cervical_mucus": "egg_white",
+    "cervicalMucusAppearance": "egg_white",
+    "cervicalMucusSensation": "slippery",
+    "ovulation_test": "high",
+    "ovulationTestResult": "high"
+  },
+  "workouts": [
+    {
+      "type": "Yoga",
+      "startTime": "17:47",
+      "startTimeISO": "2026-01-15T17:47:00",
+      "endTimeISO": "2026-01-15T18:15:00",
+      "isIndoor": true,
+      "locationType": "indoor",
+      "routeAccess": "unavailable",
+      "duration": 1707,
+      "durationFormatted": "28m",
+      "calories": 88,
+      "avgHeartRate": 91,
+      "averageHeartRate": 91,
+      "maxHeartRate": 96,
+      "heartRateMax": 96,
+      "minHeartRate": 79,
+      "heartRateMin": 79,
+      "laps": [],
+      "splits": [],
+      "timeSeries": {
+        "heartRate": [
+          {
+            "timestamp": "2026-01-15T17:47:00",
+            "value": 79
+          },
+          {
+            "timestamp": "2026-01-15T17:48:00",
+            "value": 84
+          },
+          {
+            "timestamp": "2026-01-15T17:49:00",
+            "value": 85
+          },
+          {
+            "timestamp": "2026-01-15T17:50:00",
+            "value": 87
+          },
+          {
+            "timestamp": "2026-01-15T17:51:00",
+            "value": 89
+          },
+          {
+            "timestamp": "2026-01-15T17:52:00",
+            "value": 92
+          },
+          {
+            "timestamp": "2026-01-15T17:53:00",
+            "value": 92
+          },
+          {
+            "timestamp": "2026-01-15T17:54:00",
+            "value": 90
+          },
+          {
+            "timestamp": "2026-01-15T17:55:00",
+            "value": 96
+          },
+          {
+            "timestamp": "2026-01-15T17:56:00",
+            "value": 96
+          },
+          {
+            "timestamp": "2026-01-15T17:57:00",
+            "value": 90
+          },
+          {
+            "timestamp": "2026-01-15T17:58:00",
+            "value": 92
+          },
+          {
+            "timestamp": "2026-01-15T17:59:00",
+            "value": 92
+          },
+          {
+            "timestamp": "2026-01-15T18:00:00",
+            "value": 93
+          },
+          {
+            "timestamp": "2026-01-15T18:01:00",
+            "value": 93
+          },
+          {
+            "timestamp": "2026-01-15T18:02:00",
+            "value": 92
+          },
+          {
+            "timestamp": "2026-01-15T18:03:00",
+            "value": 93
+          },
+          {
+            "timestamp": "2026-01-15T18:04:00",
+            "value": 95
+          },
+          {
+            "timestamp": "2026-01-15T18:05:00",
+            "value": 95
+          },
+          {
+            "timestamp": "2026-01-15T18:06:00",
+            "value": 93
+          },
+          {
+            "timestamp": "2026-01-15T18:07:00",
+            "value": 92
+          },
+          {
+            "timestamp": "2026-01-15T18:08:00",
+            "value": 91
+          },
+          {
+            "timestamp": "2026-01-15T18:09:00",
+            "value": 96
+          },
+          {
+            "timestamp": "2026-01-15T18:10:00",
+            "value": 94
+          },
+          {
+            "timestamp": "2026-01-15T18:11:00",
+            "value": 91
+          },
+          {
+            "timestamp": "2026-01-15T18:12:00",
+            "value": 91
+          },
+          {
+            "timestamp": "2026-01-15T18:13:00",
+            "value": 87
+          },
+          {
+            "timestamp": "2026-01-15T18:14:00",
+            "value": 86
+          },
+          {
+            "timestamp": "2026-01-15T18:15:00",
+            "value": 81
+          }
+        ]
+      },
+      "heartRateSamples": [
+        {
+          "timestamp": "2026-01-15T17:47:00",
+          "value": 79
+        },
+        {
+          "timestamp": "2026-01-15T17:48:00",
+          "value": 84
+        },
+        {
+          "timestamp": "2026-01-15T17:49:00",
+          "value": 85
+        },
+        {
+          "timestamp": "2026-01-15T17:50:00",
+          "value": 87
+        },
+        {
+          "timestamp": "2026-01-15T17:51:00",
+          "value": 89
+        },
+        {
+          "timestamp": "2026-01-15T17:52:00",
+          "value": 92
+        },
+        {
+          "timestamp": "2026-01-15T17:53:00",
+          "value": 92
+        },
+        {
+          "timestamp": "2026-01-15T17:54:00",
+          "value": 90
+        },
+        {
+          "timestamp": "2026-01-15T17:55:00",
+          "value": 96
+        },
+        {
+          "timestamp": "2026-01-15T17:56:00",
+          "value": 96
+        },
+        {
+          "timestamp": "2026-01-15T17:57:00",
+          "value": 90
+        },
+        {
+          "timestamp": "2026-01-15T17:58:00",
+          "value": 92
+        },
+        {
+          "timestamp": "2026-01-15T17:59:00",
+          "value": 92
+        },
+        {
+          "timestamp": "2026-01-15T18:00:00",
+          "value": 93
+        },
+        {
+          "timestamp": "2026-01-15T18:01:00",
+          "value": 93
+        },
+        {
+          "timestamp": "2026-01-15T18:02:00",
+          "value": 92
+        },
+        {
+          "timestamp": "2026-01-15T18:03:00",
+          "value": 93
+        },
+        {
+          "timestamp": "2026-01-15T18:04:00",
+          "value": 95
+        },
+        {
+          "timestamp": "2026-01-15T18:05:00",
+          "value": 95
+        },
+        {
+          "timestamp": "2026-01-15T18:06:00",
+          "value": 93
+        },
+        {
+          "timestamp": "2026-01-15T18:07:00",
+          "value": 92
+        },
+        {
+          "timestamp": "2026-01-15T18:08:00",
+          "value": 91
+        },
+        {
+          "timestamp": "2026-01-15T18:09:00",
+          "value": 96
+        },
+        {
+          "timestamp": "2026-01-15T18:10:00",
+          "value": 94
+        },
+        {
+          "timestamp": "2026-01-15T18:11:00",
+          "value": 91
+        },
+        {
+          "timestamp": "2026-01-15T18:12:00",
+          "value": 91
+        },
+        {
+          "timestamp": "2026-01-15T18:13:00",
+          "value": 87
+        },
+        {
+          "timestamp": "2026-01-15T18:14:00",
+          "value": 86
+        },
+        {
+          "timestamp": "2026-01-15T18:15:00",
+          "value": 81
+        }
+      ]
+    }
+  ]
+}
