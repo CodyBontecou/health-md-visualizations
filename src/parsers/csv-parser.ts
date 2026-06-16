@@ -1,3 +1,9 @@
+import {
+	HEALTHMD_HEALTH_DATA_SCHEMA,
+	HEALTHMD_ROLLUP_SCHEMA,
+	detectCsvSchema,
+	schemaVersionOf,
+} from "../healthmd-schema";
 import { HealthDay, TimeSeriesSample } from "../types";
 
 interface CsvRow {
@@ -50,9 +56,16 @@ function parseRows(content: string): CsvRow[] {
 	const lines = content.split(/\r?\n/).filter((l) => l.trim());
 	if (lines.length < 2) return [];
 
-	// Skip header row. Health.md CSV exports currently use:
+	// Skip header row. Health.md daily CSV exports currently use:
 	// Date,Category,Metric,Value,Unit,Timestamp
-	// Older exports may omit Timestamp; keep accepting both.
+	// Older exports may omit Timestamp; keep accepting both. Schema v1 roll-up
+	// CSVs use a different Period/Metric header and are intentionally ignored by
+	// the daily visualization parser.
+	const header = parseCsvLine(lines[0]).map(normalizeLabel);
+	if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
+		return [];
+	}
+
 	const rows: CsvRow[] = [];
 	for (let i = 1; i < lines.length; i++) {
 		const parts = parseCsvLine(lines[i]);
@@ -272,10 +285,43 @@ function sumStageSeconds(
 		.reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
 
-function buildDayFromRows(date: string, rows: CsvRow[]): HealthDay {
+function metricUnitKey(row: CsvRow): string | undefined {
+	if (normalizeLabel(row.category) === "metadata") return undefined;
+	const key = normalizeLabel(row.metric).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+	return key || undefined;
+}
+
+function unitMapFromRows(rows: CsvRow[]): Record<string, string> | undefined {
+	const units: Record<string, string> = {};
+	for (const row of rows) {
+		const key = metricUnitKey(row);
+		if (key && row.unit) units[key] = row.unit;
+	}
+	return Object.keys(units).length ? units : undefined;
+}
+
+function isMetadataRow(row: CsvRow): boolean {
+	return normalizeLabel(row.category) === "metadata";
+}
+
+function buildDayFromRows(date: string, rows: CsvRow[], metadataRows: CsvRow[] = []): HealthDay | null {
+	const rowsWithMetadata = [...metadataRows, ...rows];
+	const schema = getString(rowsWithMetadata, "Metadata", "schema");
+	if (schema === HEALTHMD_ROLLUP_SCHEMA) return null;
+	if (schema && schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
+
+	const schemaVersion = schemaVersionOf({ schema_version: getNum(rowsWithMetadata, "Metadata", "schema_version") });
+	const unitSystem = getString(rowsWithMetadata, "Metadata", "unit_system") ?? (schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : undefined);
+	const units = unitMapFromRows(rows);
 	const day: HealthDay = {
 		type: "health-data",
 		date,
+		schema,
+		schemaVersion: schemaVersion || undefined,
+		schema_version: schemaVersion || undefined,
+		units,
+		unitSystem,
+		unit_system: unitSystem,
 	};
 
 	// Activity. Keep existing lookups, and add aliases emitted by modern iOS and
@@ -313,7 +359,7 @@ function buildDayFromRows(date: string, rows: CsvRow[]): HealthDay {
 		day.activity = {
 			steps: steps ?? 0,
 			walkingRunningDistanceKm: walkingRunningDistanceKm ?? 0,
-			walkingRunningDistance: distanceRow ? parseNumber(distanceRow.value) : undefined,
+			walkingRunningDistance: walkingRunningDistanceKm !== undefined ? walkingRunningDistanceKm * 1000 : undefined,
 			activeCalories: activeCalories ?? 0,
 			exerciseMinutes: exerciseMinutes ?? 0,
 			vo2Max,
@@ -476,12 +522,19 @@ function buildDayFromRows(date: string, rows: CsvRow[]): HealthDay {
  * so this returns an array of HealthDay objects.
  */
 export function parseCSV(content: string): HealthDay[] {
+	const detected = detectCsvSchema(content);
+	if (detected.kind === "rollup-summary" || detected.kind === "data-dictionary" || detected.kind === "unknown") return [];
+
 	const rows = parseRows(content);
 	if (!rows.length) return [];
 
-	// Group rows by date
+	// Group data rows by date. Metadata rows can have either the day date or an
+	// empty date; apply them to every daily group instead of indexing them as a
+	// blank daily record.
+	const metadataRows = rows.filter(isMetadataRow);
 	const byDate = new Map<string, CsvRow[]>();
 	for (const row of rows) {
+		if (isMetadataRow(row) || !row.date) continue;
 		const existing = byDate.get(row.date);
 		if (existing) {
 			existing.push(row);
@@ -492,7 +545,8 @@ export function parseCSV(content: string): HealthDay[] {
 
 	const days: HealthDay[] = [];
 	for (const [date, dateRows] of byDate) {
-		days.push(buildDayFromRows(date, dateRows));
+		const day = buildDayFromRows(date, dateRows, metadataRows);
+		if (day) days.push(day);
 	}
 	return days;
 }

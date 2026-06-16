@@ -45,7 +45,8 @@ export function pickWorkout(
 export type UnitSystem = "metric" | "imperial";
 
 export function resolveUnits(day: HealthDay): UnitSystem {
-	return day.units === "imperial" ? "imperial" : "metric";
+	const unitSystem = day.unitSystem ?? day.unit_system ?? (typeof day.units === "string" ? day.units : undefined);
+	return unitSystem === "imperial" ? "imperial" : "metric";
 }
 
 function parseDistanceFormatted(value: string | undefined): number | undefined {

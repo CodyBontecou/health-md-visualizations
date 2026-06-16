@@ -68,6 +68,14 @@ Nested folders are opt-in so existing vaults keep working unchanged. In any nest
 
 The plugin watches your data folder and automatically refreshes its cache when files are added, modified, or deleted.
 
+### Health.md schema compatibility
+
+The plugin supports legacy/unversioned Health.md daily exports as schema `v0` plus the first public versioned `healthmd.health_data` schema, `schema_version: 1`. Newer daily schemas are parsed best-effort and surfaced in the settings compatibility summary so you know when to update the plugin.
+
+Health.md roll-up files (`schema: healthmd.rollup_summary`, `schema_version: 1`, or files under `Health/Rollups/`) are indexed separately from daily records so weekly/monthly/yearly summaries do not pollute day-level charts. The plugin also reads `_healthmd_data_dictionary.json` when present so custom frontmatter field names can be mapped back to stable canonical keys and units.
+
+If charts look incomplete after changing Health.md export settings, open **Settings → Health.md Visualizations → Health.md schema compatibility** and click **Scan now**. For the cleanest historical charts, update the plugin before enabling roll-ups or format folders in Health.md, then re-export older date ranges if you want all historical files to use the same canonical units.
+
 ## Visualization types
 
 Specify one of these as the `type:` field in your code block. The gallery below shows each renderer with a short description; see `examples/visualization-reference.md` for complete argument tables, defaults, and copy/paste examples.

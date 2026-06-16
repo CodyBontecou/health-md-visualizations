@@ -12,6 +12,12 @@ import { DataPointClickAction, HealthDay, HitRegion, HitRegistry, VizConfig } fr
 import { setupCanvas, resolveTheme, formatDuration } from "./canvas-utils";
 import { HTML_VISUALIZATIONS, VISUALIZATIONS } from "./visualizations";
 
+function noHealthDataMessage(plugin: HealthMdPlugin): string {
+	const summary = plugin.dataLoader.getLastLoadSummary?.();
+	const suffix = summary ? ` ${summary}` : "";
+	return `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.${suffix}`;
+}
+
 function parseConfig(source: string): VizConfig {
 	const config: VizConfig = { type: "" };
 	for (const line of source.split("\n")) {
@@ -831,7 +837,7 @@ export async function renderCodeBlock(
 		const allData = await plugin.dataLoader.load();
 		if (!allData.length) {
 			el.createEl("p", {
-				text: `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.`,
+				text: noHealthDataMessage(plugin),
 			});
 			return;
 		}
@@ -866,7 +872,7 @@ export async function renderCodeBlock(
 	const allData = await plugin.dataLoader.load();
 	if (!allData.length) {
 		el.createEl("p", {
-			text: `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.`,
+			text: noHealthDataMessage(plugin),
 		});
 		return;
 	}

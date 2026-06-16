@@ -17,6 +17,7 @@ async function loadParsers() {
 		const csvOutfile = path.join(tempDir, "csv-parser.mjs");
 		const jsonOutfile = path.join(tempDir, "json-parser.mjs");
 		const markdownOutfile = path.join(tempDir, "markdown-parser.mjs");
+		const schemaOutfile = path.join(tempDir, "healthmd-schema.mjs");
 
 		await Promise.all([
 			esbuild.build({
@@ -43,18 +44,31 @@ async function loadParsers() {
 				outfile: markdownOutfile,
 				logLevel: "silent",
 			}),
+			esbuild.build({
+				entryPoints: [path.join(process.cwd(), "src/healthmd-schema.ts")],
+				bundle: true,
+				platform: "node",
+				format: "esm",
+				outfile: schemaOutfile,
+				logLevel: "silent",
+			}),
 		]);
 
-		const [csvModule, jsonModule, markdownModule] = await Promise.all([
+		const [csvModule, jsonModule, markdownModule, schemaModule] = await Promise.all([
 			import(pathToFileURL(csvOutfile).href),
 			import(pathToFileURL(jsonOutfile).href),
 			import(pathToFileURL(markdownOutfile).href),
+			import(pathToFileURL(schemaOutfile).href),
 		]);
 
 		return {
 			parseCSV: csvModule.parseCSV,
 			parseJSON: jsonModule.parseJSON,
 			parseMarkdown: markdownModule.parseMarkdown,
+			detectJsonSchema: schemaModule.detectJsonSchema,
+			detectCsvSchema: schemaModule.detectCsvSchema,
+			detectFrontmatterSchema: schemaModule.detectFrontmatterSchema,
+			parseHealthMetricDataDictionaryDetails: schemaModule.parseHealthMetricDataDictionaryDetails,
 		};
 	})();
 
@@ -210,6 +224,109 @@ test("JSON parser preserves the complete HealthDay data structure", async () => 
 	assert.deepEqual(parseJSON(JSON.stringify(completeDay)), completeDay);
 });
 
+test("JSON parser accepts Health.md schema v1 metadata and units map", async () => {
+	const { parseJSON } = await loadParsers();
+	const day = parseJSON(JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 1,
+		type: "health-data",
+		date: "2026-06-14",
+		unit_system: "metric",
+		units: {
+			steps: "count",
+			walking_running_km: "km",
+		},
+		activity: {
+			steps: 12000,
+			walkingRunningDistance: 9500,
+			walkingRunningDistanceKm: 9.5,
+			walkingRunningDistanceMi: 5.9,
+			activeCalories: 500,
+			exerciseMinutes: 45,
+		},
+	}));
+
+	assert.equal(day.schema, "healthmd.health_data");
+	assert.equal(day.schemaVersion, 1);
+	assert.equal(day.unitSystem, "metric");
+	assert.deepEqual(day.units, {
+		steps: "count",
+		walking_running_km: "km",
+	});
+	assert.equal(day.activity.walkingRunningDistanceKm, 9.5);
+});
+
+test("schema detection classifies legacy, daily, roll-up, dictionary, and future versions", async () => {
+	const {
+		detectJsonSchema,
+		detectCsvSchema,
+		detectFrontmatterSchema,
+		parseHealthMetricDataDictionaryDetails,
+	} = await loadParsers();
+
+	assert.deepEqual(detectJsonSchema(JSON.stringify({ type: "health-data", date: "2026-06-14" })), {
+		kind: "legacy-health-day",
+		version: 0,
+		format: "json",
+	});
+
+	const future = detectJsonSchema(JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 99,
+		type: "health-data",
+		date: "2026-06-14",
+	}));
+	assert.equal(future.kind, "health-data");
+	assert.equal(future.isFutureVersion, true);
+
+	assert.equal(detectFrontmatterSchema({ schema: "healthmd.rollup_summary", schema_version: 1 }).kind, "rollup-summary");
+	assert.equal(detectCsvSchema("Period,Period ID,Start Date\nweekly,2026-W24,2026-06-08").kind, "rollup-summary");
+
+	const dictionary = JSON.stringify([
+		{
+			key: "mySteps",
+			canonicalKey: "steps",
+			displayName: "Steps",
+			category: "Activity",
+			unit: "count",
+			dailyAggregation: "sum",
+			healthKitAggregation: "cumulativeSum",
+			rollup: { primary: "sum" },
+			schemaVersion: 1,
+		},
+	]);
+	assert.equal(detectJsonSchema(dictionary).kind, "data-dictionary");
+	assert.deepEqual(parseHealthMetricDataDictionaryDetails(dictionary), {
+		entries: [{
+			key: "mySteps",
+			canonicalKey: "steps",
+			displayName: "Steps",
+			category: "Activity",
+			unit: "count",
+			dailyAggregation: "sum",
+			healthKitAggregation: "cumulativeSum",
+			rollup: { primary: "sum" },
+			schemaVersion: 1,
+		}],
+		aliases: { mySteps: "steps" },
+		unitsByCanonicalKey: { steps: "count" },
+		dailyAggregationByCanonicalKey: { steps: "sum" },
+		healthKitAggregationByCanonicalKey: { steps: "cumulativeSum" },
+		rollupByCanonicalKey: { steps: { primary: "sum" } },
+		schemaVersion: 1,
+	});
+});
+
+test("JSON parser ignores Health.md roll-up summaries", async () => {
+	const { parseJSON } = await loadParsers();
+	assert.equal(parseJSON(JSON.stringify({
+		schema: "healthmd.rollup_summary",
+		schema_version: 1,
+		type: "health_rollup",
+		period_id: "2026-W24",
+	})), null);
+});
+
 test("CSV parser accepts current iOS/Android aliases and granular samples", async () => {
 	const { parseCSV } = await loadParsers();
 	const csv = `Date,Category,Metric,Value,Unit,Timestamp
@@ -296,6 +413,43 @@ test("CSV parser preserves legacy plugin labels", async () => {
 	assert.equal(day.vitals?.bloodOxygenAvg, 98);
 });
 
+test("CSV parser reads schema metadata rows and normalizes distance units", async () => {
+	const { parseCSV } = await loadParsers();
+	const csv = `Date,Category,Metric,Value,Unit,Timestamp
+2026-06-14,Metadata,schema,healthmd.health_data,,
+2026-06-14,Metadata,schema_version,1,,
+2026-06-14,Metadata,unit_system,metric,,
+2026-06-14,Activity,Walking Running Distance,6.21,mi,
+2026-06-14,Activity,Steps,12345,count,`;
+
+	const [day] = parseCSV(csv);
+	assert.equal(day.schema, "healthmd.health_data");
+	assert.equal(day.schemaVersion, 1);
+	assert.equal(day.unitSystem, "metric");
+	assert.equal(Math.round((day.activity?.walkingRunningDistanceKm ?? 0) * 100) / 100, 9.99);
+	assert.equal(Math.round((day.activity?.walkingRunningDistance ?? 0) / 10) * 10, 9990);
+});
+
+test("CSV parser applies root metadata rows without creating blank-date days", async () => {
+	const { parseCSV } = await loadParsers();
+	const csv = `Date,Category,Metric,Value,Unit,Timestamp
+,Metadata,schema,healthmd.health_data,,
+,Metadata,schema_version,1,,
+,Metadata,unit_system,metric,,
+2026-06-14,Activity,Steps,12345,count,`;
+	const days = parseCSV(csv);
+	assert.equal(days.length, 1);
+	assert.equal(days[0].date, "2026-06-14");
+	assert.equal(days[0].schemaVersion, 1);
+});
+
+test("CSV parser ignores schema v1 roll-up summary CSV files", async () => {
+	const { parseCSV } = await loadParsers();
+	const csv = `Period,Period ID,Start Date,End Date,Days Expected,Days Counted,Coverage Percent,Category,Metric,Key,Canonical Key,Primary Value,Unit,Metric Days Counted,Rule,Statistic,Statistic Value,Notes
+weekly,2026-W24,2026-06-08,2026-06-14,7,7,100,Activity,Steps,steps,steps,70000,count,7,sum,primary,70000,`;
+	assert.deepEqual(parseCSV(csv), []);
+});
+
 test("Markdown parser reads Android/iOS Bases frontmatter aliases", async () => {
 	const { parseMarkdown } = await loadParsers();
 	const markdown = `---
@@ -370,6 +524,73 @@ workouts: [running]
 	assert.equal(day.mobility?.walkingDoubleSupportPercentage, 22.5);
 	assert.equal(day.mobility?.walkingAsymmetryPercentage, 1.2);
 	assert.equal(day.hearing?.headphoneAudioLevel, 64.5);
+});
+
+test("Markdown parser reads schema v1 metadata, units map, and data dictionary aliases", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = `---
+schema: healthmd.health_data
+schema_version: 1
+date: 2026-06-14
+type: health-data
+mySteps: 12345
+myWalkingMiles: 6.21
+units:
+  mySteps: count
+  myWalkingMiles: mi
+---
+`;
+
+	const day = parseMarkdown(markdown, undefined, {
+		mySteps: "steps",
+		myWalkingMiles: "walking_running_mi",
+	});
+
+	assert.ok(day);
+	assert.equal(day.schema, "healthmd.health_data");
+	assert.equal(day.schemaVersion, 1);
+	assert.equal(day.unitSystem, "metric");
+	assert.equal(day.units.steps, "count");
+	assert.equal(day.units.walking_running_mi, "mi");
+	assert.equal(day.activity?.steps, 12345);
+	assert.equal(Math.round((day.activity?.walkingRunningDistanceKm ?? 0) * 100) / 100, 9.99);
+});
+
+test("Markdown parser treats structured canonical units as authoritative over imperial prose", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = `---
+schema: healthmd.health_data
+schema_version: 1
+date: 2026-06-15
+type: health-data
+walking_running_km: 10
+units:
+  walking_running_km: km
+---
+You walked 6.21 mi today.
+`;
+	const day = parseMarkdown(markdown);
+	assert.ok(day);
+	assert.equal(day.activity?.walkingRunningDistanceKm, 10);
+});
+
+test("Markdown parser ignores Health.md roll-up summary files", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = `---
+schema: healthmd.rollup_summary
+schema_version: 1
+type: health_rollup
+rollup_period: weekly
+period_id: 2026-W24
+start_date: 2026-06-08
+end_date: 2026-06-14
+rollup_metrics:
+  steps:
+    value: "70000"
+---
+# Weekly Health Summary — 2026-W24
+`;
+	assert.equal(parseMarkdown(markdown), null);
 });
 
 test("Markdown parser reads detailed Health.md workout notes", async () => {

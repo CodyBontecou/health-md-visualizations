@@ -372,6 +372,21 @@ class HealthMdSettingTab extends PluginSettingTab {
 
 		return [
 			{
+				name: "Health.md schema compatibility",
+				desc: this.plugin.dataLoader.getLastLoadSummary(),
+				render: (setting) => {
+					setting.addButton((button) =>
+						button
+							.setButtonText("Scan now")
+							.onClick(async () => {
+								this.plugin.dataLoader.invalidate();
+								await this.plugin.dataLoader.load();
+								setting.setDesc(this.plugin.dataLoader.getLastLoadSummary());
+							})
+					);
+				},
+			},
+			{
 				name: "Data folder",
 				desc: "Path to the folder containing health data files. Start typing to pick an existing folder.",
 				render: (setting) => {

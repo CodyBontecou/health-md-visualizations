@@ -9666,19 +9666,286 @@ function stripPathControlCharacters(value) {
   return result;
 }
 
+// src/healthmd-schema.ts
+var HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
+var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
+var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
+var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 1;
+function schemaVersionOf(value) {
+  var _a;
+  const raw = (_a = value.schemaVersion) != null ? _a : value.schema_version;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+function schemaIsFutureVersion(version) {
+  return version > SUPPORTED_HEALTHMD_SCHEMA_VERSION;
+}
+function isUnitMap(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every((item) => typeof item === "string");
+}
+function isHealthMetricDataDictionaryValue(value) {
+  if (!Array.isArray(value)) return false;
+  return value.some((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
+    const record = entry;
+    return typeof record.key === "string" && typeof record.canonicalKey === "string";
+  });
+}
+function detectKnownSchema(format, schema, version) {
+  if (schema === HEALTHMD_HEALTH_DATA_SCHEMA) {
+    return {
+      kind: "health-data",
+      version,
+      format,
+      schema,
+      isFutureVersion: schemaIsFutureVersion(version)
+    };
+  }
+  if (schema === HEALTHMD_ROLLUP_SCHEMA) {
+    return {
+      kind: "rollup-summary",
+      version,
+      format,
+      schema,
+      isFutureVersion: schemaIsFutureVersion(version)
+    };
+  }
+  return {
+    kind: "unknown",
+    version,
+    format,
+    schema,
+    reason: schema ? `Unsupported Health.md schema: ${schema}` : "No recognizable Health.md schema metadata"
+  };
+}
+function detectJsonSchema(contentOrValue) {
+  try {
+    const parsed = typeof contentOrValue === "string" ? JSON.parse(contentOrValue) : contentOrValue;
+    if (isHealthMetricDataDictionaryValue(parsed)) {
+      return { kind: "data-dictionary", version: schemaVersionOfDictionaryValue(parsed), format: "json" };
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { kind: "unknown", version: 0, format: "json", reason: "JSON root is not an object" };
+    }
+    const record = parsed;
+    const schema = typeof record.schema === "string" ? record.schema : void 0;
+    const version = schemaVersionOf(record);
+    if (schema) return detectKnownSchema("json", schema, version);
+    if (record.type === "health-data" && typeof record.date === "string") {
+      return { kind: "legacy-health-day", version: 0, format: "json" };
+    }
+    if (record.type === "health_rollup") {
+      return { kind: "rollup-summary", version, format: "json", schema: HEALTHMD_ROLLUP_SCHEMA };
+    }
+    return { kind: "unknown", version, format: "json", reason: "JSON is not a Health.md daily export" };
+  } catch (e) {
+    return { kind: "unknown", version: 0, format: "json", reason: "Invalid JSON" };
+  }
+}
+function detectFrontmatterSchema(frontmatter) {
+  var _a, _b;
+  if (!frontmatter) {
+    return { kind: "unknown", version: 0, format: "markdown", reason: "No frontmatter" };
+  }
+  const schema = stringValue((_a = frontmatter.schema) != null ? _a : frontmatter.Schema);
+  const version = schemaVersionOf({
+    schemaVersion: frontmatter.schemaVersion,
+    schema_version: frontmatter.schema_version
+  });
+  if (schema) return detectKnownSchema("markdown", schema, version);
+  const type = stringValue((_b = frontmatter.type) != null ? _b : frontmatter.Type);
+  if (type === "health-data" || type === "health_data") {
+    return { kind: "legacy-health-day", version: 0, format: "markdown" };
+  }
+  if (type === "health_rollup") {
+    return { kind: "rollup-summary", version, format: "markdown", schema: HEALTHMD_ROLLUP_SCHEMA };
+  }
+  if (frontmatter.date !== void 0 || frontmatter.Date !== void 0 || frontmatter.day !== void 0 || frontmatter.Day !== void 0) {
+    return { kind: "legacy-health-day", version: 0, format: "markdown" };
+  }
+  return { kind: "unknown", version, format: "markdown", reason: "Frontmatter is not a Health.md daily export" };
+}
+function detectCsvSchema(content) {
+  var _a, _b, _c;
+  const lines = content.split(/\r?\n/).filter((line) => line.trim());
+  if (!lines.length) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
+  const header = parseCsvLine(lines[0]).map(normalizeCsvLabel);
+  if (header[0] === "period" && header[1] === "period id") {
+    return { kind: "rollup-summary", version: SUPPORTED_HEALTHMD_SCHEMA_VERSION, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+  }
+  if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
+    return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };
+  }
+  let schema;
+  let version = 0;
+  for (let i = 1; i < Math.min(lines.length, 40); i++) {
+    const parts = parseCsvLine(lines[i]);
+    if (normalizeCsvLabel((_a = parts[1]) != null ? _a : "") !== "metadata") continue;
+    const metric = normalizeCsvLabel((_b = parts[2]) != null ? _b : "");
+    const value = ((_c = parts[3]) != null ? _c : "").trim();
+    if (metric === "schema") schema = value;
+    else if (metric === "schema version" || metric === "schema_version") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) version = parsed;
+    }
+  }
+  if (schema) return detectKnownSchema("csv", schema, version);
+  return { kind: "legacy-health-day", version: 0, format: "csv" };
+}
+function parseHealthMetricDataDictionaryDetails(content) {
+  const empty = {
+    entries: [],
+    aliases: {},
+    unitsByCanonicalKey: {},
+    dailyAggregationByCanonicalKey: {},
+    healthKitAggregationByCanonicalKey: {},
+    rollupByCanonicalKey: {},
+    schemaVersion: 0
+  };
+  try {
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed)) return empty;
+    const result = {
+      entries: [],
+      aliases: {},
+      unitsByCanonicalKey: {},
+      dailyAggregationByCanonicalKey: {},
+      healthKitAggregationByCanonicalKey: {},
+      rollupByCanonicalKey: {},
+      schemaVersion: schemaVersionOfDictionaryValue(parsed)
+    };
+    for (const entry of parsed) {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+      const {
+        key,
+        canonicalKey,
+        displayName,
+        category,
+        unit,
+        aggregation,
+        dailyAggregation,
+        healthKitAggregation,
+        rollup,
+        schemaVersion
+      } = entry;
+      if (typeof canonicalKey !== "string" || !canonicalKey) continue;
+      const exportedKey = typeof key === "string" && key ? key : canonicalKey;
+      const normalizedEntry = {
+        key: exportedKey,
+        canonicalKey
+      };
+      if (typeof displayName === "string") normalizedEntry.displayName = displayName;
+      if (typeof category === "string") normalizedEntry.category = category;
+      if (typeof unit === "string") normalizedEntry.unit = unit;
+      const aggregationValue = dailyAggregation != null ? dailyAggregation : aggregation;
+      if (typeof aggregationValue === "string") normalizedEntry.dailyAggregation = aggregationValue;
+      if (typeof healthKitAggregation === "string") normalizedEntry.healthKitAggregation = healthKitAggregation;
+      if (rollup !== void 0) normalizedEntry.rollup = rollup;
+      const entrySchemaVersion = schemaVersionOf({ schemaVersion });
+      if (entrySchemaVersion > 0) normalizedEntry.schemaVersion = entrySchemaVersion;
+      result.entries.push(normalizedEntry);
+      if (exportedKey !== canonicalKey) {
+        result.aliases[exportedKey] = canonicalKey;
+      }
+      if (normalizedEntry.unit) {
+        result.unitsByCanonicalKey[canonicalKey] = normalizedEntry.unit;
+      }
+      if (normalizedEntry.dailyAggregation) {
+        result.dailyAggregationByCanonicalKey[canonicalKey] = normalizedEntry.dailyAggregation;
+      }
+      if (normalizedEntry.healthKitAggregation) {
+        result.healthKitAggregationByCanonicalKey[canonicalKey] = normalizedEntry.healthKitAggregation;
+      }
+      if (rollup !== void 0) {
+        result.rollupByCanonicalKey[canonicalKey] = rollup;
+      }
+    }
+    return result;
+  } catch (e) {
+    return empty;
+  }
+}
+function schemaVersionOfDictionaryValue(value) {
+  if (!Array.isArray(value)) return 0;
+  let maxVersion = 0;
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const version = schemaVersionOf({ schemaVersion: entry.schemaVersion });
+    if (version > maxVersion) maxVersion = version;
+  }
+  return maxVersion;
+}
+function stringValue(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return void 0;
+}
+function normalizeCsvLabel(value) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+function parseCsvLine(line) {
+  const fields = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  fields.push(current);
+  return fields;
+}
+
 // src/parsers/json-parser.ts
 function parseJSON(content) {
   try {
     const parsed = JSON.parse(content);
-    if (parsed.type === "health-data" && parsed.date) return parsed;
-    return null;
+    if (parsed.schema === HEALTHMD_ROLLUP_SCHEMA || parsed.type === "health_rollup") return null;
+    if (parsed.type !== "health-data" || !parsed.date) return null;
+    if (typeof parsed.schema === "string" && parsed.schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
+    const day = { ...parsed };
+    if (typeof parsed.schema === "string") day.schema = parsed.schema;
+    const schemaVersion = schemaVersionOf(parsed);
+    if (schemaVersion > 0) {
+      day.schemaVersion = schemaVersion;
+      day.schema_version = schemaVersion;
+    }
+    if (typeof parsed.unit_system === "string") {
+      day.unitSystem = parsed.unit_system;
+      day.unit_system = parsed.unit_system;
+    } else if (day.schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1) {
+      day.unitSystem = "metric";
+      day.unit_system = "metric";
+    }
+    if (isUnitMap(parsed.units)) {
+      day.units = parsed.units;
+    }
+    return day;
   } catch (e) {
     return null;
   }
 }
 
 // src/parsers/csv-parser.ts
-function parseCsvLine(line) {
+function parseCsvLine2(line) {
   const fields = [];
   let current = "";
   let inQuotes = false;
@@ -9708,9 +9975,13 @@ function parseRows(content) {
   var _a;
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
+  const header = parseCsvLine2(lines[0]).map(normalizeLabel);
+  if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
+    return [];
+  }
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const parts = parseCsvLine(lines[i]);
+    const parts = parseCsvLine2(lines[i]);
     if (parts.length >= 5) {
       rows.push({
         date: parts[0].trim(),
@@ -9881,11 +10152,40 @@ function parseSleepStages(rows) {
 function sumStageSeconds(stages, stageName) {
   return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
-function buildDayFromRows(date, rows) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
+function metricUnitKey(row) {
+  if (normalizeLabel(row.category) === "metadata") return void 0;
+  const key = normalizeLabel(row.metric).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return key || void 0;
+}
+function unitMapFromRows(rows) {
+  const units = {};
+  for (const row of rows) {
+    const key = metricUnitKey(row);
+    if (key && row.unit) units[key] = row.unit;
+  }
+  return Object.keys(units).length ? units : void 0;
+}
+function isMetadataRow(row) {
+  return normalizeLabel(row.category) === "metadata";
+}
+function buildDayFromRows(date, rows, metadataRows = []) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G;
+  const rowsWithMetadata = [...metadataRows, ...rows];
+  const schema = getString(rowsWithMetadata, "Metadata", "schema");
+  if (schema === HEALTHMD_ROLLUP_SCHEMA) return null;
+  if (schema && schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
+  const schemaVersion = schemaVersionOf({ schema_version: getNum(rowsWithMetadata, "Metadata", "schema_version") });
+  const unitSystem = (_a = getString(rowsWithMetadata, "Metadata", "unit_system")) != null ? _a : schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : void 0;
+  const units = unitMapFromRows(rows);
   const day = {
     type: "health-data",
-    date
+    date,
+    schema,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
+    units,
+    unitSystem,
+    unit_system: unitSystem
   };
   const steps = getNum(rows, "Activity", "Steps");
   const activeCalories = getNum(rows, "Activity", "Active Calories");
@@ -9911,7 +10211,7 @@ function buildDayFromRows(date, rows) {
     day.activity = {
       steps: steps != null ? steps : 0,
       walkingRunningDistanceKm: walkingRunningDistanceKm != null ? walkingRunningDistanceKm : 0,
-      walkingRunningDistance: distanceRow ? parseNumber(distanceRow.value) : void 0,
+      walkingRunningDistance: walkingRunningDistanceKm !== void 0 ? walkingRunningDistanceKm * 1e3 : void 0,
       activeCalories: activeCalories != null ? activeCalories : 0,
       exerciseMinutes: exerciseMinutes != null ? exerciseMinutes : 0,
       vo2Max,
@@ -9924,36 +10224,36 @@ function buildDayFromRows(date, rows) {
   const hrvSamples = samplesFromRows(rows, [lookup("Heart", "HRV Sample")]);
   const heartValues = heartRateSamples.map((sample) => sample.value);
   const restingHR = getNum(rows, "Heart", "Resting Heart Rate");
-  const avgHR = (_a = getNum(rows, "Heart", "Average Heart Rate")) != null ? _a : average(heartValues);
-  const heartRateMin = (_b = getNumFromLookups(rows, [
+  const avgHR = (_b = getNum(rows, "Heart", "Average Heart Rate")) != null ? _b : average(heartValues);
+  const heartRateMin = (_c = getNumFromLookups(rows, [
     lookup("Heart", "Heart Rate Min"),
     lookup("Heart", "Min Heart Rate")
-  ])) != null ? _b : heartValues.length ? Math.min(...heartValues) : void 0;
-  const heartRateMax = (_c = getNumFromLookups(rows, [
+  ])) != null ? _c : heartValues.length ? Math.min(...heartValues) : void 0;
+  const heartRateMax = (_d = getNumFromLookups(rows, [
     lookup("Heart", "Heart Rate Max"),
     lookup("Heart", "Max Heart Rate")
-  ])) != null ? _c : heartValues.length ? Math.max(...heartValues) : void 0;
+  ])) != null ? _d : heartValues.length ? Math.max(...heartValues) : void 0;
   if (restingHR !== void 0 || avgHR !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || heartRateSamples.length || hrvSamples.length) {
     day.heart = {
-      averageHeartRate: (_d = avgHR != null ? avgHR : restingHR) != null ? _d : 0,
-      heartRateMin: (_f = (_e = heartRateMin != null ? heartRateMin : avgHR) != null ? _e : restingHR) != null ? _f : 0,
-      heartRateMax: (_h = (_g = heartRateMax != null ? heartRateMax : avgHR) != null ? _g : restingHR) != null ? _h : 0,
+      averageHeartRate: (_e = avgHR != null ? avgHR : restingHR) != null ? _e : 0,
+      heartRateMin: (_g = (_f = heartRateMin != null ? heartRateMin : avgHR) != null ? _f : restingHR) != null ? _g : 0,
+      heartRateMax: (_i = (_h = heartRateMax != null ? heartRateMax : avgHR) != null ? _h : restingHR) != null ? _i : 0,
       heartRateSamples,
       hrvSamples,
       restingHeartRate: restingHR,
       walkingHeartRateAverage: getNum(rows, "Heart", "Walking Heart Rate Average"),
-      hrv: (_i = getNum(rows, "Heart", "HRV")) != null ? _i : average(hrvSamples.map((sample) => sample.value))
+      hrv: (_j = getNum(rows, "Heart", "HRV")) != null ? _j : average(hrvSamples.map((sample) => sample.value))
     };
   }
   const sleepStages = parseSleepStages(rows);
-  const sleepTotal = (_j = getNum(rows, "Sleep", "Total Duration")) != null ? _j : sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
-  const deepSleep = (_k = getNum(rows, "Sleep", "Deep Sleep")) != null ? _k : sumStageSeconds(sleepStages, "deep");
-  const remSleep = (_l = getNum(rows, "Sleep", "REM Sleep")) != null ? _l : sumStageSeconds(sleepStages, "rem");
-  const coreSleep = (_m = getNumFromLookups(rows, [
+  const sleepTotal = (_k = getNum(rows, "Sleep", "Total Duration")) != null ? _k : sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
+  const deepSleep = (_l = getNum(rows, "Sleep", "Deep Sleep")) != null ? _l : sumStageSeconds(sleepStages, "deep");
+  const remSleep = (_m = getNum(rows, "Sleep", "REM Sleep")) != null ? _m : sumStageSeconds(sleepStages, "rem");
+  const coreSleep = (_n = getNumFromLookups(rows, [
     lookup("Sleep", "Core Sleep"),
     lookup("Sleep", "Light Sleep")
-  ])) != null ? _m : sumStageSeconds(sleepStages, "core");
-  const awakeTime = (_n = getNum(rows, "Sleep", "Awake Time")) != null ? _n : sumStageSeconds(sleepStages, "awake");
+  ])) != null ? _n : sumStageSeconds(sleepStages, "core");
+  const awakeTime = (_o = getNum(rows, "Sleep", "Awake Time")) != null ? _o : sumStageSeconds(sleepStages, "awake");
   if (sleepTotal > 0 || sleepStages.length) {
     day.sleep = {
       sleepStages,
@@ -9962,18 +10262,18 @@ function buildDayFromRows(date, rows) {
       remSleep,
       coreSleep,
       awakeTime,
-      bedtime: (_q = (_p = getString(rows, "Sleep", "Bedtime")) != null ? _p : (_o = sleepStages[0]) == null ? void 0 : _o.startDate) != null ? _q : "",
-      bedtimeISO: (_r = sleepStages[0]) == null ? void 0 : _r.startDate,
-      wakeTime: (_u = (_t = getString(rows, "Sleep", "Wake Time")) != null ? _t : (_s = sleepStages[sleepStages.length - 1]) == null ? void 0 : _s.endDate) != null ? _u : "",
-      wakeTimeISO: (_v = sleepStages[sleepStages.length - 1]) == null ? void 0 : _v.endDate
+      bedtime: (_r = (_q = getString(rows, "Sleep", "Bedtime")) != null ? _q : (_p = sleepStages[0]) == null ? void 0 : _p.startDate) != null ? _r : "",
+      bedtimeISO: (_s = sleepStages[0]) == null ? void 0 : _s.startDate,
+      wakeTime: (_v = (_u = getString(rows, "Sleep", "Wake Time")) != null ? _u : (_t = sleepStages[sleepStages.length - 1]) == null ? void 0 : _t.endDate) != null ? _v : "",
+      wakeTimeISO: (_w = sleepStages[sleepStages.length - 1]) == null ? void 0 : _w.endDate
     };
   }
   const respiratorySamples = samplesFromRows(rows, [lookup("Vitals", "Respiratory Rate Sample")]);
   const respiratoryValues = respiratorySamples.map((sample) => sample.value);
-  const respRateAvg = (_w = getNumFromLookups(rows, [
+  const respRateAvg = (_x = getNumFromLookups(rows, [
     lookup("Vitals", "Respiratory Rate"),
     lookup("Vitals", "Respiratory Rate Avg")
-  ])) != null ? _w : average(respiratoryValues);
+  ])) != null ? _x : average(respiratoryValues);
   const bloodOxygenSamples = samplesFromRows(
     rows,
     [
@@ -9984,30 +10284,30 @@ function buildDayFromRows(date, rows) {
     normalizePercent
   ).map((sample) => ({ ...sample, percent: sample.value }));
   const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
-  const bloodOxAvg = (_x = normalizePercent(getNumFromLookups(rows, [
+  const bloodOxAvg = (_y = normalizePercent(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen"),
     lookup("Vitals", "Blood Oxygen Avg"),
     lookup("Vitals", "SpO2"),
     lookup("Vitals", "SpO2 Avg"),
     lookup("Vitals", "SpO\u2082"),
     lookup("Vitals", "SpO\u2082 Avg")
-  ]))) != null ? _x : average(bloodOxygenValues);
-  const bloodOxMin = (_y = normalizePercent(getNumFromLookups(rows, [
+  ]))) != null ? _y : average(bloodOxygenValues);
+  const bloodOxMin = (_z = normalizePercent(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen Min"),
     lookup("Vitals", "SpO2 Min"),
     lookup("Vitals", "SpO\u2082 Min")
-  ]))) != null ? _y : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
-  const bloodOxMax = (_z = normalizePercent(getNumFromLookups(rows, [
+  ]))) != null ? _z : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_A = normalizePercent(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen Max"),
     lookup("Vitals", "SpO2 Max"),
     lookup("Vitals", "SpO\u2082 Max")
-  ]))) != null ? _z : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  ]))) != null ? _A : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
   if (respRateAvg !== void 0 || respiratorySamples.length || bloodOxAvg !== void 0 || bloodOxygenSamples.length) {
     day.vitals = {
       respiratoryRate: respRateAvg,
       respiratoryRateAvg: respRateAvg,
-      respiratoryRateMin: (_A = getNum(rows, "Vitals", "Respiratory Rate Min")) != null ? _A : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0,
-      respiratoryRateMax: (_B = getNum(rows, "Vitals", "Respiratory Rate Max")) != null ? _B : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0,
+      respiratoryRateMin: (_B = getNum(rows, "Vitals", "Respiratory Rate Min")) != null ? _B : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0,
+      respiratoryRateMax: (_C = getNum(rows, "Vitals", "Respiratory Rate Max")) != null ? _C : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0,
       respiratoryRateSamples: respiratorySamples.length ? respiratorySamples : void 0,
       bloodOxygenPercent: bloodOxAvg,
       bloodOxygenAvg: bloodOxAvg,
@@ -10020,9 +10320,9 @@ function buildDayFromRows(date, rows) {
   if (walkSpeed !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_E = (_D = (_C = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _C : getNum(rows, "Mobility", "Walking Asymmetry Percent")) != null ? _D : getNum(rows, "Mobility", "Walking Asymmetry")) != null ? _E : 0,
+      walkingAsymmetryPercentage: (_F = (_E = (_D = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _D : getNum(rows, "Mobility", "Walking Asymmetry Percent")) != null ? _E : getNum(rows, "Mobility", "Walking Asymmetry")) != null ? _F : 0,
       walkingStepLength: getNum(rows, "Mobility", "Walking Step Length"),
-      walkingDoubleSupportPercentage: (_F = getNum(rows, "Mobility", "Walking Double Support Percentage")) != null ? _F : getNum(rows, "Mobility", "Walking Double Support Percent")
+      walkingDoubleSupportPercentage: (_G = getNum(rows, "Mobility", "Walking Double Support Percentage")) != null ? _G : getNum(rows, "Mobility", "Walking Double Support Percent")
     };
   }
   const headphone = getNumFromLookups(rows, [
@@ -10035,10 +10335,14 @@ function buildDayFromRows(date, rows) {
   return day;
 }
 function parseCSV(content) {
+  const detected = detectCsvSchema(content);
+  if (detected.kind === "rollup-summary" || detected.kind === "data-dictionary" || detected.kind === "unknown") return [];
   const rows = parseRows(content);
   if (!rows.length) return [];
+  const metadataRows = rows.filter(isMetadataRow);
   const byDate = /* @__PURE__ */ new Map();
   for (const row of rows) {
+    if (isMetadataRow(row) || !row.date) continue;
     const existing = byDate.get(row.date);
     if (existing) {
       existing.push(row);
@@ -10048,7 +10352,8 @@ function parseCSV(content) {
   }
   const days = [];
   for (const [date, dateRows] of byDate) {
-    days.push(buildDayFromRows(date, dateRows));
+    const day = buildDayFromRows(date, dateRows, metadataRows);
+    if (day) days.push(day);
   }
   return days;
 }
@@ -10264,6 +10569,34 @@ function isRecord(value) {
 function mergeFrontmatter(parsed, cached) {
   if (!cached) return parsed;
   return { ...parsed, ...cached };
+}
+function applyFrontmatterAliases(frontmatter, aliases) {
+  if (!aliases || !Object.keys(aliases).length) return frontmatter;
+  const normalized = { ...frontmatter };
+  for (const [outputKey, canonicalKey] of Object.entries(aliases)) {
+    if (normalized[canonicalKey] === void 0 && normalized[outputKey] !== void 0) {
+      normalized[canonicalKey] = normalized[outputKey];
+    }
+  }
+  if (isRecord(normalized.units)) {
+    const units = { ...normalized.units };
+    for (const [outputKey, canonicalKey] of Object.entries(aliases)) {
+      if (units[canonicalKey] === void 0 && typeof units[outputKey] === "string") {
+        units[canonicalKey] = units[outputKey];
+      }
+    }
+    normalized.units = units;
+  }
+  return normalized;
+}
+function mergeUnitMaps(dictionaryUnits, frontmatterUnits) {
+  const hasDictionaryUnits = dictionaryUnits && Object.keys(dictionaryUnits).length > 0;
+  const hasFrontmatterUnits = isUnitMap(frontmatterUnits);
+  if (!hasDictionaryUnits && !hasFrontmatterUnits) return void 0;
+  return {
+    ...hasDictionaryUnits ? dictionaryUnits : {},
+    ...hasFrontmatterUnits ? frontmatterUnits : {}
+  };
 }
 function getBool(fm, key) {
   const value = fm[key];
@@ -10793,29 +11126,54 @@ function parseWorkoutEntry(fm, body, date) {
   };
   return workout;
 }
-function parseMarkdown(content, cachedFrontmatter) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
+function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
   const parsed = parseFrontmatter(content);
-  const fm = mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter);
-  const rawDate = (_b = getFirstStr(fm, "date", "Date", "day", "Day")) != null ? _b : extractDateFromContent(content);
+  const fm = applyFrontmatterAliases(
+    mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter),
+    frontmatterAliases
+  );
+  const schema = getFirstStr(fm, "schema", "Schema");
+  const frontmatterType = normalizeLabel2((_b = getFirstStr(fm, "type", "Type")) != null ? _b : "");
+  if (schema === HEALTHMD_ROLLUP_SCHEMA || frontmatterType === "health_rollup") return null;
+  if (schema && schema !== HEALTHMD_HEALTH_DATA_SCHEMA && !frontmatterIndicatesWorkout(fm)) return null;
+  const rawDate = (_c = getFirstStr(fm, "date", "Date", "day", "Day")) != null ? _c : extractDateFromContent(content);
   if (!rawDate) return null;
   const date = rawDate.slice(0, 10);
+  const schemaVersion = schemaVersionOf({ schemaVersion: getFirstNum(fm, "schemaVersion"), schema_version: getFirstNum(fm, "schema_version") });
+  const rawUnits = fm.units;
+  const unitsMap = mergeUnitMaps(dictionaryUnits, rawUnits);
+  const explicitUnitSystem = getFirstStr(fm, "unit_system", "unitSystem");
+  const unitSystem = explicitUnitSystem != null ? explicitUnitSystem : schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : void 0;
   const granular = parseGranularMarkdownData(parsed.body, date);
   const day = {
     type: "health-data",
-    date
+    date,
+    schema,
+    schemaVersion,
+    schema_version: schemaVersion || void 0,
+    units: unitsMap != null ? unitsMap : typeof rawUnits === "string" ? rawUnits : unitSystem,
+    unitSystem,
+    unit_system: unitSystem
   };
   const workout = parseWorkoutEntry(fm, parsed.body, date);
   if (workout) {
     day.workouts = [workout];
   }
   const steps = getFirstNum(fm, "steps", "activity_steps");
-  const walkingRunningDistanceKm = getFirstNum(
+  const walkingRunningDistanceKmRaw = getFirstNum(
     fm,
     "walking_running_km",
     "walking_running_distance_km",
     "walkingRunningDistanceKm"
   );
+  const walkingRunningDistanceMi = getFirstNum(
+    fm,
+    "walking_running_mi",
+    "walking_running_distance_mi",
+    "walkingRunningDistanceMi"
+  );
+  const walkingRunningDistanceKm = walkingRunningDistanceKmRaw != null ? walkingRunningDistanceKmRaw : walkingRunningDistanceMi !== void 0 ? walkingRunningDistanceMi * 1.609344 : void 0;
   const activeCalories = getFirstNum(fm, "active_calories", "activity_active_calories", "activeCalories");
   const exerciseMinutes = getFirstNum(fm, "exercise_minutes", "activity_exercise_minutes", "exerciseMinutes");
   const vo2Max = getFirstNum(fm, "vo2_max", "vo2max", "vo2Max", "activity_vo2_max");
@@ -10832,6 +11190,7 @@ function parseMarkdown(content, cachedFrontmatter) {
     day.activity = {
       steps: steps != null ? steps : 0,
       walkingRunningDistanceKm: walkingRunningDistanceKm != null ? walkingRunningDistanceKm : 0,
+      walkingRunningDistance: walkingRunningDistanceKm !== void 0 ? walkingRunningDistanceKm * 1e3 : void 0,
       activeCalories: activeCalories != null ? activeCalories : 0,
       exerciseMinutes: exerciseMinutes != null ? exerciseMinutes : 0,
       vo2Max,
@@ -10843,10 +11202,10 @@ function parseMarkdown(content, cachedFrontmatter) {
   const heartValues = granular.heartRateSamples.map((sample) => sample.value);
   const hrvValues = granular.hrvSamples.map((sample) => sample.value);
   const restingHR = getFirstNum(fm, "resting_heart_rate", "heart_resting_heart_rate", "restingHeartRate");
-  const avgHR = (_c = getFirstNum(fm, "average_heart_rate", "heart_average_heart_rate", "averageHeartRate")) != null ? _c : average2(heartValues);
-  const hrvVal = (_d = getFirstNum(fm, "hrv_ms", "hrv", "heart_hrv")) != null ? _d : average2(hrvValues);
-  const heartRateMin = (_e = getFirstNum(fm, "heart_rate_min", "heart_min", "heartRateMin")) != null ? _e : heartValues.length ? Math.min(...heartValues) : void 0;
-  const heartRateMax = (_f = getFirstNum(fm, "heart_rate_max", "heart_max", "heartRateMax")) != null ? _f : heartValues.length ? Math.max(...heartValues) : void 0;
+  const avgHR = (_d = getFirstNum(fm, "average_heart_rate", "heart_average_heart_rate", "averageHeartRate")) != null ? _d : average2(heartValues);
+  const hrvVal = (_e = getFirstNum(fm, "hrv_ms", "hrv", "heart_hrv")) != null ? _e : average2(hrvValues);
+  const heartRateMin = (_f = getFirstNum(fm, "heart_rate_min", "heart_min", "heartRateMin")) != null ? _f : heartValues.length ? Math.min(...heartValues) : void 0;
+  const heartRateMax = (_g = getFirstNum(fm, "heart_rate_max", "heart_max", "heartRateMax")) != null ? _g : heartValues.length ? Math.max(...heartValues) : void 0;
   const walkingHeartRateAverage = getFirstNum(
     fm,
     "walking_heart_rate",
@@ -10855,9 +11214,9 @@ function parseMarkdown(content, cachedFrontmatter) {
   );
   if (restingHR !== void 0 || avgHR !== void 0 || hrvVal !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || walkingHeartRateAverage !== void 0 || granular.heartRateSamples.length || granular.hrvSamples.length) {
     day.heart = {
-      averageHeartRate: (_g = avgHR != null ? avgHR : restingHR) != null ? _g : 0,
-      heartRateMin: (_i = (_h = heartRateMin != null ? heartRateMin : avgHR) != null ? _h : restingHR) != null ? _i : 0,
-      heartRateMax: (_k = (_j = heartRateMax != null ? heartRateMax : avgHR) != null ? _j : restingHR) != null ? _k : 0,
+      averageHeartRate: (_h = avgHR != null ? avgHR : restingHR) != null ? _h : 0,
+      heartRateMin: (_j = (_i = heartRateMin != null ? heartRateMin : avgHR) != null ? _i : restingHR) != null ? _j : 0,
+      heartRateMax: (_l = (_k = heartRateMax != null ? heartRateMax : avgHR) != null ? _k : restingHR) != null ? _l : 0,
       heartRateSamples: granular.heartRateSamples,
       hrvSamples: granular.hrvSamples.length ? granular.hrvSamples : void 0,
       restingHeartRate: restingHR,
@@ -10890,11 +11249,11 @@ function parseMarkdown(content, cachedFrontmatter) {
     day.sleep = {
       sleepStages: granular.sleepStages,
       totalDuration: sleepTotal != null ? sleepTotal : derivedSleepTotal,
-      deepSleep: deepH !== void 0 ? deepH * 3600 : (_l = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _l : sumStageSeconds2(granular.sleepStages, "deep"),
-      remSleep: remH !== void 0 ? remH * 3600 : (_m = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _m : sumStageSeconds2(granular.sleepStages, "rem"),
-      coreSleep: coreH !== void 0 ? coreH * 3600 : (_n = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light")) != null ? _n : sumStageSeconds2(granular.sleepStages, "core"),
-      awakeTime: awakeH !== void 0 ? awakeH * 3600 : (_o = getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time")) != null ? _o : sumStageSeconds2(granular.sleepStages, "awake"),
-      bedtime: (_r = (_q = getFirstStr(
+      deepSleep: deepH !== void 0 ? deepH * 3600 : (_m = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _m : sumStageSeconds2(granular.sleepStages, "deep"),
+      remSleep: remH !== void 0 ? remH * 3600 : (_n = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _n : sumStageSeconds2(granular.sleepStages, "rem"),
+      coreSleep: coreH !== void 0 ? coreH * 3600 : (_o = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light")) != null ? _o : sumStageSeconds2(granular.sleepStages, "core"),
+      awakeTime: awakeH !== void 0 ? awakeH * 3600 : (_p = getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time")) != null ? _p : sumStageSeconds2(granular.sleepStages, "awake"),
+      bedtime: (_s = (_r = getFirstStr(
         fm,
         "sleep_bedtime",
         "sleepBedtime",
@@ -10903,8 +11262,8 @@ function parseMarkdown(content, cachedFrontmatter) {
         "sleep_start",
         "sleep_start_time",
         "sleep_session_start"
-      )) != null ? _q : (_p = granular.sleepStages[0]) == null ? void 0 : _p.startDate) != null ? _r : "",
-      bedtimeISO: (_t = getFirstStr(
+      )) != null ? _r : (_q = granular.sleepStages[0]) == null ? void 0 : _q.startDate) != null ? _s : "",
+      bedtimeISO: (_u = getFirstStr(
         fm,
         "sleep_bedtime_iso",
         "sleepBedtimeISO",
@@ -10912,8 +11271,8 @@ function parseMarkdown(content, cachedFrontmatter) {
         "bed_time_iso",
         "sleep_start_iso",
         "sleep_session_start_iso"
-      )) != null ? _t : (_s = granular.sleepStages[0]) == null ? void 0 : _s.startDate,
-      wakeTime: (_w = (_v = getFirstStr(
+      )) != null ? _u : (_t = granular.sleepStages[0]) == null ? void 0 : _t.startDate,
+      wakeTime: (_x = (_w = getFirstStr(
         fm,
         "sleep_wake",
         "sleepWake",
@@ -10924,8 +11283,8 @@ function parseMarkdown(content, cachedFrontmatter) {
         "sleep_end",
         "sleep_end_time",
         "sleep_session_end"
-      )) != null ? _v : (_u = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _u.endDate) != null ? _w : "",
-      wakeTimeISO: (_y = getFirstStr(
+      )) != null ? _w : (_v = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _v.endDate) != null ? _x : "",
+      wakeTimeISO: (_z = getFirstStr(
         fm,
         "sleep_wake_iso",
         "sleepWakeISO",
@@ -10935,29 +11294,29 @@ function parseMarkdown(content, cachedFrontmatter) {
         "wake_iso",
         "sleep_end_iso",
         "sleep_session_end_iso"
-      )) != null ? _y : (_x = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _x.endDate
+      )) != null ? _z : (_y = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _y.endDate
     };
   }
   const respiratoryValues = granular.respiratoryRateSamples.map((sample) => sample.value);
-  const respRateAvg = (_z = getFirstNum(fm, "respiratory_rate", "respiratory_rate_avg", "vitals_respiratory_rate", "respiratoryRateAvg")) != null ? _z : average2(respiratoryValues);
-  const respRateMin = (_A = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin")) != null ? _A : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0;
-  const respRateMax = (_B = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax")) != null ? _B : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0;
+  const respRateAvg = (_A = getFirstNum(fm, "respiratory_rate", "respiratory_rate_avg", "vitals_respiratory_rate", "respiratoryRateAvg")) != null ? _A : average2(respiratoryValues);
+  const respRateMin = (_B = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin")) != null ? _B : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0;
+  const respRateMax = (_C = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax")) != null ? _C : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0;
   const bloodOxygenSamples = granular.bloodOxygenSamples.map((sample) => ({
     timestamp: sample.timestamp,
     value: sample.value,
     percent: sample.value
   }));
   const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
-  const bloodOxAvg = (_C = normalizePercent2(getFirstNum(
+  const bloodOxAvg = (_D = normalizePercent2(getFirstNum(
     fm,
     "blood_oxygen",
     "blood_oxygen_avg",
     "vitals_blood_oxygen",
     "bloodOxygenAvg",
     "bloodOxygenPercent"
-  ))) != null ? _C : average2(bloodOxygenValues);
-  const bloodOxMin = (_D = normalizePercent2(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"))) != null ? _D : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
-  const bloodOxMax = (_E = normalizePercent2(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"))) != null ? _E : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  ))) != null ? _D : average2(bloodOxygenValues);
+  const bloodOxMin = (_E = normalizePercent2(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"))) != null ? _E : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_F = normalizePercent2(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"))) != null ? _F : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
   if (respRateAvg !== void 0 || respRateMin !== void 0 || respRateMax !== void 0 || bloodOxAvg !== void 0 || bloodOxMin !== void 0 || bloodOxMax !== void 0 || granular.respiratoryRateSamples.length || bloodOxygenSamples.length) {
     day.vitals = {
       respiratoryRate: respRateAvg,
@@ -11006,7 +11365,246 @@ function parseMarkdown(content, cachedFrontmatter) {
   return hasData ? day : null;
 }
 
+// src/parsers/rollup-parser.ts
+var SUPPORTED_ROLLUP_PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function stringValue2(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return void 0;
+}
+function numberValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/,/g, ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return void 0;
+}
+function normalizePeriod(value) {
+  var _a;
+  const period = (_a = stringValue2(value)) == null ? void 0 : _a.trim().toLowerCase();
+  return period && SUPPORTED_ROLLUP_PERIODS.has(period) ? period : void 0;
+}
+function firstString(record, ...keys) {
+  for (const key of keys) {
+    const value = stringValue2(record[key]);
+    if (value !== void 0 && value !== "") return value;
+  }
+  return void 0;
+}
+function firstNumber(record, ...keys) {
+  for (const key of keys) {
+    const value = numberValue(record[key]);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
+function buildRollupSummary(record) {
+  var _a, _b, _c;
+  const schema = firstString(record, "schema", "Schema");
+  const type = firstString(record, "type", "Type");
+  if (schema !== HEALTHMD_ROLLUP_SCHEMA && type !== "health_rollup") return null;
+  const rollupPeriod = normalizePeriod((_c = (_b = (_a = record.rollup_period) != null ? _a : record.rollupPeriod) != null ? _b : record.period) != null ? _c : record.Period);
+  const periodId = firstString(record, "period_id", "periodId", "Period ID", "periodID");
+  if (!rollupPeriod || !periodId) return null;
+  const schemaVersion = schemaVersionOf({
+    schemaVersion: record.schemaVersion,
+    schema_version: record.schema_version
+  });
+  const sourceSchemaVersion = firstNumber(record, "source_schema_version", "sourceSchemaVersion");
+  const metrics = isRecord2(record.rollup_metrics) ? record.rollup_metrics : isRecord2(record.metrics) ? record.metrics : void 0;
+  return {
+    type: "health_rollup",
+    schema: HEALTHMD_ROLLUP_SCHEMA,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
+    rollupPeriod,
+    rollup_period: rollupPeriod,
+    periodId,
+    period_id: periodId,
+    startDate: firstString(record, "start_date", "startDate", "Start Date"),
+    start_date: firstString(record, "start_date", "startDate", "Start Date"),
+    endDate: firstString(record, "end_date", "endDate", "End Date"),
+    end_date: firstString(record, "end_date", "endDate", "End Date"),
+    daysExpected: firstNumber(record, "days_expected", "daysExpected", "Days Expected"),
+    days_expected: firstNumber(record, "days_expected", "daysExpected", "Days Expected"),
+    daysCounted: firstNumber(record, "days_counted", "daysCounted", "Days Counted"),
+    days_counted: firstNumber(record, "days_counted", "daysCounted", "Days Counted"),
+    coveragePercent: firstNumber(record, "coverage_percent", "coveragePercent", "Coverage Percent"),
+    coverage_percent: firstNumber(record, "coverage_percent", "coveragePercent", "Coverage Percent"),
+    sourceSchema: firstString(record, "source_schema", "sourceSchema"),
+    source_schema: firstString(record, "source_schema", "sourceSchema"),
+    sourceSchemaVersion,
+    source_schema_version: sourceSchemaVersion,
+    metrics
+  };
+}
+function parseRollupJSON(content) {
+  try {
+    const parsed = JSON.parse(content);
+    return isRecord2(parsed) ? buildRollupSummary(parsed) : null;
+  } catch (e) {
+    return null;
+  }
+}
+function parseRollupMarkdown(content, cachedFrontmatter) {
+  var _a;
+  const parsed = parseFrontmatter(content);
+  const frontmatter = (_a = parsed.frontmatter) != null ? _a : {};
+  const record = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
+  return buildRollupSummary(record);
+}
+function parseCsvLine3(line) {
+  const fields = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  fields.push(current);
+  return fields;
+}
+function normalizeCsvLabel2(value) {
+  return value.trim().replace(/[_\s]+/g, " ").toLowerCase();
+}
+function indexOfHeader(header, ...names) {
+  const normalizedNames = names.map(normalizeCsvLabel2);
+  return header.findIndex((item) => normalizedNames.includes(item));
+}
+function csvValue(row, index) {
+  var _a;
+  if (index < 0) return void 0;
+  const value = (_a = row[index]) == null ? void 0 : _a.trim();
+  return value ? value : void 0;
+}
+function parseCsvNumber(value) {
+  return value === void 0 ? void 0 : numberValue(value);
+}
+function parseMetricValue(value) {
+  const parsed = parseCsvNumber(value);
+  return parsed != null ? parsed : value;
+}
+function parseRollupCSV(content) {
+  var _a, _b, _c;
+  const lines = content.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return null;
+  const header = parseCsvLine3(lines[0]).map(normalizeCsvLabel2);
+  const periodIndex = indexOfHeader(header, "Period");
+  const periodIdIndex = indexOfHeader(header, "Period ID", "period_id");
+  if (periodIndex < 0 || periodIdIndex < 0) return null;
+  const startDateIndex = indexOfHeader(header, "Start Date", "start_date");
+  const endDateIndex = indexOfHeader(header, "End Date", "end_date");
+  const daysExpectedIndex = indexOfHeader(header, "Days Expected", "days_expected");
+  const daysCountedIndex = indexOfHeader(header, "Days Counted", "days_counted");
+  const coveragePercentIndex = indexOfHeader(header, "Coverage Percent", "coverage_percent");
+  const categoryIndex = indexOfHeader(header, "Category");
+  const metricIndex = indexOfHeader(header, "Metric");
+  const keyIndex = indexOfHeader(header, "Key");
+  const canonicalKeyIndex = indexOfHeader(header, "Canonical Key", "canonicalKey");
+  const primaryValueIndex = indexOfHeader(header, "Primary Value", "primary_value", "Value");
+  const unitIndex = indexOfHeader(header, "Unit");
+  const ruleIndex = indexOfHeader(header, "Rule");
+  const statisticIndex = indexOfHeader(header, "Statistic");
+  const statisticValueIndex = indexOfHeader(header, "Statistic Value", "statistic_value");
+  const sourceSchemaIndex = indexOfHeader(header, "Source Schema", "source_schema");
+  const sourceSchemaVersionIndex = indexOfHeader(header, "Source Schema Version", "source_schema_version");
+  const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version");
+  const firstRow = parseCsvLine3(lines[1]);
+  const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
+  const periodId = csvValue(firstRow, periodIdIndex);
+  if (!rollupPeriod || !periodId) return null;
+  const metrics = {};
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine3(lines[i]);
+    const metricKey = (_b = (_a = csvValue(row, canonicalKeyIndex)) != null ? _a : csvValue(row, keyIndex)) != null ? _b : csvValue(row, metricIndex);
+    if (!metricKey) continue;
+    metrics[metricKey] = {
+      category: csvValue(row, categoryIndex),
+      metric: csvValue(row, metricIndex),
+      key: csvValue(row, keyIndex),
+      canonicalKey: csvValue(row, canonicalKeyIndex),
+      value: parseMetricValue(csvValue(row, primaryValueIndex)),
+      unit: csvValue(row, unitIndex),
+      rule: csvValue(row, ruleIndex),
+      statistic: csvValue(row, statisticIndex),
+      statisticValue: parseMetricValue(csvValue(row, statisticValueIndex))
+    };
+  }
+  const schemaVersion = (_c = parseCsvNumber(csvValue(firstRow, schemaVersionIndex))) != null ? _c : SUPPORTED_HEALTHMD_SCHEMA_VERSION;
+  const sourceSchemaVersion = parseCsvNumber(csvValue(firstRow, sourceSchemaVersionIndex));
+  return {
+    type: "health_rollup",
+    schema: HEALTHMD_ROLLUP_SCHEMA,
+    schemaVersion,
+    schema_version: schemaVersion,
+    rollupPeriod,
+    rollup_period: rollupPeriod,
+    periodId,
+    period_id: periodId,
+    startDate: csvValue(firstRow, startDateIndex),
+    start_date: csvValue(firstRow, startDateIndex),
+    endDate: csvValue(firstRow, endDateIndex),
+    end_date: csvValue(firstRow, endDateIndex),
+    daysExpected: parseCsvNumber(csvValue(firstRow, daysExpectedIndex)),
+    days_expected: parseCsvNumber(csvValue(firstRow, daysExpectedIndex)),
+    daysCounted: parseCsvNumber(csvValue(firstRow, daysCountedIndex)),
+    days_counted: parseCsvNumber(csvValue(firstRow, daysCountedIndex)),
+    coveragePercent: parseCsvNumber(csvValue(firstRow, coveragePercentIndex)),
+    coverage_percent: parseCsvNumber(csvValue(firstRow, coveragePercentIndex)),
+    sourceSchema: csvValue(firstRow, sourceSchemaIndex),
+    source_schema: csvValue(firstRow, sourceSchemaIndex),
+    sourceSchemaVersion,
+    source_schema_version: sourceSchemaVersion,
+    metrics: Object.keys(metrics).length ? metrics : void 0
+  };
+}
+function parseRollupByFormat(content, format, cachedFrontmatter) {
+  switch (format) {
+    case "json":
+      return parseRollupJSON(content);
+    case "csv":
+      return parseRollupCSV(content);
+    case "markdown":
+    case "bases":
+      return parseRollupMarkdown(content, cachedFrontmatter);
+    case "auto":
+      return null;
+  }
+}
+
 // src/data-loader.ts
+var HEALTHMD_FORMAT_FOLDERS = /* @__PURE__ */ new Set(["Markdown", "Bases", "JSON", "CSV"]);
+function emptyLoadReport() {
+  return {
+    loadedDays: 0,
+    loadedRollups: 0,
+    rollupPeriods: [],
+    schemaVersions: [],
+    skippedFiles: [],
+    warnings: [],
+    dictionaryLoaded: false,
+    dictionaryEntries: 0
+  };
+}
 function detectFormat(extension, configFormat) {
   if (configFormat !== "auto") return configFormat;
   switch (extension) {
@@ -11027,41 +11625,102 @@ var DataLoader = class {
     this.settings = settings;
     this.metadataCache = metadataCache;
     this.cache = null;
+    this.rollupCache = [];
+    this.dataDictionary = null;
     this.lastLoad = 0;
     this.TTL = 3e4;
+    this.lastReport = emptyLoadReport();
   }
   async load() {
-    var _a, _b;
+    var _a, _b, _c, _d;
     if (this.cache && Date.now() - this.lastLoad < this.TTL) {
       return this.cache;
     }
     const pattern = this.settings.filePattern || "*";
     const files = this.getDataFiles(pattern);
+    const rollupFiles = this.getRollupFiles(pattern);
+    const dictionaryLoad = await this.loadDataDictionaryAliases([...files, ...rollupFiles]);
+    const frontmatterAliases = dictionaryLoad.dictionary.aliases;
+    const dictionaryUnits = dictionaryLoad.dictionary.unitsByCanonicalKey;
+    this.dataDictionary = dictionaryLoad.loaded ? dictionaryLoad.dictionary : null;
+    const report = emptyLoadReport();
+    report.dictionaryLoaded = dictionaryLoad.loaded;
+    report.dictionaryEntries = dictionaryLoad.dictionary.entries.length;
+    report.warnings.push(...dictionaryLoad.warnings);
     const days = [];
+    const rollups = [];
+    const schemaVersions = /* @__PURE__ */ new Set();
     for (const file of files) {
+      if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) {
+        report.skippedFiles.push({
+          path: file.path,
+          reason: "data-dictionary",
+          schema: { kind: "data-dictionary", version: 0, format: "json" }
+        });
+        continue;
+      }
       const content = await this.vault.cachedRead(file);
       const format = detectFormat(file.extension, this.settings.dataFormat);
+      const cachedFrontmatter = format === "markdown" || format === "bases" ? (_b = (_a = this.metadataCache) == null ? void 0 : _a.getFileCache(file)) == null ? void 0 : _b.frontmatter : void 0;
       try {
+        const parsedDays = [];
         switch (format) {
           case "json": {
             const day = parseJSON(content);
-            if (day) days.push(withSourcePath(day, file.path));
+            if (day) parsedDays.push(day);
             break;
           }
           case "csv": {
-            const csvDays = parseCSV(content);
-            days.push(...csvDays.map((day) => withSourcePath(day, file.path)));
+            parsedDays.push(...parseCSV(content));
             break;
           }
           case "markdown":
           case "bases": {
-            const cachedFrontmatter = (_b = (_a = this.metadataCache) == null ? void 0 : _a.getFileCache(file)) == null ? void 0 : _b.frontmatter;
-            const day = parseMarkdown(content, cachedFrontmatter);
-            if (day) days.push(withSourcePath(day, file.path));
+            const day = parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits);
+            if (day) parsedDays.push(day);
             break;
           }
         }
+        if (parsedDays.length) {
+          for (const day of parsedDays) {
+            const version = schemaVersionOf(day);
+            schemaVersions.add(version);
+            if (version > SUPPORTED_HEALTHMD_SCHEMA_VERSION) {
+              report.warnings.push(`${file.path} uses Health.md schema v${version}; parsing best-effort with v${SUPPORTED_HEALTHMD_SCHEMA_VERSION} support.`);
+            }
+            days.push(withSourcePath(day, file.path));
+          }
+        } else {
+          this.recordSkippedFile(report, file.path, format, content, cachedFrontmatter);
+        }
       } catch (e) {
+        report.skippedFiles.push({
+          path: file.path,
+          reason: "malformed-file"
+        });
+      }
+    }
+    for (const file of rollupFiles) {
+      const content = await this.vault.cachedRead(file);
+      const format = detectFormat(file.extension, this.settings.dataFormat);
+      const cachedFrontmatter = format === "markdown" || format === "bases" ? (_d = (_c = this.metadataCache) == null ? void 0 : _c.getFileCache(file)) == null ? void 0 : _d.frontmatter : void 0;
+      try {
+        const rollup = parseRollupByFormat(content, format, cachedFrontmatter);
+        if (rollup) {
+          const version = schemaVersionOf(rollup);
+          schemaVersions.add(version);
+          if (version > SUPPORTED_HEALTHMD_SCHEMA_VERSION) {
+            report.warnings.push(`${file.path} uses Health.md roll-up schema v${version}; parsing best-effort with v${SUPPORTED_HEALTHMD_SCHEMA_VERSION} support.`);
+          }
+          rollups.push(withRollupSourcePath(rollup, file.path));
+        } else {
+          this.recordSkippedFile(report, file.path, format, content, cachedFrontmatter);
+        }
+      } catch (e) {
+        report.skippedFiles.push({
+          path: file.path,
+          reason: "malformed-rollup-file"
+        });
       }
     }
     const byDate = /* @__PURE__ */ new Map();
@@ -11076,11 +11735,109 @@ var DataLoader = class {
     this.cache = Array.from(byDate.values()).sort(
       (a, b) => a.date.localeCompare(b.date)
     );
+    this.rollupCache = dedupeRollups(rollups);
+    report.loadedDays = this.cache.length;
+    report.loadedRollups = this.rollupCache.length;
+    report.rollupPeriods = Array.from(new Set(this.rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
+    report.schemaVersions = Array.from(schemaVersions).sort((a, b) => a - b);
+    this.lastReport = report;
     this.lastLoad = Date.now();
     return this.cache;
   }
+  async loadRollups() {
+    await this.load();
+    return this.rollupCache;
+  }
+  getLastRollups() {
+    return this.rollupCache;
+  }
+  getDataDictionary() {
+    return this.dataDictionary;
+  }
+  getLastLoadReport() {
+    return this.lastReport;
+  }
+  getLastLoadSummary() {
+    const report = this.lastReport;
+    const versions = report.schemaVersions.length ? report.schemaVersions.map((version) => `v${version}`).join(", ") : "none detected";
+    const skipped = report.skippedFiles.length ? `; skipped ${report.skippedFiles.length} non-daily/unsupported file${report.skippedFiles.length === 1 ? "" : "s"}` : "";
+    const dictionary = report.dictionaryLoaded ? `; data dictionary loaded (${report.dictionaryEntries} entries)` : "";
+    const rollups = report.loadedRollups ? `; indexed ${report.loadedRollups} roll-up${report.loadedRollups === 1 ? "" : "s"}${report.rollupPeriods.length ? ` (${report.rollupPeriods.join(", ")})` : ""}` : "";
+    const warnings = report.warnings.length ? `; ${report.warnings.length} warning${report.warnings.length === 1 ? "" : "s"}` : "";
+    return `Loaded ${report.loadedDays} health day${report.loadedDays === 1 ? "" : "s"} from Health.md schemas ${versions}${skipped}${dictionary}${rollups}${warnings}.`;
+  }
+  async loadDataDictionaryAliases(files) {
+    const dictionaryFiles = /* @__PURE__ */ new Map();
+    for (const file of files) {
+      if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) {
+        dictionaryFiles.set(file.path, file);
+      }
+    }
+    const rootDictionary = this.vault.getAbstractFileByPath(
+      `${this.settings.dataFolder.replace(/\/+$/g, "")}/${HEALTHMD_DATA_DICTIONARY_FILENAME}`
+    );
+    if (rootDictionary instanceof import_obsidian.TFile) {
+      dictionaryFiles.set(rootDictionary.path, rootDictionary);
+    }
+    const mergedDictionary = {
+      entries: [],
+      aliases: {},
+      unitsByCanonicalKey: {},
+      dailyAggregationByCanonicalKey: {},
+      healthKitAggregationByCanonicalKey: {},
+      rollupByCanonicalKey: {},
+      schemaVersion: 0
+    };
+    const warnings = [];
+    let loaded = false;
+    for (const file of dictionaryFiles.values()) {
+      try {
+        const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.cachedRead(file));
+        mergedDictionary.entries.push(...dictionary.entries);
+        Object.assign(mergedDictionary.aliases, dictionary.aliases);
+        Object.assign(mergedDictionary.unitsByCanonicalKey, dictionary.unitsByCanonicalKey);
+        Object.assign(mergedDictionary.dailyAggregationByCanonicalKey, dictionary.dailyAggregationByCanonicalKey);
+        Object.assign(mergedDictionary.healthKitAggregationByCanonicalKey, dictionary.healthKitAggregationByCanonicalKey);
+        Object.assign(mergedDictionary.rollupByCanonicalKey, dictionary.rollupByCanonicalKey);
+        mergedDictionary.schemaVersion = Math.max(mergedDictionary.schemaVersion, dictionary.schemaVersion);
+        if (dictionary.schemaVersion > SUPPORTED_HEALTHMD_SCHEMA_VERSION) {
+          warnings.push(`${file.path} data dictionary uses Health.md schema v${dictionary.schemaVersion}; alias mapping is best-effort.`);
+        }
+        loaded = true;
+      } catch (e) {
+      }
+    }
+    return { dictionary: mergedDictionary, loaded, warnings };
+  }
+  recordSkippedFile(report, path, format, content, frontmatter) {
+    var _a;
+    const schema = this.detectSchema(format, content, frontmatter);
+    let reason = "not-health-data";
+    if (schema.kind === "rollup-summary") reason = "rollup-summary";
+    else if (schema.kind === "data-dictionary") reason = "data-dictionary";
+    else if (schema.kind === "unknown") reason = (_a = schema.reason) != null ? _a : "unsupported-schema";
+    report.skippedFiles.push({ path, reason, schema });
+    if (schema.isFutureVersion) {
+      report.warnings.push(`${path} uses future Health.md schema v${schema.version}; update the plugin if data looks incomplete.`);
+    }
+  }
+  detectSchema(format, content, frontmatter) {
+    switch (format) {
+      case "json":
+        return detectJsonSchema(content);
+      case "csv":
+        return detectCsvSchema(content);
+      case "markdown":
+      case "bases":
+        return detectFrontmatterSchema(frontmatter);
+      default:
+        return { kind: "unknown", version: 0, format: "unknown", reason: "Unsupported file extension" };
+    }
+  }
   invalidate() {
     this.cache = null;
+    this.rollupCache = [];
+    this.dataDictionary = null;
   }
   getDataFiles(pattern) {
     var _a;
@@ -11103,6 +11860,27 @@ var DataLoader = class {
     }
     return [];
   }
+  getRollupFiles(pattern) {
+    const roots = [];
+    const configuredFolder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
+    if (configuredFolder instanceof import_obsidian.TFolder) roots.push(configuredFolder);
+    if (this.settings.dataFolder === "Health" && roots.length === 0) {
+      for (const fallbackPath of ["examples/Health", "exports/Health"]) {
+        const bundledFolder = this.vault.getAbstractFileByPath(fallbackPath);
+        if (bundledFolder instanceof import_obsidian.TFolder) roots.push(bundledFolder);
+      }
+    }
+    const files = [];
+    for (const root of roots) {
+      const rollupsFolder = this.vault.getAbstractFileByPath(`${root.path}/Rollups`);
+      if (rollupsFolder instanceof import_obsidian.TFolder) {
+        this.collectRollupFiles(rollupsFolder, rollupsFolder.path, pattern, files);
+      }
+    }
+    const byPath = /* @__PURE__ */ new Map();
+    for (const file of files) byPath.set(file.path, file);
+    return Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
+  }
   getMatchingFiles(folder, pattern, granularity) {
     const files = [];
     this.collectMatchingFiles(
@@ -11116,6 +11894,18 @@ var DataLoader = class {
       0,
       files
     );
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian.TFolder && HEALTHMD_FORMAT_FOLDERS.has(child.name)) {
+        this.collectMatchingFiles(
+          child,
+          folder.path,
+          pattern,
+          Math.max(4, dataFolderMaxDepth(granularity, this.settings.dataFolderCustomPathTemplate)),
+          1,
+          files
+        );
+      }
+    }
     this.collectMatchingFiles(
       folder,
       folder.path,
@@ -11129,6 +11919,18 @@ var DataLoader = class {
     for (const file of files) byPath.set(file.path, file);
     return Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
   }
+  collectRollupFiles(folder, rootPath, pattern, files, depth = 0) {
+    if (depth > 5) return;
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian.TFile) {
+        if (this.matchesRollupFile(child, rootPath, pattern)) files.push(child);
+        continue;
+      }
+      if (child instanceof import_obsidian.TFolder) {
+        this.collectRollupFiles(child, rootPath, pattern, files, depth + 1);
+      }
+    }
+  }
   collectMatchingFiles(folder, rootPath, pattern, maxDepth, depth, files, extension) {
     for (const child of folder.children) {
       if (child instanceof import_obsidian.TFile) {
@@ -11138,6 +11940,7 @@ var DataLoader = class {
         continue;
       }
       if (child instanceof import_obsidian.TFolder && depth < maxDepth) {
+        if (this.isRollupsFolder(child, rootPath)) continue;
         this.collectMatchingFiles(
           child,
           rootPath,
@@ -11150,7 +11953,23 @@ var DataLoader = class {
       }
     }
   }
+  isRollupsFolder(folder, rootPath) {
+    const relative = folder.path.startsWith(`${rootPath}/`) ? folder.path.slice(rootPath.length + 1) : folder.path;
+    return relative.split("/")[0] === "Rollups";
+  }
   matchesDataFile(file, rootPath, pattern) {
+    if (file.path.startsWith(`${rootPath}/Rollups/`)) return false;
+    return matchesDataFilePath({
+      name: file.name,
+      extension: file.extension,
+      path: file.path,
+      rootPath,
+      pattern
+    });
+  }
+  matchesRollupFile(file, rootPath, pattern) {
+    if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) return false;
+    if (!["json", "csv", "md"].includes(file.extension)) return false;
     return matchesDataFilePath({
       name: file.name,
       extension: file.extension,
@@ -11172,6 +11991,52 @@ function withSourcePath(day, path) {
     ...day,
     sourcePaths: mergeSourcePaths(day.sourcePaths, [path])
   };
+}
+function withRollupSourcePath(rollup, path) {
+  return {
+    ...rollup,
+    sourcePaths: mergeSourcePaths(rollup.sourcePaths, [path])
+  };
+}
+function rollupKey(rollup) {
+  return `${rollup.rollupPeriod}|${rollup.periodId}`;
+}
+function rollupDetailScore(rollup) {
+  return schemaVersionOf(rollup) * 1e3 + Object.values(rollup).filter((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === "object") return Object.keys(value).length > 0;
+    return value !== void 0 && value !== null && value !== "";
+  }).length;
+}
+function mergeRollups(a, b) {
+  var _a, _b;
+  const preferred = rollupDetailScore(b) >= rollupDetailScore(a) ? b : a;
+  const fallback = preferred === b ? a : b;
+  const schemaVersion = Math.max(schemaVersionOf(a), schemaVersionOf(b));
+  return {
+    ...fallback,
+    ...preferred,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
+    metrics: {
+      ...(_a = fallback.metrics) != null ? _a : {},
+      ...(_b = preferred.metrics) != null ? _b : {}
+    },
+    sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths)
+  };
+}
+function dedupeRollups(rollups) {
+  const byPeriod = /* @__PURE__ */ new Map();
+  for (const rollup of rollups) {
+    const key = rollupKey(rollup);
+    const existing = byPeriod.get(key);
+    byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
+  }
+  return Array.from(byPeriod.values()).sort((a, b) => {
+    var _a, _b;
+    const startCompare = ((_a = a.startDate) != null ? _a : "").localeCompare((_b = b.startDate) != null ? _b : "");
+    return startCompare || a.rollupPeriod.localeCompare(b.rollupPeriod) || a.periodId.localeCompare(b.periodId);
+  });
 }
 function workoutDetailScore(workout) {
   let score = 0;
@@ -11232,20 +12097,59 @@ function mergeWorkouts(a, b) {
     return aStart.localeCompare(bStart);
   });
 }
+function objectDetailScore(value) {
+  if (!value || typeof value !== "object") return 0;
+  let score = 0;
+  for (const item of Object.values(value)) {
+    if (Array.isArray(item)) score += item.length * 3;
+    else if (item && typeof item === "object") score += Object.keys(item).length * 2;
+    else if (item !== void 0 && item !== null && item !== "") score += 1;
+  }
+  return score;
+}
+function dayDetailScore(day) {
+  var _a;
+  return schemaVersionOf(day) * 1e3 + objectDetailScore(day.activity) + objectDetailScore(day.heart) + objectDetailScore(day.vitals) + objectDetailScore(day.sleep) + objectDetailScore(day.mobility) + objectDetailScore(day.hearing) + ((_a = day.workouts) != null ? _a : []).reduce((sum, workout) => sum + workoutDetailScore(workout), 0);
+}
+function preferMeaningfulValue(fallback, preferred) {
+  if (preferred === void 0 || preferred === null || preferred === "") return fallback;
+  if (Array.isArray(preferred) && preferred.length === 0 && Array.isArray(fallback) && fallback.length > 0) return fallback;
+  if (typeof preferred === "number" && preferred === 0 && typeof fallback === "number" && fallback !== 0) return fallback;
+  return preferred;
+}
+function mergeSection(fallback, preferred) {
+  if (!fallback) return preferred;
+  if (!preferred) return fallback;
+  const fallbackRecord = fallback;
+  const merged = { ...fallbackRecord };
+  for (const [key, value] of Object.entries(preferred)) {
+    merged[key] = preferMeaningfulValue(fallbackRecord[key], value);
+  }
+  return merged;
+}
 function mergeDays(a, b) {
-  var _a, _b, _c, _d, _e, _f, _g;
+  var _a, _b, _c, _d, _e;
+  const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
+  const fallback = preferred === b ? a : b;
+  const schemaVersion = Math.max(schemaVersionOf(a), schemaVersionOf(b));
+  const unitSystem = (_c = (_b = (_a = preferred.unitSystem) != null ? _a : preferred.unit_system) != null ? _b : fallback.unitSystem) != null ? _c : fallback.unit_system;
   return {
     type: "health-data",
     date: a.date,
+    schema: (_d = preferred.schema) != null ? _d : fallback.schema,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
     sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths),
-    units: (_a = a.units) != null ? _a : b.units,
-    activity: (_b = a.activity) != null ? _b : b.activity,
-    heart: (_c = a.heart) != null ? _c : b.heart,
-    vitals: (_d = a.vitals) != null ? _d : b.vitals,
-    sleep: (_e = a.sleep) != null ? _e : b.sleep,
-    mobility: (_f = a.mobility) != null ? _f : b.mobility,
+    units: (_e = preferred.units) != null ? _e : fallback.units,
+    unitSystem,
+    unit_system: unitSystem,
+    activity: mergeSection(fallback.activity, preferred.activity),
+    heart: mergeSection(fallback.heart, preferred.heart),
+    vitals: mergeSection(fallback.vitals, preferred.vitals),
+    sleep: mergeSection(fallback.sleep, preferred.sleep),
+    mobility: mergeSection(fallback.mobility, preferred.mobility),
     workouts: mergeWorkouts(a.workouts, b.workouts),
-    hearing: (_g = a.hearing) != null ? _g : b.hearing
+    hearing: mergeSection(fallback.hearing, preferred.hearing)
   };
 }
 
@@ -12632,7 +13536,9 @@ function pickWorkout(data, config) {
   return null;
 }
 function resolveUnits(day) {
-  return day.units === "imperial" ? "imperial" : "metric";
+  var _a, _b;
+  const unitSystem = (_b = (_a = day.unitSystem) != null ? _a : day.unit_system) != null ? _b : typeof day.units === "string" ? day.units : void 0;
+  return unitSystem === "imperial" ? "imperial" : "metric";
 }
 function parseDistanceFormatted(value) {
   if (!value) return void 0;
@@ -15857,6 +16763,12 @@ var HTML_VISUALIZATIONS = {
 };
 
 // src/renderer.ts
+function noHealthDataMessage(plugin) {
+  var _a, _b;
+  const summary = (_b = (_a = plugin.dataLoader).getLastLoadSummary) == null ? void 0 : _b.call(_a);
+  const suffix = summary ? ` ${summary}` : "";
+  return `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.${suffix}`;
+}
 function parseConfig(source) {
   const config = { type: "" };
   for (const line of source.split("\n")) {
@@ -15923,7 +16835,7 @@ async function getFrontmatterForContext(plugin, ctx) {
       }
     }
   }
-  if (parsed && isRecord2(cached)) return { ...parsed, ...cached };
+  if (parsed && isRecord3(cached)) return { ...parsed, ...cached };
   return cached != null ? cached : parsed;
 }
 function resolveFrontmatterDateVariables(config, frontmatter) {
@@ -15937,7 +16849,7 @@ function resolveFrontmatterDateVariables(config, frontmatter) {
     if (!variable) {
       return { error: `Invalid frontmatter variable in "${key}".` };
     }
-    if (!isRecord2(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
+    if (!isRecord3(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
       return {
         error: `Missing frontmatter variable "${variable}" for "${key}". Add "${variable}" to this note's frontmatter or use a literal date.`
       };
@@ -16278,7 +17190,7 @@ function renderTooltipContent(tooltipEl, region) {
   });
 }
 var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null;
 }
 function normalizeDataPointClickAction(value) {
@@ -16312,7 +17224,7 @@ function collectPayloadNavigation(payload, dates, sourcePaths) {
     payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
     return;
   }
-  if (!isRecord2(payload)) return;
+  if (!isRecord3(payload)) return;
   const date = payload.date;
   if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
   const paths = payload.sourcePaths;
@@ -16466,7 +17378,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     const allData2 = await plugin.dataLoader.load();
     if (!allData2.length) {
       el.createEl("p", {
-        text: `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.`
+        text: noHealthDataMessage(plugin)
       });
       return;
     }
@@ -16495,7 +17407,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
   const allData = await plugin.dataLoader.load();
   if (!allData.length) {
     el.createEl("p", {
-      text: `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.`
+      text: noHealthDataMessage(plugin)
     });
     return;
   }
@@ -17252,8 +18164,8 @@ function normalizeLineValue(value) {
   return value.replace(/[\r\n]/g, " ").trim();
 }
 function isPositiveNumber(value) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0;
+  const numberValue2 = Number(value);
+  return Number.isFinite(numberValue2) && numberValue2 > 0;
 }
 function isInteger(value) {
   return /^\d+$/.test(value.trim());
@@ -17620,7 +18532,7 @@ function formatBytes(bytes) {
   if (kb < 1024) return `${kb.toFixed(1)} KB`;
   return `${(kb / 1024).toFixed(1)} MB`;
 }
-function parseCsvLine2(line) {
+function parseCsvLine4(line) {
   const cells = [];
   let cell = "";
   let inQuotes = false;
@@ -17649,7 +18561,7 @@ function parseCsvPreview(content) {
   const rows = [];
   let truncatedColumns = false;
   for (const line of lines.slice(0, CSV_PREVIEW_MAX_ROWS)) {
-    const cells = parseCsvLine2(line);
+    const cells = parseCsvLine4(line);
     if (cells.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
     rows.push(cells.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }
@@ -18032,6 +18944,19 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
       { key: "colorSleepAwake", name: "Awake", desc: "Color for awake periods in sleep charts" }
     ];
     return [
+      {
+        name: "Health.md schema compatibility",
+        desc: this.plugin.dataLoader.getLastLoadSummary(),
+        render: (setting) => {
+          setting.addButton(
+            (button) => button.setButtonText("Scan now").onClick(async () => {
+              this.plugin.dataLoader.invalidate();
+              await this.plugin.dataLoader.load();
+              setting.setDesc(this.plugin.dataLoader.getLastLoadSummary());
+            })
+          );
+        }
+      },
       {
         name: "Data folder",
         desc: "Path to the folder containing health data files. Start typing to pick an existing folder.",

@@ -1,4 +1,12 @@
 import {
+	FrontmatterAliasMap,
+	HEALTHMD_HEALTH_DATA_SCHEMA,
+	HEALTHMD_ROLLUP_SCHEMA,
+	HealthMdUnitMap,
+	isUnitMap,
+	schemaVersionOf,
+} from "../healthmd-schema";
+import {
 	HealthDay,
 	TimeSeriesSample,
 	WorkoutEntry,
@@ -201,7 +209,7 @@ function parseYamlBlock(lines: YamlLine[], start: number, indent: number): { val
  * Handles the subset emitted by Health.md: scalars, inline arrays, block arrays,
  * and nested mappings such as `heart_rate_zones.zone1.seconds`.
  */
-function parseFrontmatter(content: string): ParsedFrontmatter {
+export function parseFrontmatter(content: string): ParsedFrontmatter {
 	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
 	if (!match) return { frontmatter: null, body: content };
 
@@ -302,6 +310,43 @@ function mergeFrontmatter(
 ): Record<string, unknown> {
 	if (!cached) return parsed;
 	return { ...parsed, ...cached };
+}
+
+function applyFrontmatterAliases(
+	frontmatter: Record<string, unknown>,
+	aliases: FrontmatterAliasMap | undefined
+): Record<string, unknown> {
+	if (!aliases || !Object.keys(aliases).length) return frontmatter;
+	const normalized = { ...frontmatter };
+	for (const [outputKey, canonicalKey] of Object.entries(aliases)) {
+		if (normalized[canonicalKey] === undefined && normalized[outputKey] !== undefined) {
+			normalized[canonicalKey] = normalized[outputKey];
+		}
+	}
+
+	if (isRecord(normalized.units)) {
+		const units = { ...normalized.units };
+		for (const [outputKey, canonicalKey] of Object.entries(aliases)) {
+			if (units[canonicalKey] === undefined && typeof units[outputKey] === "string") {
+				units[canonicalKey] = units[outputKey];
+			}
+		}
+		normalized.units = units;
+	}
+	return normalized;
+}
+
+function mergeUnitMaps(
+	dictionaryUnits: HealthMdUnitMap | undefined,
+	frontmatterUnits: unknown
+): HealthMdUnitMap | undefined {
+	const hasDictionaryUnits = dictionaryUnits && Object.keys(dictionaryUnits).length > 0;
+	const hasFrontmatterUnits = isUnitMap(frontmatterUnits);
+	if (!hasDictionaryUnits && !hasFrontmatterUnits) return undefined;
+	return {
+		...(hasDictionaryUnits ? dictionaryUnits : {}),
+		...(hasFrontmatterUnits ? frontmatterUnits : {}),
+	};
 }
 
 function getBool(fm: Record<string, unknown>, key: string): boolean | undefined {
@@ -972,10 +1017,20 @@ function parseWorkoutEntry(
  */
 export function parseMarkdown(
 	content: string,
-	cachedFrontmatter?: Record<string, unknown>
+	cachedFrontmatter?: Record<string, unknown>,
+	frontmatterAliases?: FrontmatterAliasMap,
+	dictionaryUnits?: HealthMdUnitMap
 ): HealthDay | null {
 	const parsed = parseFrontmatter(content);
-	const fm = mergeFrontmatter(parsed.frontmatter ?? {}, cachedFrontmatter);
+	const fm = applyFrontmatterAliases(
+		mergeFrontmatter(parsed.frontmatter ?? {}, cachedFrontmatter),
+		frontmatterAliases
+	);
+
+	const schema = getFirstStr(fm, "schema", "Schema");
+	const frontmatterType = normalizeLabel(getFirstStr(fm, "type", "Type") ?? "");
+	if (schema === HEALTHMD_ROLLUP_SCHEMA || frontmatterType === "health_rollup") return null;
+	if (schema && schema !== HEALTHMD_HEALTH_DATA_SCHEMA && !frontmatterIndicatesWorkout(fm)) return null;
 
 	// Must have a date. Health.md normally emits `date`, but accept a few common
 	// aliases and a title/body ISO date so markdown exports without metadata can
@@ -983,12 +1038,23 @@ export function parseMarkdown(
 	const rawDate = getFirstStr(fm, "date", "Date", "day", "Day") ?? extractDateFromContent(content);
 	if (!rawDate) return null;
 	const date = rawDate.slice(0, 10);
+	const schemaVersion = schemaVersionOf({ schemaVersion: getFirstNum(fm, "schemaVersion"), schema_version: getFirstNum(fm, "schema_version") });
+	const rawUnits = fm.units;
+	const unitsMap = mergeUnitMaps(dictionaryUnits, rawUnits);
+	const explicitUnitSystem = getFirstStr(fm, "unit_system", "unitSystem");
+	const unitSystem = explicitUnitSystem ?? (schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : undefined);
 
 	const granular = parseGranularMarkdownData(parsed.body, date);
 
 	const day: HealthDay = {
 		type: "health-data",
 		date,
+		schema,
+		schemaVersion,
+		schema_version: schemaVersion || undefined,
+		units: unitsMap ?? (typeof rawUnits === "string" ? rawUnits : unitSystem),
+		unitSystem,
+		unit_system: unitSystem,
 	};
 
 	const workout = parseWorkoutEntry(fm, parsed.body, date);
@@ -1000,12 +1066,20 @@ export function parseMarkdown(
 	// Bases keys: steps, active_calories, exercise_minutes, walking_running_km, vo2_max, etc.
 	// Also check JSON-style keys that might appear in frontmatter.
 	const steps = getFirstNum(fm, "steps", "activity_steps");
-	const walkingRunningDistanceKm = getFirstNum(
+	const walkingRunningDistanceKmRaw = getFirstNum(
 		fm,
 		"walking_running_km",
 		"walking_running_distance_km",
 		"walkingRunningDistanceKm"
 	);
+	const walkingRunningDistanceMi = getFirstNum(
+		fm,
+		"walking_running_mi",
+		"walking_running_distance_mi",
+		"walkingRunningDistanceMi"
+	);
+	const walkingRunningDistanceKm = walkingRunningDistanceKmRaw ??
+		(walkingRunningDistanceMi !== undefined ? walkingRunningDistanceMi * 1.609344 : undefined);
 	const activeCalories = getFirstNum(fm, "active_calories", "activity_active_calories", "activeCalories");
 	const exerciseMinutes = getFirstNum(fm, "exercise_minutes", "activity_exercise_minutes", "exerciseMinutes");
 	const vo2Max = getFirstNum(fm, "vo2_max", "vo2max", "vo2Max", "activity_vo2_max");
@@ -1031,6 +1105,7 @@ export function parseMarkdown(
 		day.activity = {
 			steps: steps ?? 0,
 			walkingRunningDistanceKm: walkingRunningDistanceKm ?? 0,
+			walkingRunningDistance: walkingRunningDistanceKm !== undefined ? walkingRunningDistanceKm * 1000 : undefined,
 			activeCalories: activeCalories ?? 0,
 			exerciseMinutes: exerciseMinutes ?? 0,
 			vo2Max,

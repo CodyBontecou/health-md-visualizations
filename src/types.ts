@@ -1,3 +1,5 @@
+import type { HealthMdUnitMap } from "./healthmd-schema";
+
 export interface TimeSeriesSample {
 	timestamp: string;
 	value: number;
@@ -93,12 +95,52 @@ export interface WorkoutEntry {
 	timeSeries?: WorkoutTimeSeries;
 }
 
+export type HealthRollupPeriod = "weekly" | "monthly" | "yearly";
+
+export interface HealthRollupSummary {
+	type: "health_rollup";
+	schema: string;
+	schemaVersion?: number;
+	schema_version?: number;
+	rollupPeriod: HealthRollupPeriod;
+	rollup_period: HealthRollupPeriod;
+	periodId: string;
+	period_id: string;
+	startDate?: string;
+	start_date?: string;
+	endDate?: string;
+	end_date?: string;
+	daysExpected?: number;
+	days_expected?: number;
+	daysCounted?: number;
+	days_counted?: number;
+	coveragePercent?: number;
+	coverage_percent?: number;
+	sourceSchema?: string;
+	source_schema?: string;
+	sourceSchemaVersion?: number;
+	source_schema_version?: number;
+	metrics?: Record<string, unknown>;
+	sourcePaths?: string[];
+}
+
 export interface HealthDay {
 	type: string;
 	date: string;
+	/** Health.md export schema identifier, e.g. healthmd.health_data. */
+	schema?: string;
+	/** Normalized schema version. Legacy/unversioned files are treated as 0. */
+	schemaVersion?: number;
+	/** Raw snake_case schema version from JSON/frontmatter when present. */
+	schema_version?: number;
 	/** Vault-relative paths for files that contributed this day. Added at load time. */
 	sourcePaths?: string[];
-	units?: string;
+	/** Legacy files used "metric"/"imperial" here; schema v1 uses a per-field unit map. */
+	units?: string | HealthMdUnitMap;
+	/** Normalized unit system from versioned exports (`unit_system`) or legacy `units`. */
+	unitSystem?: string;
+	/** Raw snake_case unit system from JSON/frontmatter when present. */
+	unit_system?: string;
 	activity?: {
 		steps: number;
 		walkingRunningDistanceKm: number;
