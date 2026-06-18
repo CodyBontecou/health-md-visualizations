@@ -9590,124 +9590,706 @@ var import_obsidian5 = require("obsidian");
 // src/data-loader.ts
 var import_obsidian = require("obsidian");
 
+// src/data-folder-layout.ts
+var SUPPORTED_DATA_EXTENSIONS = ["json", "csv", "md"];
+var DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE = "{year}/{month}/{day}";
+var DATA_FOLDER_PATH_TEMPLATE_VARIABLES = [
+  "year",
+  "month",
+  "week",
+  "day",
+  "date"
+];
+var MAX_CUSTOM_DATA_FOLDER_DEPTH = 8;
+var PREDEFINED_DATA_FOLDER_MAX_DEPTH = {
+  flat: 0,
+  year: 1,
+  month: 2,
+  week: 3,
+  day: 4
+};
+function dataFolderMaxDepth(granularity, customTemplate = DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE) {
+  if (granularity === "custom") {
+    return customDataFolderPathTemplateDepth(customTemplate);
+  }
+  return PREDEFINED_DATA_FOLDER_MAX_DEPTH[granularity];
+}
+function customDataFolderPathTemplateDepth(template) {
+  const normalized = normalizeDataFolderPathTemplate(template);
+  if (!normalized) return 0;
+  return Math.min(normalized.split("/").length, MAX_CUSTOM_DATA_FOLDER_DEPTH);
+}
+function normalizeDataFolderPathTemplate(template) {
+  const normalized = stripPathControlCharacters(
+    template.trim().replace(/\\/g, "/")
+  ).replace(/\/+$/g, "").replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+  const safeSegments = normalized.split("/").map((segment) => segment.trim()).filter((segment) => segment.length > 0 && segment !== "." && segment !== "..").slice(0, MAX_CUSTOM_DATA_FOLDER_DEPTH);
+  return safeSegments.join("/") || DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE;
+}
+function isSupportedDataExtension(extension) {
+  return SUPPORTED_DATA_EXTENSIONS.includes(extension);
+}
+function matchesGlob(candidate, pattern) {
+  if (!pattern || pattern === "*" || pattern === "*.*") return true;
+  const regex = new RegExp(
+    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+    "i"
+  );
+  return regex.test(candidate);
+}
+function relativePathFromRoot(rootPath, filePath) {
+  const normalizedRoot = rootPath.replace(/\/+$/g, "");
+  if (!normalizedRoot) return filePath;
+  const prefix = `${normalizedRoot}/`;
+  return filePath.startsWith(prefix) ? filePath.slice(prefix.length) : filePath;
+}
+function matchesDataFilePath({
+  name,
+  extension,
+  path,
+  rootPath,
+  pattern
+}) {
+  if (!isSupportedDataExtension(extension)) return false;
+  if (matchesGlob(name, pattern)) return true;
+  return matchesGlob(relativePathFromRoot(rootPath, path), pattern);
+}
+function stripPathControlCharacters(value) {
+  var _a;
+  let result = "";
+  for (const character of value) {
+    const codePoint = (_a = character.codePointAt(0)) != null ? _a : 0;
+    if (codePoint >= 32 && codePoint !== 127) {
+      result += character;
+    }
+  }
+  return result;
+}
+
+// src/healthmd-schema.ts
+var HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
+var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
+var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
+var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 3;
+function schemaVersionOf(value) {
+  var _a;
+  const raw = (_a = value.schemaVersion) != null ? _a : value.schema_version;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+function schemaIsFutureVersion(version) {
+  return version > SUPPORTED_HEALTHMD_SCHEMA_VERSION;
+}
+function isUnitMap(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every((item) => typeof item === "string");
+}
+function isHealthMetricDataDictionaryValue(value) {
+  if (!Array.isArray(value)) return false;
+  return value.some((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
+    const record = entry;
+    return typeof record.key === "string" && typeof record.canonicalKey === "string";
+  });
+}
+function detectKnownSchema(format, schema, version) {
+  if (schema === HEALTHMD_HEALTH_DATA_SCHEMA) {
+    return {
+      kind: "health-data",
+      version,
+      format,
+      schema,
+      isFutureVersion: schemaIsFutureVersion(version)
+    };
+  }
+  if (schema === HEALTHMD_ROLLUP_SCHEMA) {
+    return {
+      kind: "rollup-summary",
+      version,
+      format,
+      schema,
+      isFutureVersion: schemaIsFutureVersion(version)
+    };
+  }
+  return {
+    kind: "unknown",
+    version,
+    format,
+    schema,
+    reason: schema ? `Unsupported Health.md schema: ${schema}` : "No recognizable Health.md schema metadata"
+  };
+}
+function detectJsonSchema(contentOrValue) {
+  try {
+    const parsed = typeof contentOrValue === "string" ? JSON.parse(contentOrValue) : contentOrValue;
+    if (isHealthMetricDataDictionaryValue(parsed)) {
+      return { kind: "data-dictionary", version: schemaVersionOfDictionaryValue(parsed), format: "json" };
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { kind: "unknown", version: 0, format: "json", reason: "JSON root is not an object" };
+    }
+    const record = parsed;
+    const schema = typeof record.schema === "string" ? record.schema : void 0;
+    const version = schemaVersionOf(record);
+    if (schema) return detectKnownSchema("json", schema, version);
+    if (record.type === "health-data" && typeof record.date === "string") {
+      return { kind: "legacy-health-day", version: 0, format: "json" };
+    }
+    if (record.type === "health_rollup") {
+      return { kind: "rollup-summary", version, format: "json", schema: HEALTHMD_ROLLUP_SCHEMA };
+    }
+    return { kind: "unknown", version, format: "json", reason: "JSON is not a Health.md daily export" };
+  } catch (e) {
+    return { kind: "unknown", version: 0, format: "json", reason: "Invalid JSON" };
+  }
+}
+function detectFrontmatterSchema(frontmatter) {
+  var _a, _b;
+  if (!frontmatter) {
+    return { kind: "unknown", version: 0, format: "markdown", reason: "No frontmatter" };
+  }
+  const schema = stringValue((_a = frontmatter.schema) != null ? _a : frontmatter.Schema);
+  const version = schemaVersionOf({
+    schemaVersion: frontmatter.schemaVersion,
+    schema_version: frontmatter.schema_version
+  });
+  if (schema) return detectKnownSchema("markdown", schema, version);
+  const type = stringValue((_b = frontmatter.type) != null ? _b : frontmatter.Type);
+  if (type === "health-data" || type === "health_data") {
+    return { kind: "legacy-health-day", version: 0, format: "markdown" };
+  }
+  if (type === "health_rollup") {
+    return { kind: "rollup-summary", version, format: "markdown", schema: HEALTHMD_ROLLUP_SCHEMA };
+  }
+  if (frontmatter.date !== void 0 || frontmatter.Date !== void 0 || frontmatter.day !== void 0 || frontmatter.Day !== void 0) {
+    return { kind: "legacy-health-day", version: 0, format: "markdown" };
+  }
+  return { kind: "unknown", version, format: "markdown", reason: "Frontmatter is not a Health.md daily export" };
+}
+function detectCsvSchema(content) {
+  var _a, _b, _c;
+  const lines = content.split(/\r?\n/).filter((line) => line.trim());
+  if (!lines.length) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
+  const header = parseCsvLine(lines[0]).map(normalizeCsvLabel);
+  if (header[0] === "period" && header[1] === "period id") {
+    return { kind: "rollup-summary", version: SUPPORTED_HEALTHMD_SCHEMA_VERSION, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+  }
+  if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
+    return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };
+  }
+  let schema;
+  let version = 0;
+  for (let i = 1; i < Math.min(lines.length, 40); i++) {
+    const parts = parseCsvLine(lines[i]);
+    if (normalizeCsvLabel((_a = parts[1]) != null ? _a : "") !== "metadata") continue;
+    const metric = normalizeCsvLabel((_b = parts[2]) != null ? _b : "");
+    const value = ((_c = parts[3]) != null ? _c : "").trim();
+    if (metric === "schema") schema = value;
+    else if (metric === "schema version" || metric === "schema_version") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) version = parsed;
+    }
+  }
+  if (schema) return detectKnownSchema("csv", schema, version);
+  return { kind: "legacy-health-day", version: 0, format: "csv" };
+}
+function parseHealthMetricDataDictionaryDetails(content) {
+  const empty = {
+    aliases: {},
+    unitsByCanonicalKey: {},
+    dailyAggregationByCanonicalKey: {},
+    rollupByCanonicalKey: {},
+    schemaVersion: 0
+  };
+  try {
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed)) return empty;
+    const result = {
+      aliases: {},
+      unitsByCanonicalKey: {},
+      dailyAggregationByCanonicalKey: {},
+      rollupByCanonicalKey: {},
+      schemaVersion: schemaVersionOfDictionaryValue(parsed)
+    };
+    for (const entry of parsed) {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+      const {
+        key,
+        canonicalKey,
+        unit,
+        aggregation,
+        dailyAggregation,
+        rollup
+      } = entry;
+      if (typeof canonicalKey !== "string" || !canonicalKey) continue;
+      if (typeof key === "string" && key && key !== canonicalKey) {
+        result.aliases[key] = canonicalKey;
+      }
+      if (typeof unit === "string") {
+        result.unitsByCanonicalKey[canonicalKey] = unit;
+      }
+      const aggregationValue = dailyAggregation != null ? dailyAggregation : aggregation;
+      if (typeof aggregationValue === "string") {
+        result.dailyAggregationByCanonicalKey[canonicalKey] = aggregationValue;
+      }
+      if (rollup !== void 0) {
+        result.rollupByCanonicalKey[canonicalKey] = rollup;
+      }
+    }
+    return result;
+  } catch (e) {
+    return empty;
+  }
+}
+function schemaVersionOfDictionaryValue(value) {
+  if (!Array.isArray(value)) return 0;
+  let maxVersion = 0;
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const version = schemaVersionOf({ schemaVersion: entry.schemaVersion });
+    if (version > maxVersion) maxVersion = version;
+  }
+  return maxVersion;
+}
+function stringValue(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return void 0;
+}
+function normalizeCsvLabel(value) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+function parseCsvLine(line) {
+  const fields = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  fields.push(current);
+  return fields;
+}
+
 // src/parsers/json-parser.ts
 function parseJSON(content) {
   try {
     const parsed = JSON.parse(content);
-    if (parsed.type === "health-data" && parsed.date) return parsed;
-    return null;
+    if (parsed.schema === HEALTHMD_ROLLUP_SCHEMA || parsed.type === "health_rollup") return null;
+    if (parsed.type !== "health-data" || !parsed.date) return null;
+    if (typeof parsed.schema === "string" && parsed.schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
+    const day = { ...parsed };
+    if (typeof parsed.schema === "string") day.schema = parsed.schema;
+    const schemaVersion = schemaVersionOf(parsed);
+    if (schemaVersion > 0) {
+      day.schemaVersion = schemaVersion;
+      day.schema_version = schemaVersion;
+    }
+    if (typeof parsed.unit_system === "string") {
+      day.unitSystem = parsed.unit_system;
+      day.unit_system = parsed.unit_system;
+    }
+    if (isUnitMap(parsed.units)) {
+      day.units = parsed.units;
+    }
+    return day;
   } catch (e) {
     return null;
   }
 }
 
 // src/parsers/csv-parser.ts
+function parseCsvLine2(line) {
+  const fields = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  fields.push(current);
+  return fields;
+}
 function parseRows(content) {
-  const lines = content.split("\n").filter((l) => l.trim());
+  var _a;
+  const lines = content.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
+  const header = parseCsvLine2(lines[0]).map(normalizeLabel);
+  if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
+    return [];
+  }
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(",");
+    const parts = parseCsvLine2(lines[i]);
     if (parts.length >= 5) {
       rows.push({
         date: parts[0].trim(),
         category: parts[1].trim(),
         metric: parts[2].trim(),
         value: parts[3].trim(),
-        unit: parts[4].trim()
+        unit: parts[4].trim(),
+        timestamp: (_a = parts[5]) == null ? void 0 : _a.trim()
       });
     }
   }
   return rows;
 }
-function getNum(rows, category, metric) {
-  const row = rows.find(
-    (r) => r.category.toLowerCase() === category.toLowerCase() && r.metric.toLowerCase() === metric.toLowerCase()
-  );
-  if (!row) return void 0;
-  const num = parseFloat(row.value);
-  return isNaN(num) ? void 0 : num;
+function normalizeLabel(value) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
-function getString(rows, category, metric) {
-  const row = rows.find(
-    (r) => r.category.toLowerCase() === category.toLowerCase() && r.metric.toLowerCase() === metric.toLowerCase()
-  );
-  return row == null ? void 0 : row.value;
+function rowMatches(row, lookup2) {
+  return normalizeLabel(row.category) === normalizeLabel(lookup2.category) && normalizeLabel(row.metric) === normalizeLabel(lookup2.metric);
 }
-function buildDayFromRows(date, rows) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
-  const day = {
-    type: "health-data",
-    date
-  };
-  const steps = getNum(rows, "Activity", "Steps");
-  if (steps !== void 0) {
-    day.activity = {
-      steps,
-      walkingRunningDistanceKm: (_a = getNum(rows, "Activity", "Walking Running Distance")) != null ? _a : 0,
-      activeCalories: (_b = getNum(rows, "Activity", "Active Calories")) != null ? _b : 0,
-      exerciseMinutes: (_c = getNum(rows, "Activity", "Exercise Minutes")) != null ? _c : 0,
-      vo2Max: getNum(rows, "Activity", "VO2 Max"),
-      basalEnergyBurned: getNum(rows, "Activity", "Basal Energy Burned"),
-      standHours: getNum(rows, "Activity", "Stand Hours"),
-      flightsClimbed: getNum(rows, "Activity", "Flights Climbed")
-    };
-    const distM = getNum(rows, "Activity", "Walking Running Distance");
-    if (distM !== void 0 && distM > 100) {
-      day.activity.walkingRunningDistanceKm = distM / 1e3;
+function findRow(rows, lookups) {
+  for (const lookup2 of lookups) {
+    const row = rows.find((candidate) => rowMatches(candidate, lookup2));
+    if (row) return row;
+  }
+  return void 0;
+}
+function findRows(rows, lookups) {
+  const matches = [];
+  for (const row of rows) {
+    if (lookups.some((lookup2) => rowMatches(row, lookup2))) {
+      matches.push(row);
     }
   }
+  return matches;
+}
+function parseNumber(value) {
+  const num = parseFloat(value.replace(/,/g, ""));
+  return isNaN(num) ? void 0 : num;
+}
+function getNumFromLookups(rows, lookups) {
+  const row = findRow(rows, lookups);
+  if (!row) return void 0;
+  return parseNumber(row.value);
+}
+function getStringFromLookups(rows, lookups) {
+  const row = findRow(rows, lookups);
+  return row == null ? void 0 : row.value;
+}
+function getNum(rows, category, metric) {
+  return getNumFromLookups(rows, [{ category, metric }]);
+}
+function getString(rows, category, metric) {
+  return getStringFromLookups(rows, [{ category, metric }]);
+}
+function lookup(category, metric) {
+  return { category, metric };
+}
+function normalizeDistanceKm(row) {
+  if (!row) return void 0;
+  const value = parseNumber(row.value);
+  if (value === void 0) return void 0;
+  const unit = normalizeLabel(row.unit);
+  if (unit === "km" || unit.includes("kilometer")) return value;
+  if (unit === "mi" || unit.includes("mile")) return value * 1.609344;
+  if (unit === "m" || unit.includes("meter") || value > 100) return value / 1e3;
+  return value;
+}
+function normalizePercent(value) {
+  if (value === void 0) return void 0;
+  return value > 0 && value <= 1 ? value * 100 : value;
+}
+function average(values) {
+  if (!values.length) return void 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+function formatLocalDateTime(ms) {
+  const d = new Date(ms);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const sec = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
+}
+function timestampFromClock(date, rawClock) {
+  var _a;
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(rawClock.trim());
+  if (!match) return void 0;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  const s = Number((_a = match[3]) != null ? _a : 0);
+  if (h > 23 || m > 59 || s > 59) return void 0;
+  return `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+function normalizeTimestamp(date, raw) {
+  const value = raw == null ? void 0 : raw.trim();
+  if (!value) return void 0;
+  if (isFinite(Date.parse(value))) return value;
+  return timestampFromClock(date, value);
+}
+function samplesFromRows(rows, lookups, transformValue = (value) => value) {
+  const samples = [];
+  for (const row of findRows(rows, lookups)) {
+    const parsedValue = parseNumber(row.value);
+    const timestamp = normalizeTimestamp(row.date, row.timestamp);
+    if (parsedValue === void 0 || !timestamp) continue;
+    const value = transformValue(parsedValue);
+    if (value === void 0) continue;
+    samples.push({ timestamp, value });
+  }
+  return samples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+function normalizeSleepStage(stage) {
+  const normalized = normalizeLabel(stage).replace(/^asleep[_\s-]*/, "").replace(/^sleep[_\s-]*/, "");
+  if (normalized === "light") return "core";
+  if (normalized.includes("deep")) return "deep";
+  if (normalized.includes("rem")) return "rem";
+  if (normalized.includes("awake")) return "awake";
+  if (normalized.includes("core")) return "core";
+  return normalized || "core";
+}
+function parseStageDurationSeconds(value) {
+  const match = /\(([0-9]+(?:\.[0-9]+)?)\s*s(?:ec(?:onds?)?)?\)/i.exec(value);
+  if (match) return Number(match[1]);
+  return void 0;
+}
+function parseSleepStages(rows) {
+  const stages = [];
+  for (const row of rows) {
+    if (normalizeLabel(row.category) !== "sleep") continue;
+    const metric = normalizeLabel(row.metric);
+    if (metric === "sleep stage") {
+      const durationSeconds = parseStageDurationSeconds(row.value);
+      const startDate = normalizeTimestamp(row.date, row.timestamp);
+      if (durationSeconds === void 0 || !startDate) continue;
+      const stageName = row.value.replace(/\s*\([^)]+\)\s*$/, "");
+      const startMs = Date.parse(startDate);
+      if (!isFinite(startMs)) continue;
+      stages.push({
+        stage: normalizeSleepStage(stageName),
+        startDate,
+        endDate: formatLocalDateTime(startMs + durationSeconds * 1e3),
+        durationSeconds
+      });
+      continue;
+    }
+    if (metric.startsWith("stage ")) {
+      const rangeMatch = /^(\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(\d{1,2}:\d{2}(?::\d{2})?)$/.exec(row.value.trim());
+      if (!rangeMatch) continue;
+      const startDate = timestampFromClock(row.date, rangeMatch[1]);
+      const endDateBase = timestampFromClock(row.date, rangeMatch[2]);
+      if (!startDate || !endDateBase) continue;
+      const startMs = Date.parse(startDate);
+      let endMs = Date.parse(endDateBase);
+      if (!isFinite(startMs) || !isFinite(endMs)) continue;
+      if (endMs <= startMs) endMs += 864e5;
+      stages.push({
+        stage: normalizeSleepStage(row.metric.replace(/^stage\s+/i, "")),
+        startDate,
+        endDate: formatLocalDateTime(endMs),
+        durationSeconds: Math.round((endMs - startMs) / 1e3)
+      });
+    }
+  }
+  return stages.sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+function sumStageSeconds(stages, stageName) {
+  return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
+}
+function buildDayFromRows(date, rows) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
+  const schema = getString(rows, "Metadata", "schema");
+  if (schema === HEALTHMD_ROLLUP_SCHEMA) return null;
+  if (schema && schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
+  const schemaVersion = schemaVersionOf({ schema_version: getNum(rows, "Metadata", "schema_version") });
+  const unitSystem = getString(rows, "Metadata", "unit_system");
+  const day = {
+    type: "health-data",
+    date,
+    schema,
+    schemaVersion,
+    schema_version: schemaVersion || void 0,
+    unitSystem,
+    unit_system: unitSystem
+  };
+  const steps = getNum(rows, "Activity", "Steps");
+  const activeCalories = getNum(rows, "Activity", "Active Calories");
+  const exerciseMinutes = getNum(rows, "Activity", "Exercise Minutes");
+  const distanceRow = findRow(rows, [lookup("Activity", "Walking Running Distance")]);
+  const walkingRunningDistanceKm = normalizeDistanceKm(distanceRow);
+  const basalEnergyBurned = getNumFromLookups(rows, [
+    lookup("Activity", "Basal Energy Burned"),
+    lookup("Activity", "Basal Energy"),
+    lookup("Activity", "Basal Calories")
+  ]);
+  const flightsClimbed = getNumFromLookups(rows, [
+    lookup("Activity", "Flights Climbed"),
+    lookup("Activity", "Floors Climbed")
+  ]);
+  const vo2Max = getNumFromLookups(rows, [
+    lookup("Activity", "VO2 Max"),
+    lookup("Activity", "Cardio Fitness (VO2 Max)"),
+    lookup("Mobility", "VO2 Max")
+  ]);
+  const standHours = getNum(rows, "Activity", "Stand Hours");
+  if (steps !== void 0 || activeCalories !== void 0 || exerciseMinutes !== void 0 || walkingRunningDistanceKm !== void 0 || basalEnergyBurned !== void 0 || flightsClimbed !== void 0 || vo2Max !== void 0 || standHours !== void 0) {
+    day.activity = {
+      steps: steps != null ? steps : 0,
+      walkingRunningDistanceKm: walkingRunningDistanceKm != null ? walkingRunningDistanceKm : 0,
+      walkingRunningDistance: walkingRunningDistanceKm !== void 0 ? walkingRunningDistanceKm * 1e3 : void 0,
+      activeCalories: activeCalories != null ? activeCalories : 0,
+      exerciseMinutes: exerciseMinutes != null ? exerciseMinutes : 0,
+      vo2Max,
+      basalEnergyBurned,
+      standHours,
+      flightsClimbed
+    };
+  }
+  const heartRateSamples = samplesFromRows(rows, [lookup("Heart", "Heart Rate Sample")]);
+  const hrvSamples = samplesFromRows(rows, [lookup("Heart", "HRV Sample")]);
+  const heartValues = heartRateSamples.map((sample) => sample.value);
   const restingHR = getNum(rows, "Heart", "Resting Heart Rate");
-  const avgHR = getNum(rows, "Heart", "Average Heart Rate");
-  if (restingHR !== void 0 || avgHR !== void 0) {
+  const avgHR = (_a = getNum(rows, "Heart", "Average Heart Rate")) != null ? _a : average(heartValues);
+  const heartRateMin = (_b = getNumFromLookups(rows, [
+    lookup("Heart", "Heart Rate Min"),
+    lookup("Heart", "Min Heart Rate")
+  ])) != null ? _b : heartValues.length ? Math.min(...heartValues) : void 0;
+  const heartRateMax = (_c = getNumFromLookups(rows, [
+    lookup("Heart", "Heart Rate Max"),
+    lookup("Heart", "Max Heart Rate")
+  ])) != null ? _c : heartValues.length ? Math.max(...heartValues) : void 0;
+  if (restingHR !== void 0 || avgHR !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || heartRateSamples.length || hrvSamples.length) {
     day.heart = {
       averageHeartRate: (_d = avgHR != null ? avgHR : restingHR) != null ? _d : 0,
-      heartRateMin: (_e = getNum(rows, "Heart", "Heart Rate Min")) != null ? _e : 0,
-      heartRateMax: (_f = getNum(rows, "Heart", "Heart Rate Max")) != null ? _f : 0,
-      heartRateSamples: [],
+      heartRateMin: (_f = (_e = heartRateMin != null ? heartRateMin : avgHR) != null ? _e : restingHR) != null ? _f : 0,
+      heartRateMax: (_h = (_g = heartRateMax != null ? heartRateMax : avgHR) != null ? _g : restingHR) != null ? _h : 0,
+      heartRateSamples,
+      hrvSamples,
       restingHeartRate: restingHR,
       walkingHeartRateAverage: getNum(rows, "Heart", "Walking Heart Rate Average"),
-      hrv: getNum(rows, "Heart", "HRV")
+      hrv: (_i = getNum(rows, "Heart", "HRV")) != null ? _i : average(hrvSamples.map((sample) => sample.value))
     };
   }
-  const sleepTotal = getNum(rows, "Sleep", "Total Duration");
-  if (sleepTotal !== void 0) {
+  const sleepStages = parseSleepStages(rows);
+  const sleepTotal = (_j = getNum(rows, "Sleep", "Total Duration")) != null ? _j : sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
+  const deepSleep = (_k = getNum(rows, "Sleep", "Deep Sleep")) != null ? _k : sumStageSeconds(sleepStages, "deep");
+  const remSleep = (_l = getNum(rows, "Sleep", "REM Sleep")) != null ? _l : sumStageSeconds(sleepStages, "rem");
+  const coreSleep = (_m = getNumFromLookups(rows, [
+    lookup("Sleep", "Core Sleep"),
+    lookup("Sleep", "Light Sleep")
+  ])) != null ? _m : sumStageSeconds(sleepStages, "core");
+  const awakeTime = (_n = getNum(rows, "Sleep", "Awake Time")) != null ? _n : sumStageSeconds(sleepStages, "awake");
+  if (sleepTotal > 0 || sleepStages.length) {
     day.sleep = {
-      sleepStages: [],
+      sleepStages,
       totalDuration: sleepTotal,
-      deepSleep: (_g = getNum(rows, "Sleep", "Deep Sleep")) != null ? _g : 0,
-      remSleep: (_h = getNum(rows, "Sleep", "REM Sleep")) != null ? _h : 0,
-      coreSleep: (_i = getNum(rows, "Sleep", "Core Sleep")) != null ? _i : 0,
-      awakeTime: getNum(rows, "Sleep", "Awake Time"),
-      bedtime: (_j = getString(rows, "Sleep", "Bedtime")) != null ? _j : "",
-      wakeTime: (_k = getString(rows, "Sleep", "Wake Time")) != null ? _k : ""
+      deepSleep,
+      remSleep,
+      coreSleep,
+      awakeTime,
+      bedtime: (_q = (_p = getString(rows, "Sleep", "Bedtime")) != null ? _p : (_o = sleepStages[0]) == null ? void 0 : _o.startDate) != null ? _q : "",
+      bedtimeISO: (_r = sleepStages[0]) == null ? void 0 : _r.startDate,
+      wakeTime: (_u = (_t = getString(rows, "Sleep", "Wake Time")) != null ? _t : (_s = sleepStages[sleepStages.length - 1]) == null ? void 0 : _s.endDate) != null ? _u : "",
+      wakeTimeISO: (_v = sleepStages[sleepStages.length - 1]) == null ? void 0 : _v.endDate
     };
   }
-  const respRate = getNum(rows, "Vitals", "Respiratory Rate");
-  const bloodOx = getNum(rows, "Vitals", "Blood Oxygen");
-  if (respRate !== void 0 || bloodOx !== void 0) {
+  const respiratorySamples = samplesFromRows(rows, [lookup("Vitals", "Respiratory Rate Sample")]);
+  const respiratoryValues = respiratorySamples.map((sample) => sample.value);
+  const respRateAvg = (_w = getNumFromLookups(rows, [
+    lookup("Vitals", "Respiratory Rate"),
+    lookup("Vitals", "Respiratory Rate Avg")
+  ])) != null ? _w : average(respiratoryValues);
+  const bloodOxygenSamples = samplesFromRows(
+    rows,
+    [
+      lookup("Vitals", "Blood Oxygen Sample"),
+      lookup("Vitals", "SpO2 Sample"),
+      lookup("Vitals", "SpO\u2082 Sample")
+    ],
+    normalizePercent
+  ).map((sample) => ({ ...sample, percent: sample.value }));
+  const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
+  const bloodOxAvg = (_x = normalizePercent(getNumFromLookups(rows, [
+    lookup("Vitals", "Blood Oxygen"),
+    lookup("Vitals", "Blood Oxygen Avg"),
+    lookup("Vitals", "SpO2"),
+    lookup("Vitals", "SpO2 Avg"),
+    lookup("Vitals", "SpO\u2082"),
+    lookup("Vitals", "SpO\u2082 Avg")
+  ]))) != null ? _x : average(bloodOxygenValues);
+  const bloodOxMin = (_y = normalizePercent(getNumFromLookups(rows, [
+    lookup("Vitals", "Blood Oxygen Min"),
+    lookup("Vitals", "SpO2 Min"),
+    lookup("Vitals", "SpO\u2082 Min")
+  ]))) != null ? _y : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_z = normalizePercent(getNumFromLookups(rows, [
+    lookup("Vitals", "Blood Oxygen Max"),
+    lookup("Vitals", "SpO2 Max"),
+    lookup("Vitals", "SpO\u2082 Max")
+  ]))) != null ? _z : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  if (respRateAvg !== void 0 || respiratorySamples.length || bloodOxAvg !== void 0 || bloodOxygenSamples.length) {
     day.vitals = {
-      respiratoryRate: respRate,
-      bloodOxygenPercent: bloodOx,
-      bloodOxygenAvg: bloodOx
+      respiratoryRate: respRateAvg,
+      respiratoryRateAvg: respRateAvg,
+      respiratoryRateMin: (_A = getNum(rows, "Vitals", "Respiratory Rate Min")) != null ? _A : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0,
+      respiratoryRateMax: (_B = getNum(rows, "Vitals", "Respiratory Rate Max")) != null ? _B : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0,
+      respiratoryRateSamples: respiratorySamples.length ? respiratorySamples : void 0,
+      bloodOxygenPercent: bloodOxAvg,
+      bloodOxygenAvg: bloodOxAvg,
+      bloodOxygenMin: bloodOxMin,
+      bloodOxygenMax: bloodOxMax,
+      bloodOxygenSamples: bloodOxygenSamples.length ? bloodOxygenSamples : void 0
     };
   }
   const walkSpeed = getNum(rows, "Mobility", "Walking Speed");
   if (walkSpeed !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_l = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _l : 0,
+      walkingAsymmetryPercentage: (_E = (_D = (_C = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _C : getNum(rows, "Mobility", "Walking Asymmetry Percent")) != null ? _D : getNum(rows, "Mobility", "Walking Asymmetry")) != null ? _E : 0,
       walkingStepLength: getNum(rows, "Mobility", "Walking Step Length"),
-      walkingDoubleSupportPercentage: getNum(rows, "Mobility", "Walking Double Support Percentage")
+      walkingDoubleSupportPercentage: (_F = getNum(rows, "Mobility", "Walking Double Support Percentage")) != null ? _F : getNum(rows, "Mobility", "Walking Double Support Percent")
     };
   }
-  const headphone = getNum(rows, "Hearing", "Headphone Audio Level");
+  const headphone = getNumFromLookups(rows, [
+    lookup("Hearing", "Headphone Audio Level"),
+    lookup("Hearing", "Headphone Audio")
+  ]);
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }
   return day;
 }
 function parseCSV(content) {
+  const detected = detectCsvSchema(content);
+  if (detected.kind === "rollup-summary" || detected.kind === "data-dictionary" || detected.kind === "unknown") return [];
   const rows = parseRows(content);
   if (!rows.length) return [];
   const byDate = /* @__PURE__ */ new Map();
@@ -9721,63 +10303,187 @@ function parseCSV(content) {
   }
   const days = [];
   for (const [date, dateRows] of byDate) {
-    days.push(buildDayFromRows(date, dateRows));
+    const day = buildDayFromRows(date, dateRows);
+    if (day) days.push(day);
   }
   return days;
 }
 
 // src/parsers/markdown-parser.ts
-function parseFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return null;
-  const yaml = match[1];
-  const result = {};
-  for (const line of yaml.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const colonIdx = trimmed.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = trimmed.slice(0, colonIdx).trim();
-    let val = trimmed.slice(colonIdx + 1).trim();
-    if (!val) continue;
-    if (val.startsWith("[") && val.endsWith("]")) {
-      const inner = val.slice(1, -1);
-      result[key] = inner.split(",").map((s) => s.trim()).filter(Boolean);
-      continue;
+function countIndent(line) {
+  const match = /^ */.exec(line);
+  return match ? match[0].length : 0;
+}
+function stripInlineComment(value) {
+  let quote = null;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if ((ch === '"' || ch === "'") && value[i - 1] !== "\\") {
+      quote = quote === ch ? null : quote != null ? quote : ch;
     }
-    if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
-      result[key] = val.slice(1, -1);
-      continue;
+    if (ch === "#" && !quote && (i === 0 || /\s/.test(value[i - 1]))) {
+      return value.slice(0, i).trimEnd();
     }
-    if (val === "true") {
-      result[key] = true;
-      continue;
-    }
-    if (val === "false") {
-      result[key] = false;
-      continue;
-    }
-    const num = Number(val);
-    if (!isNaN(num) && val !== "") {
-      result[key] = num;
-      continue;
-    }
-    result[key] = val;
   }
-  return result;
+  return value;
+}
+function splitInlineArray(inner) {
+  const parts = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if ((ch === '"' || ch === "'") && inner[i - 1] !== "\\") {
+      quote = quote === ch ? null : quote != null ? quote : ch;
+    }
+    if (ch === "," && !quote) {
+      parts.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+function parseYamlScalar(raw) {
+  let val = stripInlineComment(raw.trim());
+  if (!val) return null;
+  if (val.startsWith("[") && val.endsWith("]")) {
+    const inner = val.slice(1, -1);
+    return splitInlineArray(inner).map(parseYamlScalar);
+  }
+  if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
+    val = val.slice(1, -1);
+    return val.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  const lower = val.toLowerCase();
+  if (lower === "true") return true;
+  if (lower === "false") return false;
+  if (lower === "null" || lower === "~") return null;
+  const num = Number(val.replace(/,/g, ""));
+  if (!isNaN(num) && val !== "") return num;
+  return val;
+}
+function splitYamlKeyValue(text) {
+  const colonIdx = text.indexOf(":");
+  if (colonIdx === -1) return null;
+  const key = text.slice(0, colonIdx).trim();
+  if (!key) return null;
+  return [key, text.slice(colonIdx + 1).trim()];
+}
+function parseYamlBlock(lines, start, indent) {
+  if (start >= lines.length) return { value: {}, index: start };
+  const first = lines[start];
+  if (first.indent < indent) return { value: {}, index: start };
+  if (first.indent === indent && first.text.startsWith("- ")) {
+    const arr = [];
+    let i2 = start;
+    while (i2 < lines.length && lines[i2].indent === indent && lines[i2].text.startsWith("- ")) {
+      const rest = lines[i2].text.slice(2).trim();
+      if (!rest) {
+        const parsed = parseYamlBlock(lines, i2 + 1, indent + 2);
+        arr.push(parsed.value);
+        i2 = parsed.index;
+        continue;
+      }
+      const keyValue = splitYamlKeyValue(rest);
+      if (keyValue) {
+        const [key, rawValue] = keyValue;
+        const item = {};
+        if (rawValue) {
+          item[key] = parseYamlScalar(rawValue);
+          i2++;
+        } else {
+          const parsed = parseYamlBlock(lines, i2 + 1, indent + 2);
+          item[key] = parsed.value;
+          i2 = parsed.index;
+        }
+        while (i2 < lines.length && lines[i2].indent > indent) {
+          if (lines[i2].indent < indent + 2) break;
+          const nested = splitYamlKeyValue(lines[i2].text);
+          if (!nested) break;
+          const [nestedKey, nestedValue] = nested;
+          if (nestedValue) {
+            item[nestedKey] = parseYamlScalar(nestedValue);
+            i2++;
+          } else {
+            const parsed = parseYamlBlock(lines, i2 + 1, lines[i2].indent + 2);
+            item[nestedKey] = parsed.value;
+            i2 = parsed.index;
+          }
+        }
+        arr.push(item);
+        continue;
+      }
+      arr.push(parseYamlScalar(rest));
+      i2++;
+    }
+    return { value: arr, index: i2 };
+  }
+  const obj = {};
+  let i = start;
+  while (i < lines.length && lines[i].indent >= indent) {
+    if (lines[i].indent > indent) break;
+    if (lines[i].text.startsWith("- ")) break;
+    const keyValue = splitYamlKeyValue(lines[i].text);
+    if (!keyValue) {
+      i++;
+      continue;
+    }
+    const [key, rawValue] = keyValue;
+    if (rawValue) {
+      obj[key] = parseYamlScalar(rawValue);
+      i++;
+      continue;
+    }
+    if (i + 1 < lines.length && lines[i + 1].indent > lines[i].indent) {
+      const parsed = parseYamlBlock(lines, i + 1, lines[i + 1].indent);
+      obj[key] = parsed.value;
+      i = parsed.index;
+    } else {
+      obj[key] = null;
+      i++;
+    }
+  }
+  return { value: obj, index: i };
+}
+function parseFrontmatter(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) return { frontmatter: null, body: content };
+  const yaml = match[1];
+  const lines = yaml.split(/\r?\n/).map((line) => ({ indent: countIndent(line), text: line.trim() })).filter((line) => line.text && !line.text.startsWith("#"));
+  const parsed = parseYamlBlock(lines, 0, 0).value;
+  return {
+    frontmatter: typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : {},
+    body: content.slice(match[0].length)
+  };
+}
+function normalizeLabel2(value) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+function parseNumberValue(value) {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return void 0;
+  const normalized = value.trim().replace(/,/g, "");
+  const match = /^[-+]?\d*\.?\d+(?:e[-+]?\d+)?/i.exec(normalized);
+  if (!match) return void 0;
+  const num = Number(match[0]);
+  return isNaN(num) ? void 0 : num;
 }
 function getNum2(fm, key) {
-  const v = fm[key];
-  if (typeof v === "number") return v;
-  if (typeof v === "string") {
-    const n = parseFloat(v);
-    return isNaN(n) ? void 0 : n;
-  }
-  return void 0;
+  return parseNumberValue(fm[key]);
 }
 function getStr(fm, key) {
   const v = fm[key];
   if (typeof v === "string") return v;
+  if (v instanceof Date) {
+    const ms = v.getTime();
+    if (!Number.isFinite(ms)) return void 0;
+    const iso = v.toISOString();
+    const isMidnightUtc = v.getUTCHours() === 0 && v.getUTCMinutes() === 0 && v.getUTCSeconds() === 0 && v.getUTCMilliseconds() === 0;
+    return isMidnightUtc ? iso.slice(0, 10) : iso.replace(/\.\d{3}Z$/, "Z");
+  }
   if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
     return String(v);
   }
@@ -9808,40 +10514,645 @@ function getFirstStr(fm, ...keys) {
   }
   return void 0;
 }
-function parseMarkdown(content) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
-  const fm = parseFrontmatter(content);
-  if (!fm) return null;
-  const date = getStr(fm, "date");
-  if (!date) return null;
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function mergeFrontmatter(parsed, cached) {
+  if (!cached) return parsed;
+  return { ...parsed, ...cached };
+}
+function applyFrontmatterAliases(frontmatter, aliases) {
+  if (!aliases || !Object.keys(aliases).length) return frontmatter;
+  const normalized = { ...frontmatter };
+  for (const [outputKey, canonicalKey] of Object.entries(aliases)) {
+    if (normalized[canonicalKey] === void 0 && normalized[outputKey] !== void 0) {
+      normalized[canonicalKey] = normalized[outputKey];
+    }
+  }
+  return normalized;
+}
+function getBool(fm, key) {
+  const value = fm[key];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return void 0;
+}
+function normalizeTags(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeTags(item)).map((tag) => tag.replace(/^#/, ""));
+  }
+  if (typeof value === "string") {
+    return value.split(/[\s,]+/).map((tag) => tag.trim().replace(/^#/, "")).filter(Boolean);
+  }
+  return [];
+}
+function normalizePercent2(value) {
+  if (value === void 0) return void 0;
+  return value > 0 && value <= 1 ? value * 100 : value;
+}
+function average2(values) {
+  if (!values.length) return void 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+function pad2(value) {
+  return value < 10 ? `0${value}` : String(value);
+}
+function formatLocalDate(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+function formatLocalDateTime2(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+function addDaysIso(dateIso, days) {
+  const base = /* @__PURE__ */ new Date(`${dateIso}T00:00:00`);
+  base.setDate(base.getDate() + days);
+  return formatLocalDate(base.getTime());
+}
+function parseClockTime(raw) {
+  var _a, _b;
+  const value = raw.trim();
+  let match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (match) {
+    const h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = Number((_a = match[3]) != null ? _a : 0);
+    if (h <= 23 && m <= 59 && s <= 59) return { h, m, s };
+    return null;
+  }
+  match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap])\.?m\.?$/i.exec(value);
+  if (match) {
+    let h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = Number((_b = match[3]) != null ? _b : 0);
+    if (h < 1 || h > 12 || m > 59 || s > 59) return null;
+    const meridiem = match[4].toLowerCase();
+    if (meridiem === "p" && h !== 12) h += 12;
+    if (meridiem === "a" && h === 12) h = 0;
+    return { h, m, s };
+  }
+  return null;
+}
+function absoluteDateMs(raw) {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(raw.trim())) return void 0;
+  const ms = Date.parse(raw.trim());
+  return isFinite(ms) ? ms : void 0;
+}
+function timestampMsOnDate(date, raw, dayOffset) {
+  const absolute = absoluteDateMs(raw);
+  if (absolute !== void 0) return absolute;
+  const clock = parseClockTime(raw);
+  if (!clock) return void 0;
+  const dateForOffset = addDaysIso(date, dayOffset);
+  const ms = (/* @__PURE__ */ new Date(`${dateForOffset}T${pad2(clock.h)}:${pad2(clock.m)}:${pad2(clock.s)}`)).getTime();
+  return isFinite(ms) ? ms : void 0;
+}
+function extractDateFromContent(content) {
+  const match = /(^|\D)(\d{4}-\d{2}-\d{2})(\D|$)/.exec(content);
+  return match == null ? void 0 : match[2];
+}
+function cleanTableCell(cell) {
+  return cell.trim().replace(/<br\s*\/?\s*>/gi, " ").replace(/&nbsp;/g, " ");
+}
+function parseTableLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|") || !trimmed.includes("|")) return null;
+  const withoutEdges = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  return withoutEdges.split("|").map(cleanTableCell);
+}
+function isSeparatorRow(cells) {
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+}
+function parseMarkdownTables(body) {
+  const tables = [];
+  const lines = body.split(/\r?\n/);
+  let context = "";
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    const heading = /^#{1,6}\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      context = heading[1];
+      continue;
+    }
+    const summary = /^<summary>(.*?)<\/summary>$/i.exec(trimmed);
+    if (summary) {
+      context = summary[1];
+      continue;
+    }
+    const header = parseTableLine(lines[i]);
+    const separator = i + 1 < lines.length ? parseTableLine(lines[i + 1]) : null;
+    if (!header || !separator || !isSeparatorRow(separator)) continue;
+    const rows = [];
+    i += 2;
+    while (i < lines.length) {
+      const row = parseTableLine(lines[i]);
+      if (!row || isSeparatorRow(row)) break;
+      rows.push(row);
+      i++;
+    }
+    i--;
+    tables.push({ context, headers: header, rows });
+  }
+  return tables;
+}
+function normalizedHeaders(table) {
+  return table.headers.map((header) => normalizeLabel2(header.replace(/[*_`]/g, "")));
+}
+function findHeaderIndex(headers, predicate) {
+  for (let i = 0; i < headers.length; i++) {
+    if (predicate(headers[i])) return i;
+  }
+  return -1;
+}
+function samplesFromTimeValueTable(table, date, timeIndex, valueIndex, transformValue = (value) => value) {
+  const samples = [];
+  let dayOffset = 0;
+  let lastMs = -Infinity;
+  for (const row of table.rows) {
+    const rawTime = row[timeIndex];
+    const rawValue = row[valueIndex];
+    if (rawTime === void 0 || rawValue === void 0) continue;
+    let ms = timestampMsOnDate(date, rawTime, dayOffset);
+    while (ms !== void 0 && ms <= lastMs && absoluteDateMs(rawTime) === void 0) {
+      dayOffset++;
+      ms = timestampMsOnDate(date, rawTime, dayOffset);
+    }
+    if (ms === void 0) continue;
+    const parsed = parseNumberValue(rawValue);
+    if (parsed === void 0) continue;
+    const value = transformValue(parsed);
+    if (value === void 0) continue;
+    samples.push({ timestamp: formatLocalDateTime2(ms), value });
+    lastMs = ms;
+  }
+  return samples;
+}
+function normalizeSleepStage2(stage) {
+  const normalized = normalizeLabel2(stage).replace(/^asleep[_\s-]*/, "").replace(/^sleep[_\s-]*/, "");
+  if (normalized === "light") return "core";
+  if (normalized.includes("deep")) return "deep";
+  if (normalized.includes("rem")) return "rem";
+  if (normalized.includes("awake")) return "awake";
+  if (normalized.includes("core")) return "core";
+  return normalized || "core";
+}
+function parseDurationSeconds(raw) {
+  var _a;
+  const trimmed = raw.trim().toLowerCase();
+  let match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (match) {
+    const h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = Number((_a = match[3]) != null ? _a : 0);
+    return h * 3600 + m * 60 + s;
+  }
+  let total = 0;
+  let found = false;
+  const unitPattern = /([0-9]+(?:\.[0-9]+)?)\s*(hours?|hrs?|hr|h|minutes?|mins?|min|m|seconds?|secs?|sec|s)\b/g;
+  while ((match = unitPattern.exec(trimmed)) !== null) {
+    found = true;
+    const value = Number(match[1]);
+    const unit = match[2];
+    if (unit.startsWith("h")) total += value * 3600;
+    else if (unit.startsWith("m")) total += value * 60;
+    else total += value;
+  }
+  return found ? total : void 0;
+}
+function parseWorkoutDurationSeconds(raw) {
+  const trimmed = raw.trim().toLowerCase();
+  let match = /^(\d{1,2}):(\d{2}):(\d{2})$/.exec(trimmed);
+  if (match) {
+    return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  }
+  match = /^(\d{1,3}):(\d{2})$/.exec(trimmed);
+  if (match) {
+    return Number(match[1]) * 60 + Number(match[2]);
+  }
+  return parseDurationSeconds(raw);
+}
+function parseSleepStageRangeTable(table, date, startIndex, endIndex, stageIndex) {
+  const stages = [];
+  let dayOffset = 0;
+  let lastStartMs = -Infinity;
+  for (const row of table.rows) {
+    const rawStart = row[startIndex];
+    const rawEnd = row[endIndex];
+    const rawStage = row[stageIndex];
+    if (!rawStart || !rawEnd || !rawStage) continue;
+    let startMs = timestampMsOnDate(date, rawStart, dayOffset);
+    while (startMs !== void 0 && startMs <= lastStartMs && absoluteDateMs(rawStart) === void 0) {
+      dayOffset++;
+      startMs = timestampMsOnDate(date, rawStart, dayOffset);
+    }
+    if (startMs === void 0) continue;
+    let endMs = timestampMsOnDate(date, rawEnd, dayOffset);
+    if (endMs === void 0) continue;
+    while (endMs <= startMs && absoluteDateMs(rawEnd) === void 0) {
+      endMs += 864e5;
+    }
+    stages.push({
+      stage: normalizeSleepStage2(rawStage),
+      startDate: formatLocalDateTime2(startMs),
+      endDate: formatLocalDateTime2(endMs),
+      durationSeconds: Math.round((endMs - startMs) / 1e3)
+    });
+    lastStartMs = startMs;
+  }
+  return stages;
+}
+function parseSleepStageDurationTable(table, date, timeIndex, stageIndex, durationIndex) {
+  const stages = [];
+  let dayOffset = 0;
+  let lastStartMs = -Infinity;
+  for (const row of table.rows) {
+    const rawTime = row[timeIndex];
+    const rawStage = row[stageIndex];
+    const rawDuration = row[durationIndex];
+    if (!rawTime || !rawStage || !rawDuration) continue;
+    let startMs = timestampMsOnDate(date, rawTime, dayOffset);
+    while (startMs !== void 0 && startMs <= lastStartMs && absoluteDateMs(rawTime) === void 0) {
+      dayOffset++;
+      startMs = timestampMsOnDate(date, rawTime, dayOffset);
+    }
+    const durationSeconds = parseDurationSeconds(rawDuration);
+    if (startMs === void 0 || durationSeconds === void 0) continue;
+    stages.push({
+      stage: normalizeSleepStage2(rawStage),
+      startDate: formatLocalDateTime2(startMs),
+      endDate: formatLocalDateTime2(startMs + durationSeconds * 1e3),
+      durationSeconds
+    });
+    lastStartMs = startMs;
+  }
+  return stages;
+}
+function parseGranularMarkdownData(body, date) {
+  const data = {
+    heartRateSamples: [],
+    hrvSamples: [],
+    bloodOxygenSamples: [],
+    respiratoryRateSamples: [],
+    sleepStages: []
+  };
+  for (const table of parseMarkdownTables(body)) {
+    const headers = normalizedHeaders(table);
+    const context = normalizeLabel2(table.context);
+    const timeIndex = findHeaderIndex(headers, (header) => header === "time");
+    const startIndex = findHeaderIndex(headers, (header) => header === "start");
+    const endIndex = findHeaderIndex(headers, (header) => header === "end");
+    const stageIndex = findHeaderIndex(headers, (header) => header === "stage");
+    const durationIndex = findHeaderIndex(headers, (header) => header === "duration");
+    if (startIndex !== -1 && endIndex !== -1 && stageIndex !== -1) {
+      data.sleepStages.push(...parseSleepStageRangeTable(table, date, startIndex, endIndex, stageIndex));
+      continue;
+    }
+    if (timeIndex !== -1 && stageIndex !== -1 && durationIndex !== -1) {
+      data.sleepStages.push(...parseSleepStageDurationTable(table, date, timeIndex, stageIndex, durationIndex));
+      continue;
+    }
+    if (timeIndex === -1) continue;
+    const bpmIndex = findHeaderIndex(headers, (header) => header === "bpm" || header.includes("heart rate"));
+    if (bpmIndex !== -1) {
+      data.heartRateSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, bpmIndex));
+      continue;
+    }
+    const hrvIndex = findHeaderIndex(headers, (header) => header.includes("hrv") || header === "ms" && context.includes("hrv"));
+    if (hrvIndex !== -1) {
+      data.hrvSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, hrvIndex));
+      continue;
+    }
+    const oxygenIndex = findHeaderIndex(headers, (header) => header.includes("spo2") || header.includes("spo\u2082") || header.includes("blood oxygen"));
+    if (oxygenIndex !== -1) {
+      data.bloodOxygenSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, oxygenIndex, normalizePercent2));
+      continue;
+    }
+    const respiratoryIndex = findHeaderIndex(headers, (header) => header.includes("respiratory") || header.includes("breaths/min"));
+    if (respiratoryIndex !== -1) {
+      data.respiratoryRateSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, respiratoryIndex));
+    }
+  }
+  data.heartRateSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  data.hrvSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  data.bloodOxygenSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  data.respiratoryRateSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  data.sleepStages.sort((a, b) => a.startDate.localeCompare(b.startDate));
+  return data;
+}
+function sumStageSeconds2(stages, stageName) {
+  return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
+}
+function recordStr(record, key) {
+  const value = record[key];
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return void 0;
+}
+function recordNum(record, key) {
+  return parseNumberValue(record[key]);
+}
+function cleanDisplayValue(value) {
+  if (!value) return void 0;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "\u2014" || trimmed === "-") return void 0;
+  return trimmed;
+}
+function formatDistanceField(meters, km, mi) {
+  if (km !== void 0) return `${km.toFixed(2)} km`;
+  if (mi !== void 0) return `${mi.toFixed(2)} mi`;
+  if (meters === void 0) return void 0;
+  if (meters >= 1e3) return `${(meters / 1e3).toFixed(2)} km`;
+  return `${Math.round(meters)} m`;
+}
+function parseDistanceToMeters(raw) {
+  const value = cleanDisplayValue(raw);
+  if (!value) return void 0;
+  const n = parseNumberValue(value);
+  if (n === void 0) return void 0;
+  const normalized = value.toLowerCase();
+  if (/\bkm\b/.test(normalized)) return n * 1e3;
+  if (/\bmi\b|miles?\b/.test(normalized)) return n * 1609.344;
+  if (/\byd\b|yards?\b/.test(normalized)) return n * 0.9144;
+  if (/\bm\b|meters?\b/.test(normalized)) return n;
+  return void 0;
+}
+function buildLocalDateTime(date, rawTime) {
+  if (!rawTime) return void 0;
+  if (absoluteDateMs(rawTime) !== void 0) return rawTime;
+  const clock = parseClockTime(rawTime);
+  if (!clock) return void 0;
+  return `${date}T${pad2(clock.h)}:${pad2(clock.m)}:${pad2(clock.s)}`;
+}
+function addSecondsToTimestamp(timestamp, seconds) {
+  if (!timestamp || !Number.isFinite(seconds) || seconds <= 0) return void 0;
+  const ms = Date.parse(timestamp);
+  if (!Number.isFinite(ms)) return void 0;
+  return new Date(ms + seconds * 1e3).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+function frontmatterIndicatesWorkout(fm) {
+  var _a, _b, _c;
+  const type = normalizeLabel2((_a = getFirstStr(fm, "type", "Type")) != null ? _a : "");
+  const metric = normalizeLabel2((_b = getFirstStr(fm, "metric", "Metric")) != null ? _b : "");
+  const tags = normalizeTags((_c = fm.tags) != null ? _c : fm.tag).map((tag) => normalizeLabel2(tag));
+  return type === "workout" || type === "workouts" || metric === "workouts" || tags.includes("workout") || tags.includes("healthmd");
+}
+function parseHeartRateZones(fm) {
+  var _a;
+  const raw = (_a = fm.heart_rate_zones) != null ? _a : fm.heartRateZones;
+  const zones = [];
+  if (isRecord(raw)) {
+    const entries = Object.entries(raw).sort(([a], [b]) => {
+      var _a2, _b, _c, _d;
+      const ai = (_b = (_a2 = parseNumberValue(a)) != null ? _a2 : parseNumberValue(a.replace(/\D+/g, ""))) != null ? _b : 0;
+      const bi = (_d = (_c = parseNumberValue(b)) != null ? _c : parseNumberValue(b.replace(/\D+/g, ""))) != null ? _d : 0;
+      return ai - bi || a.localeCompare(b);
+    });
+    entries.forEach(([key, value], idx) => {
+      var _a2, _b, _c;
+      if (!isRecord(value)) return;
+      const seconds = (_a2 = recordNum(value, "seconds")) != null ? _a2 : 0;
+      const zoneIndex = (_b = parseNumberValue(key.replace(/\D+/g, ""))) != null ? _b : idx + 1;
+      zones.push({
+        index: Math.round(zoneIndex),
+        key,
+        label: (_c = recordStr(value, "label")) != null ? _c : `Zone ${idx + 1}`,
+        range: recordStr(value, "range"),
+        seconds,
+        durationFormatted: recordStr(value, "duration")
+      });
+    });
+    return zones;
+  }
+  if (Array.isArray(raw)) {
+    raw.forEach((value, idx) => {
+      var _a2, _b, _c;
+      if (!isRecord(value)) return;
+      const seconds = (_a2 = recordNum(value, "seconds")) != null ? _a2 : 0;
+      zones.push({
+        index: (_b = recordNum(value, "index")) != null ? _b : idx + 1,
+        label: (_c = recordStr(value, "label")) != null ? _c : `Zone ${idx + 1}`,
+        range: recordStr(value, "range"),
+        seconds,
+        durationFormatted: recordStr(value, "duration")
+      });
+    });
+  }
+  return zones;
+}
+function parseWorkoutIntervals(body) {
+  var _a, _b;
+  const laps = [];
+  const splits = [];
+  for (const table of parseMarkdownTables(body)) {
+    const context = normalizeLabel2(table.context);
+    const target = context.includes("lap") ? laps : context.includes("split") ? splits : null;
+    if (!target) continue;
+    const headers = normalizedHeaders(table);
+    const indexIndex = findHeaderIndex(headers, (header) => header === "#" || header.includes("lap") || header.includes("split"));
+    const distanceIndex = findHeaderIndex(headers, (header) => header.includes("distance"));
+    const timeIndex = findHeaderIndex(headers, (header) => header === "time" || header.includes("duration"));
+    const paceIndex = findHeaderIndex(headers, (header) => header.includes("pace"));
+    const speedIndex = findHeaderIndex(headers, (header) => header.includes("speed"));
+    const avgHrIndex = findHeaderIndex(headers, (header) => header.includes("avg hr") || header.includes("average hr") || header.includes("avg heart"));
+    const maxHrIndex = findHeaderIndex(headers, (header) => header.includes("max hr") || header.includes("maximum hr") || header.includes("max heart"));
+    const avgPowerIndex = findHeaderIndex(headers, (header) => header.includes("avg power") || header.includes("average power"));
+    const avgCadenceIndex = findHeaderIndex(headers, (header) => header.includes("avg cadence") || header.includes("average cadence"));
+    for (const row of table.rows) {
+      const distanceFormatted = cleanDisplayValue(distanceIndex === -1 ? void 0 : row[distanceIndex]);
+      const duration = timeIndex === -1 ? void 0 : parseWorkoutDurationSeconds((_a = row[timeIndex]) != null ? _a : "");
+      const cadenceDisplay = cleanDisplayValue(avgCadenceIndex === -1 ? void 0 : row[avgCadenceIndex]);
+      const interval = {
+        index: Math.round((_b = parseNumberValue(indexIndex === -1 ? void 0 : row[indexIndex])) != null ? _b : target.length + 1),
+        duration: duration != null ? duration : 0,
+        distance: parseDistanceToMeters(distanceFormatted),
+        distanceFormatted,
+        paceFormatted: cleanDisplayValue(paceIndex === -1 ? void 0 : row[paceIndex]),
+        speedFormatted: cleanDisplayValue(speedIndex === -1 ? void 0 : row[speedIndex]),
+        avgHeartRate: parseNumberValue(avgHrIndex === -1 ? void 0 : row[avgHrIndex]),
+        maxHeartRate: parseNumberValue(maxHrIndex === -1 ? void 0 : row[maxHrIndex]),
+        avgPower: parseNumberValue(avgPowerIndex === -1 ? void 0 : row[avgPowerIndex]),
+        avgCadence: parseNumberValue(cadenceDisplay),
+        cadenceUnit: (cadenceDisplay == null ? void 0 : cadenceDisplay.toLowerCase().includes("rpm")) ? "rpm" : (cadenceDisplay == null ? void 0 : cadenceDisplay.toLowerCase().includes("spm")) ? "spm" : void 0
+      };
+      target.push(interval);
+    }
+  }
+  return { laps, splits };
+}
+function parseWorkoutEntry(fm, body, date) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  if (!frontmatterIndicatesWorkout(fm)) return null;
+  const activityType = getFirstStr(fm, "activity_type", "activityType", "workout_type", "workoutType", "value");
+  const sport = getFirstStr(fm, "sport", "workout_sport");
+  const type = (_a = sport != null ? sport : activityType) != null ? _a : "Workout";
+  const durationFromString = getFirstStr(fm, "duration", "durationFormatted");
+  const durationSeconds = getFirstNum(fm, "duration_sec", "duration_seconds", "durationSeconds");
+  const durationMinutes = getFirstNum(fm, "duration_minutes", "duration_min");
+  const duration = (_c = (_b = durationSeconds != null ? durationSeconds : durationMinutes !== void 0 ? durationMinutes * 60 : void 0) != null ? _b : durationFromString ? parseWorkoutDurationSeconds(durationFromString) : void 0) != null ? _c : 0;
+  const rawStart = getFirstStr(fm, "datetime", "start_datetime", "startTimeISO", "start_time_iso", "startTime");
+  const startTimeISO = rawStart && absoluteDateMs(rawStart) !== void 0 ? rawStart : buildLocalDateTime(date, rawStart != null ? rawStart : getFirstStr(fm, "time", "start_time", "start"));
+  const endTimeISO = (_d = getFirstStr(fm, "end_datetime", "endTimeISO", "end_time_iso")) != null ? _d : addSecondsToTimestamp(startTimeISO, duration);
+  const distanceKm = getFirstNum(fm, "distance_km", "distanceKm");
+  const distanceMi = getFirstNum(fm, "distance_mi", "distanceMi");
+  const distanceMeters = (_f = (_e = getFirstNum(fm, "distance_m", "distance_meters", "distanceMeters")) != null ? _e : distanceKm !== void 0 ? distanceKm * 1e3 : void 0) != null ? _f : distanceMi !== void 0 ? distanceMi * 1609.344 : void 0;
+  const legacyDistance = getFirstNum(fm, "distance");
+  const distanceFormatted = (_g = getFirstStr(fm, "distance_formatted", "distanceFormatted")) != null ? _g : formatDistanceField(distanceMeters, distanceKm, distanceMi);
+  const { laps, splits } = parseWorkoutIntervals(body);
+  const zones = parseHeartRateZones(fm);
+  const avgPaceFormatted = getFirstStr(
+    fm,
+    "pace_per_km",
+    "pace_per_mi",
+    "pace_per_100m",
+    "pace_per_100yd",
+    "avg_pace",
+    "avgPaceFormatted"
+  );
+  const avgSpeedFormatted = getFirstStr(
+    fm,
+    "speed_kmh_formatted",
+    "speed_mph_formatted",
+    "avg_speed",
+    "avgSpeedFormatted"
+  );
+  const workout = {
+    type,
+    activityType,
+    sport,
+    duration,
+    durationFormatted: durationFromString,
+    calories: getFirstNum(fm, "calories", "active_calories", "energy_kcal"),
+    distance: distanceMeters != null ? distanceMeters : legacyDistance,
+    distanceMeters,
+    distanceKm,
+    distanceMi,
+    distanceFormatted,
+    startTime: startTimeISO,
+    startTimeISO,
+    endTimeISO,
+    isIndoor: getBool(fm, "is_indoor"),
+    locationType: getFirstStr(fm, "location_type", "locationType"),
+    avgPaceFormatted,
+    avgSpeedFormatted,
+    speedKmh: getFirstNum(fm, "speed_kmh", "speedKmh"),
+    speedMph: getFirstNum(fm, "speed_mph", "speedMph"),
+    avgHeartRate: getFirstNum(fm, "hr_avg", "avg_heart_rate", "average_heart_rate", "avgHeartRate"),
+    maxHeartRate: getFirstNum(fm, "hr_max", "max_heart_rate", "maxHeartRate"),
+    minHeartRate: getFirstNum(fm, "hr_min", "min_heart_rate", "minHeartRate"),
+    avgRunningCadence: getFirstNum(fm, "cadence_avg_spm", "avg_running_cadence", "avgRunningCadence"),
+    avgCyclingCadence: getFirstNum(fm, "cadence_avg_rpm", "avg_cycling_cadence", "avgCyclingCadence"),
+    avgStrideLength: getFirstNum(fm, "avg_stride_length_m", "avgStrideLength"),
+    avgGroundContactTime: getFirstNum(fm, "avg_ground_contact_ms", "avgGroundContactTime"),
+    avgVerticalOscillation: getFirstNum(fm, "avg_vertical_oscillation_cm", "avgVerticalOscillation"),
+    avgPower: getFirstNum(fm, "power_avg_w", "avg_power_w", "avgPower"),
+    maxPower: getFirstNum(fm, "power_max_w", "max_power_w", "maxPower"),
+    elevationGainMeters: getFirstNum(fm, "ascent_m", "elevation_gain_m", "elevationGainMeters"),
+    elevationLossMeters: getFirstNum(fm, "descent_m", "elevation_loss_m", "elevationLossMeters"),
+    heartRateZones: zones.length ? zones : void 0,
+    laps: laps.length ? laps : void 0,
+    splits: splits.length ? splits : void 0
+  };
+  return workout;
+}
+function parseMarkdown(content, cachedFrontmatter, frontmatterAliases) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
+  const parsed = parseFrontmatter(content);
+  const fm = applyFrontmatterAliases(
+    mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter),
+    frontmatterAliases
+  );
+  const schema = getFirstStr(fm, "schema", "Schema");
+  const frontmatterType = normalizeLabel2((_b = getFirstStr(fm, "type", "Type")) != null ? _b : "");
+  if (schema === HEALTHMD_ROLLUP_SCHEMA || frontmatterType === "health_rollup") return null;
+  if (schema && schema !== HEALTHMD_HEALTH_DATA_SCHEMA && !frontmatterIndicatesWorkout(fm)) return null;
+  const rawDate = (_c = getFirstStr(fm, "date", "Date", "day", "Day")) != null ? _c : extractDateFromContent(content);
+  if (!rawDate) return null;
+  const date = rawDate.slice(0, 10);
+  const schemaVersion = schemaVersionOf({ schemaVersion: getFirstNum(fm, "schemaVersion"), schema_version: getFirstNum(fm, "schema_version") });
+  const rawUnits = fm.units;
+  const explicitUnitSystem = getFirstStr(fm, "unit_system", "unitSystem");
+  const unitSystem = explicitUnitSystem != null ? explicitUnitSystem : schemaVersion >= 2 ? "metric" : typeof rawUnits === "string" ? rawUnits : void 0;
+  const granular = parseGranularMarkdownData(parsed.body, date);
   const day = {
     type: "health-data",
-    date
+    date,
+    schema,
+    schemaVersion,
+    schema_version: schemaVersion || void 0,
+    units: typeof rawUnits === "string" || isRecord(rawUnits) ? rawUnits : unitSystem,
+    unitSystem,
+    unit_system: unitSystem
   };
-  const steps = (_a = getNum2(fm, "steps")) != null ? _a : getNum2(fm, "activity_steps");
-  if (steps !== void 0) {
+  const workout = parseWorkoutEntry(fm, parsed.body, date);
+  if (workout) {
+    day.workouts = [workout];
+  }
+  const steps = getFirstNum(fm, "steps", "activity_steps");
+  const walkingRunningDistanceKmRaw = getFirstNum(
+    fm,
+    "walking_running_km",
+    "walking_running_distance_km",
+    "walkingRunningDistanceKm"
+  );
+  const walkingRunningDistanceMi = getFirstNum(
+    fm,
+    "walking_running_mi",
+    "walking_running_distance_mi",
+    "walkingRunningDistanceMi"
+  );
+  const walkingRunningDistanceKm = walkingRunningDistanceKmRaw != null ? walkingRunningDistanceKmRaw : walkingRunningDistanceMi !== void 0 ? walkingRunningDistanceMi * 1.609344 : void 0;
+  const activeCalories = getFirstNum(fm, "active_calories", "activity_active_calories", "activeCalories");
+  const exerciseMinutes = getFirstNum(fm, "exercise_minutes", "activity_exercise_minutes", "exerciseMinutes");
+  const vo2Max = getFirstNum(fm, "vo2_max", "vo2max", "vo2Max", "activity_vo2_max");
+  const basalEnergyBurned = getFirstNum(
+    fm,
+    "basal_energy_burned",
+    "basal_calories",
+    "basal_energy",
+    "basalEnergyBurned"
+  );
+  const standHours = getFirstNum(fm, "stand_hours", "standHours");
+  const flightsClimbed = getFirstNum(fm, "flights_climbed", "floors_climbed", "flightsClimbed");
+  if (steps !== void 0 || walkingRunningDistanceKm !== void 0 || activeCalories !== void 0 || exerciseMinutes !== void 0 || vo2Max !== void 0 || basalEnergyBurned !== void 0 || standHours !== void 0 || flightsClimbed !== void 0) {
     day.activity = {
-      steps,
-      walkingRunningDistanceKm: (_c = (_b = getNum2(fm, "walking_running_km")) != null ? _b : getNum2(fm, "walking_running_distance_km")) != null ? _c : 0,
-      activeCalories: (_e = (_d = getNum2(fm, "active_calories")) != null ? _d : getNum2(fm, "activity_active_calories")) != null ? _e : 0,
-      exerciseMinutes: (_g = (_f = getNum2(fm, "exercise_minutes")) != null ? _f : getNum2(fm, "activity_exercise_minutes")) != null ? _g : 0,
-      vo2Max: (_h = getNum2(fm, "vo2_max")) != null ? _h : getNum2(fm, "vo2max"),
-      basalEnergyBurned: getNum2(fm, "basal_energy_burned"),
-      standHours: getNum2(fm, "stand_hours"),
-      flightsClimbed: getNum2(fm, "flights_climbed")
+      steps: steps != null ? steps : 0,
+      walkingRunningDistanceKm: walkingRunningDistanceKm != null ? walkingRunningDistanceKm : 0,
+      walkingRunningDistance: walkingRunningDistanceKm !== void 0 ? walkingRunningDistanceKm * 1e3 : void 0,
+      activeCalories: activeCalories != null ? activeCalories : 0,
+      exerciseMinutes: exerciseMinutes != null ? exerciseMinutes : 0,
+      vo2Max,
+      basalEnergyBurned,
+      standHours,
+      flightsClimbed
     };
   }
-  const restingHR = (_i = getNum2(fm, "resting_heart_rate")) != null ? _i : getNum2(fm, "heart_resting_heart_rate");
-  const avgHR = (_j = getNum2(fm, "average_heart_rate")) != null ? _j : getNum2(fm, "heart_average_heart_rate");
-  const hrvVal = (_l = (_k = getNum2(fm, "hrv_ms")) != null ? _k : getNum2(fm, "hrv")) != null ? _l : getNum2(fm, "heart_hrv");
-  if (restingHR !== void 0 || avgHR !== void 0) {
+  const heartValues = granular.heartRateSamples.map((sample) => sample.value);
+  const hrvValues = granular.hrvSamples.map((sample) => sample.value);
+  const restingHR = getFirstNum(fm, "resting_heart_rate", "heart_resting_heart_rate", "restingHeartRate");
+  const avgHR = (_d = getFirstNum(fm, "average_heart_rate", "heart_average_heart_rate", "averageHeartRate")) != null ? _d : average2(heartValues);
+  const hrvVal = (_e = getFirstNum(fm, "hrv_ms", "hrv", "heart_hrv")) != null ? _e : average2(hrvValues);
+  const heartRateMin = (_f = getFirstNum(fm, "heart_rate_min", "heart_min", "heartRateMin")) != null ? _f : heartValues.length ? Math.min(...heartValues) : void 0;
+  const heartRateMax = (_g = getFirstNum(fm, "heart_rate_max", "heart_max", "heartRateMax")) != null ? _g : heartValues.length ? Math.max(...heartValues) : void 0;
+  const walkingHeartRateAverage = getFirstNum(
+    fm,
+    "walking_heart_rate",
+    "walking_heart_rate_average",
+    "walkingHeartRateAverage"
+  );
+  if (restingHR !== void 0 || avgHR !== void 0 || hrvVal !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || walkingHeartRateAverage !== void 0 || granular.heartRateSamples.length || granular.hrvSamples.length) {
     day.heart = {
-      averageHeartRate: (_m = avgHR != null ? avgHR : restingHR) != null ? _m : 0,
-      heartRateMin: (_o = (_n = getNum2(fm, "heart_rate_min")) != null ? _n : getNum2(fm, "heart_min")) != null ? _o : 0,
-      heartRateMax: (_q = (_p = getNum2(fm, "heart_rate_max")) != null ? _p : getNum2(fm, "heart_max")) != null ? _q : 0,
-      heartRateSamples: [],
+      averageHeartRate: (_h = avgHR != null ? avgHR : restingHR) != null ? _h : 0,
+      heartRateMin: (_j = (_i = heartRateMin != null ? heartRateMin : avgHR) != null ? _i : restingHR) != null ? _j : 0,
+      heartRateMax: (_l = (_k = heartRateMax != null ? heartRateMax : avgHR) != null ? _k : restingHR) != null ? _l : 0,
+      heartRateSamples: granular.heartRateSamples,
+      hrvSamples: granular.hrvSamples.length ? granular.hrvSamples : void 0,
       restingHeartRate: restingHR,
-      walkingHeartRateAverage: (_r = getNum2(fm, "walking_heart_rate")) != null ? _r : getNum2(fm, "walking_heart_rate_average"),
+      walkingHeartRateAverage,
       hrv: hrvVal
     };
   }
@@ -9860,20 +11171,21 @@ function parseMarkdown(content) {
     "totalDuration",
     "total_duration"
   );
-  const sleepTotal = sleepHours !== void 0 ? sleepHours * 3600 : sleepSeconds;
-  if (sleepTotal !== void 0) {
+  const derivedSleepTotal = granular.sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
+  const sleepTotal = sleepHours !== void 0 ? sleepHours * 3600 : sleepSeconds != null ? sleepSeconds : derivedSleepTotal > 0 ? derivedSleepTotal : void 0;
+  if (sleepTotal !== void 0 || granular.sleepStages.length) {
     const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
     const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
-    const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours");
+    const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours");
     const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
     day.sleep = {
-      sleepStages: [],
-      totalDuration: sleepTotal,
-      deepSleep: deepH !== void 0 ? deepH * 3600 : (_s = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _s : 0,
-      remSleep: remH !== void 0 ? remH * 3600 : (_t = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _t : 0,
-      coreSleep: coreH !== void 0 ? coreH * 3600 : (_u = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep")) != null ? _u : 0,
-      awakeTime: awakeH !== void 0 ? awakeH * 3600 : getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time"),
-      bedtime: (_v = getFirstStr(
+      sleepStages: granular.sleepStages,
+      totalDuration: sleepTotal != null ? sleepTotal : derivedSleepTotal,
+      deepSleep: deepH !== void 0 ? deepH * 3600 : (_m = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _m : sumStageSeconds2(granular.sleepStages, "deep"),
+      remSleep: remH !== void 0 ? remH * 3600 : (_n = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _n : sumStageSeconds2(granular.sleepStages, "rem"),
+      coreSleep: coreH !== void 0 ? coreH * 3600 : (_o = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light")) != null ? _o : sumStageSeconds2(granular.sleepStages, "core"),
+      awakeTime: awakeH !== void 0 ? awakeH * 3600 : (_p = getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time")) != null ? _p : sumStageSeconds2(granular.sleepStages, "awake"),
+      bedtime: (_s = (_r = getFirstStr(
         fm,
         "sleep_bedtime",
         "sleepBedtime",
@@ -9882,8 +11194,8 @@ function parseMarkdown(content) {
         "sleep_start",
         "sleep_start_time",
         "sleep_session_start"
-      )) != null ? _v : "",
-      bedtimeISO: getFirstStr(
+      )) != null ? _r : (_q = granular.sleepStages[0]) == null ? void 0 : _q.startDate) != null ? _s : "",
+      bedtimeISO: (_u = getFirstStr(
         fm,
         "sleep_bedtime_iso",
         "sleepBedtimeISO",
@@ -9891,8 +11203,8 @@ function parseMarkdown(content) {
         "bed_time_iso",
         "sleep_start_iso",
         "sleep_session_start_iso"
-      ),
-      wakeTime: (_w = getFirstStr(
+      )) != null ? _u : (_t = granular.sleepStages[0]) == null ? void 0 : _t.startDate,
+      wakeTime: (_x = (_w = getFirstStr(
         fm,
         "sleep_wake",
         "sleepWake",
@@ -9903,8 +11215,8 @@ function parseMarkdown(content) {
         "sleep_end",
         "sleep_end_time",
         "sleep_session_end"
-      )) != null ? _w : "",
-      wakeTimeISO: getFirstStr(
+      )) != null ? _w : (_v = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _v.endDate) != null ? _x : "",
+      wakeTimeISO: (_z = getFirstStr(
         fm,
         "sleep_wake_iso",
         "sleepWakeISO",
@@ -9914,44 +11226,87 @@ function parseMarkdown(content) {
         "wake_iso",
         "sleep_end_iso",
         "sleep_session_end_iso"
-      )
+      )) != null ? _z : (_y = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _y.endDate
     };
   }
-  const respRate = (_x = getNum2(fm, "respiratory_rate")) != null ? _x : getNum2(fm, "vitals_respiratory_rate");
-  const bloodOx = (_z = (_y = getNum2(fm, "blood_oxygen")) != null ? _y : getNum2(fm, "blood_oxygen_avg")) != null ? _z : getNum2(fm, "vitals_blood_oxygen");
-  if (respRate !== void 0 || bloodOx !== void 0) {
+  const respiratoryValues = granular.respiratoryRateSamples.map((sample) => sample.value);
+  const respRateAvg = (_A = getFirstNum(fm, "respiratory_rate", "respiratory_rate_avg", "vitals_respiratory_rate", "respiratoryRateAvg")) != null ? _A : average2(respiratoryValues);
+  const respRateMin = (_B = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin")) != null ? _B : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0;
+  const respRateMax = (_C = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax")) != null ? _C : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0;
+  const bloodOxygenSamples = granular.bloodOxygenSamples.map((sample) => ({
+    timestamp: sample.timestamp,
+    value: sample.value,
+    percent: sample.value
+  }));
+  const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
+  const bloodOxAvg = (_D = normalizePercent2(getFirstNum(
+    fm,
+    "blood_oxygen",
+    "blood_oxygen_avg",
+    "vitals_blood_oxygen",
+    "bloodOxygenAvg",
+    "bloodOxygenPercent"
+  ))) != null ? _D : average2(bloodOxygenValues);
+  const bloodOxMin = (_E = normalizePercent2(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"))) != null ? _E : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_F = normalizePercent2(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"))) != null ? _F : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  if (respRateAvg !== void 0 || respRateMin !== void 0 || respRateMax !== void 0 || bloodOxAvg !== void 0 || bloodOxMin !== void 0 || bloodOxMax !== void 0 || granular.respiratoryRateSamples.length || bloodOxygenSamples.length) {
     day.vitals = {
-      respiratoryRate: respRate,
-      bloodOxygenPercent: bloodOx,
-      bloodOxygenAvg: bloodOx
+      respiratoryRate: respRateAvg,
+      respiratoryRateAvg: respRateAvg,
+      respiratoryRateMin: respRateMin,
+      respiratoryRateMax: respRateMax,
+      respiratoryRateSamples: granular.respiratoryRateSamples.length ? granular.respiratoryRateSamples : void 0,
+      bloodOxygenPercent: bloodOxAvg,
+      bloodOxygenAvg: bloodOxAvg,
+      bloodOxygenMin: bloodOxMin,
+      bloodOxygenMax: bloodOxMax,
+      bloodOxygenSamples: bloodOxygenSamples.length ? bloodOxygenSamples : void 0
     };
   }
-  const walkSpeed = (_A = getNum2(fm, "walking_speed")) != null ? _A : getNum2(fm, "mobility_walking_speed");
-  if (walkSpeed !== void 0) {
+  const walkSpeed = getFirstNum(fm, "walking_speed", "mobility_walking_speed", "walkingSpeed");
+  const walkingAsymmetryPercentage = getFirstNum(
+    fm,
+    "walking_asymmetry_percentage",
+    "walking_asymmetry_percent",
+    "walking_asymmetry",
+    "walkingAsymmetryPercentage"
+  );
+  const walkingStepLengthMeters = getFirstNum(fm, "walking_step_length", "walkingStepLength");
+  const walkingStepLengthCm = getNum2(fm, "step_length_cm");
+  const walkingStepLength = walkingStepLengthMeters != null ? walkingStepLengthMeters : walkingStepLengthCm !== void 0 ? walkingStepLengthCm / 100 : void 0;
+  const walkingDoubleSupportPercentage = getFirstNum(
+    fm,
+    "walking_double_support_percentage",
+    "walking_double_support_percent",
+    "double_support_percent",
+    "walkingDoubleSupportPercentage"
+  );
+  if (walkSpeed !== void 0 || walkingAsymmetryPercentage !== void 0 || walkingStepLength !== void 0 || walkingDoubleSupportPercentage !== void 0) {
     day.mobility = {
-      walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_D = (_C = (_B = getNum2(fm, "walking_asymmetry_percentage")) != null ? _B : getNum2(fm, "walking_asymmetry_percent")) != null ? _C : getNum2(fm, "walking_asymmetry")) != null ? _D : 0,
-      walkingStepLength: getNum2(fm, "walking_step_length"),
-      walkingDoubleSupportPercentage: getNum2(fm, "walking_double_support_percentage")
+      walkingSpeed: walkSpeed != null ? walkSpeed : 0,
+      walkingAsymmetryPercentage: walkingAsymmetryPercentage != null ? walkingAsymmetryPercentage : 0,
+      walkingStepLength,
+      walkingDoubleSupportPercentage
     };
   }
-  const headphone = (_E = getNum2(fm, "headphone_audio_level")) != null ? _E : getNum2(fm, "hearing_headphone_audio_level");
+  const headphone = getFirstNum(fm, "headphone_audio_level", "headphone_audio_db", "hearing_headphone_audio_level");
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }
-  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility;
+  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.hearing;
   return hasData ? day : null;
 }
 
 // src/data-loader.ts
-var SUPPORTED_EXTENSIONS = ["json", "csv", "md"];
-function matchesGlob(filename, pattern) {
-  if (!pattern || pattern === "*" || pattern === "*.*") return true;
-  const regex = new RegExp(
-    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
-    "i"
-  );
-  return regex.test(filename);
+var HEALTHMD_FORMAT_FOLDERS = /* @__PURE__ */ new Set(["Markdown", "Bases", "JSON", "CSV"]);
+function emptyLoadReport() {
+  return {
+    loadedDays: 0,
+    schemaVersions: [],
+    skippedFiles: [],
+    warnings: [],
+    dictionaryLoaded: false
+  };
 }
 function detectFormat(extension, configFormat) {
   if (configFormat !== "auto") return configFormat;
@@ -9968,43 +11323,77 @@ function detectFormat(extension, configFormat) {
   }
 }
 var DataLoader = class {
-  constructor(vault, settings) {
+  constructor(vault, settings, metadataCache) {
     this.vault = vault;
     this.settings = settings;
+    this.metadataCache = metadataCache;
     this.cache = null;
     this.lastLoad = 0;
     this.TTL = 3e4;
+    this.lastReport = emptyLoadReport();
   }
   async load() {
+    var _a, _b;
     if (this.cache && Date.now() - this.lastLoad < this.TTL) {
       return this.cache;
     }
     const pattern = this.settings.filePattern || "*";
     const files = this.getDataFiles(pattern);
+    const dictionaryLoad = await this.loadDataDictionaryAliases(files);
+    const frontmatterAliases = dictionaryLoad.aliases;
+    const report = emptyLoadReport();
+    report.dictionaryLoaded = dictionaryLoad.loaded;
+    report.warnings.push(...dictionaryLoad.warnings);
     const days = [];
+    const schemaVersions = /* @__PURE__ */ new Set();
     for (const file of files) {
+      if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) {
+        report.skippedFiles.push({
+          path: file.path,
+          reason: "data-dictionary",
+          schema: { kind: "data-dictionary", version: 0, format: "json" }
+        });
+        continue;
+      }
       const content = await this.vault.cachedRead(file);
       const format = detectFormat(file.extension, this.settings.dataFormat);
+      const cachedFrontmatter = format === "markdown" || format === "bases" ? (_b = (_a = this.metadataCache) == null ? void 0 : _a.getFileCache(file)) == null ? void 0 : _b.frontmatter : void 0;
       try {
+        const parsedDays = [];
         switch (format) {
           case "json": {
             const day = parseJSON(content);
-            if (day) days.push(withSourcePath(day, file.path));
+            if (day) parsedDays.push(day);
             break;
           }
           case "csv": {
-            const csvDays = parseCSV(content);
-            days.push(...csvDays.map((day) => withSourcePath(day, file.path)));
+            parsedDays.push(...parseCSV(content));
             break;
           }
           case "markdown":
           case "bases": {
-            const day = parseMarkdown(content);
-            if (day) days.push(withSourcePath(day, file.path));
+            const day = parseMarkdown(content, cachedFrontmatter, frontmatterAliases);
+            if (day) parsedDays.push(day);
             break;
           }
         }
+        if (parsedDays.length) {
+          for (const day of parsedDays) {
+            const version = schemaVersionOf(day);
+            schemaVersions.add(version);
+            if (version > SUPPORTED_HEALTHMD_SCHEMA_VERSION) {
+              report.warnings.push(`${file.path} uses Health.md schema v${version}; parsing best-effort with v${SUPPORTED_HEALTHMD_SCHEMA_VERSION} support.`);
+            }
+            days.push(withSourcePath(day, file.path));
+          }
+        } else {
+          this.recordSkippedFile(report, file.path, format, content, cachedFrontmatter);
+        }
       } catch (e) {
+        report.skippedFiles.push({
+          path: file.path,
+          reason: "malformed-file"
+        });
       }
     }
     const byDate = /* @__PURE__ */ new Map();
@@ -10019,16 +11408,86 @@ var DataLoader = class {
     this.cache = Array.from(byDate.values()).sort(
       (a, b) => a.date.localeCompare(b.date)
     );
+    report.loadedDays = this.cache.length;
+    report.schemaVersions = Array.from(schemaVersions).sort((a, b) => a - b);
+    this.lastReport = report;
     this.lastLoad = Date.now();
     return this.cache;
+  }
+  getLastLoadReport() {
+    return this.lastReport;
+  }
+  getLastLoadSummary() {
+    const report = this.lastReport;
+    const versions = report.schemaVersions.length ? report.schemaVersions.map((version) => `v${version}`).join(", ") : "none detected";
+    const skipped = report.skippedFiles.length ? `; skipped ${report.skippedFiles.length} non-daily/unsupported file${report.skippedFiles.length === 1 ? "" : "s"}` : "";
+    const dictionary = report.dictionaryLoaded ? "; data dictionary loaded" : "";
+    const warnings = report.warnings.length ? `; ${report.warnings.length} warning${report.warnings.length === 1 ? "" : "s"}` : "";
+    return `Loaded ${report.loadedDays} health day${report.loadedDays === 1 ? "" : "s"} from Health.md schemas ${versions}${skipped}${dictionary}${warnings}.`;
+  }
+  async loadDataDictionaryAliases(files) {
+    const dictionaryFiles = /* @__PURE__ */ new Map();
+    for (const file of files) {
+      if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) {
+        dictionaryFiles.set(file.path, file);
+      }
+    }
+    const rootDictionary = this.vault.getAbstractFileByPath(
+      `${this.settings.dataFolder.replace(/\/+$/g, "")}/${HEALTHMD_DATA_DICTIONARY_FILENAME}`
+    );
+    if (rootDictionary instanceof import_obsidian.TFile) {
+      dictionaryFiles.set(rootDictionary.path, rootDictionary);
+    }
+    const aliases = {};
+    const warnings = [];
+    let loaded = false;
+    for (const file of dictionaryFiles.values()) {
+      try {
+        const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.cachedRead(file));
+        Object.assign(aliases, dictionary.aliases);
+        if (dictionary.schemaVersion > SUPPORTED_HEALTHMD_SCHEMA_VERSION) {
+          warnings.push(`${file.path} data dictionary uses Health.md schema v${dictionary.schemaVersion}; alias mapping is best-effort.`);
+        }
+        loaded = true;
+      } catch (e) {
+      }
+    }
+    return { aliases, loaded, warnings };
+  }
+  recordSkippedFile(report, path, format, content, frontmatter) {
+    var _a;
+    const schema = this.detectSchema(format, content, frontmatter);
+    let reason = "not-health-data";
+    if (schema.kind === "rollup-summary") reason = "rollup-summary";
+    else if (schema.kind === "data-dictionary") reason = "data-dictionary";
+    else if (schema.kind === "unknown") reason = (_a = schema.reason) != null ? _a : "unsupported-schema";
+    report.skippedFiles.push({ path, reason, schema });
+    if (schema.isFutureVersion) {
+      report.warnings.push(`${path} uses future Health.md schema v${schema.version}; update the plugin if data looks incomplete.`);
+    }
+  }
+  detectSchema(format, content, frontmatter) {
+    switch (format) {
+      case "json":
+        return detectJsonSchema(content);
+      case "csv":
+        return detectCsvSchema(content);
+      case "markdown":
+      case "bases":
+        return detectFrontmatterSchema(frontmatter);
+      default:
+        return { kind: "unknown", version: 0, format: "unknown", reason: "Unsupported file extension" };
+    }
   }
   invalidate() {
     this.cache = null;
   }
   getDataFiles(pattern) {
+    var _a;
+    const granularity = (_a = this.settings.dataFolderGranularity) != null ? _a : "flat";
     const configuredFolder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
     if (configuredFolder instanceof import_obsidian.TFolder) {
-      const files = this.getMatchingFiles(configuredFolder, pattern);
+      const files = this.getMatchingFiles(configuredFolder, pattern, granularity);
       if (files.length > 0 || this.settings.dataFolder !== "Health") {
         return files;
       }
@@ -10037,19 +11496,86 @@ var DataLoader = class {
       for (const fallbackPath of ["examples/Health", "exports/Health"]) {
         const bundledFolder = this.vault.getAbstractFileByPath(fallbackPath);
         if (bundledFolder instanceof import_obsidian.TFolder) {
-          const files = this.getMatchingFiles(bundledFolder, pattern);
+          const files = this.getMatchingFiles(bundledFolder, pattern, granularity);
           if (files.length > 0) return files;
         }
       }
     }
     return [];
   }
-  getMatchingFiles(folder, pattern) {
-    return folder.children.filter((f) => {
-      if (!(f instanceof import_obsidian.TFile)) return false;
-      if (!SUPPORTED_EXTENSIONS.includes(f.extension)) return false;
-      return matchesGlob(f.name, pattern);
-    }).sort((a, b) => a.path.localeCompare(b.path));
+  getMatchingFiles(folder, pattern, granularity) {
+    const files = [];
+    this.collectMatchingFiles(
+      folder,
+      folder.path,
+      pattern,
+      dataFolderMaxDepth(
+        granularity,
+        this.settings.dataFolderCustomPathTemplate
+      ),
+      0,
+      files
+    );
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian.TFolder && HEALTHMD_FORMAT_FOLDERS.has(child.name)) {
+        this.collectMatchingFiles(
+          child,
+          folder.path,
+          pattern,
+          Math.max(4, dataFolderMaxDepth(granularity, this.settings.dataFolderCustomPathTemplate)),
+          1,
+          files
+        );
+      }
+    }
+    this.collectMatchingFiles(
+      folder,
+      folder.path,
+      pattern,
+      Math.max(4, dataFolderMaxDepth(granularity, this.settings.dataFolderCustomPathTemplate)),
+      0,
+      files,
+      "md"
+    );
+    const byPath = /* @__PURE__ */ new Map();
+    for (const file of files) byPath.set(file.path, file);
+    return Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
+  }
+  collectMatchingFiles(folder, rootPath, pattern, maxDepth, depth, files, extension) {
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian.TFile) {
+        if ((!extension || child.extension === extension) && this.matchesDataFile(child, rootPath, pattern)) {
+          files.push(child);
+        }
+        continue;
+      }
+      if (child instanceof import_obsidian.TFolder && depth < maxDepth) {
+        if (this.isRollupsFolder(child, rootPath)) continue;
+        this.collectMatchingFiles(
+          child,
+          rootPath,
+          pattern,
+          maxDepth,
+          depth + 1,
+          files,
+          extension
+        );
+      }
+    }
+  }
+  isRollupsFolder(folder, rootPath) {
+    const relative = folder.path.startsWith(`${rootPath}/`) ? folder.path.slice(rootPath.length + 1) : folder.path;
+    return relative.split("/")[0] === "Rollups";
+  }
+  matchesDataFile(file, rootPath, pattern) {
+    if (file.path.startsWith(`${rootPath}/Rollups/`)) return false;
+    return matchesDataFilePath({
+      name: file.name,
+      extension: file.extension,
+      path: file.path,
+      rootPath,
+      pattern
+    });
   }
 };
 function mergeSourcePaths(...pathLists) {
@@ -10065,20 +11591,118 @@ function withSourcePath(day, path) {
     sourcePaths: mergeSourcePaths(day.sourcePaths, [path])
   };
 }
+function workoutDetailScore(workout) {
+  let score = 0;
+  for (const value of Object.values(workout)) {
+    if (Array.isArray(value)) score += value.length * 3;
+    else if (value && typeof value === "object") score += Object.keys(value).length * 2;
+    else if (value !== void 0 && value !== null && value !== "") score += 1;
+  }
+  return score;
+}
+function workoutKey(workout) {
+  var _a, _b, _c, _d, _e, _f;
+  const type = ((_b = (_a = workout.sport) != null ? _a : workout.type) != null ? _b : "workout").toLowerCase().trim();
+  const start = (_d = (_c = workout.startTimeISO) != null ? _c : workout.startTime) != null ? _d : "";
+  const duration = Number.isFinite(workout.duration) ? Math.round(workout.duration) : 0;
+  const distance = (_f = (_e = workout.distanceMeters) != null ? _e : workout.distance) != null ? _f : 0;
+  return `${start}|${type}|${duration}|${Math.round(distance)}`;
+}
+function preferArray(next, prev) {
+  if (next && next.length) return next;
+  return prev && prev.length ? prev : void 0;
+}
+function mergeWorkoutEntries(a, b) {
+  var _a;
+  const preferred = workoutDetailScore(b) >= workoutDetailScore(a) ? b : a;
+  const fallback = preferred === b ? a : b;
+  const merged = { ...fallback };
+  for (const [key, value] of Object.entries(preferred)) {
+    if (value !== void 0 && value !== null) merged[key] = value;
+  }
+  return {
+    ...merged,
+    heartRateZones: preferArray(preferred.heartRateZones, fallback.heartRateZones),
+    laps: preferArray(preferred.laps, fallback.laps),
+    splits: preferArray(preferred.splits, fallback.splits),
+    route: preferArray(preferred.route, fallback.route),
+    timeSeries: (_a = preferred.timeSeries) != null ? _a : fallback.timeSeries
+  };
+}
+function mergeWorkouts(a, b) {
+  const all = [...a != null ? a : [], ...b != null ? b : []];
+  if (!all.length) return void 0;
+  const byKey = /* @__PURE__ */ new Map();
+  const unkeyed = [];
+  for (const workout of all) {
+    const key = workoutKey(workout);
+    if (key.startsWith("|") || key.includes("||0|0")) {
+      unkeyed.push(workout);
+      continue;
+    }
+    const existing = byKey.get(key);
+    byKey.set(key, existing ? mergeWorkoutEntries(existing, workout) : workout);
+  }
+  return [...Array.from(byKey.values()), ...unkeyed].sort((left, right) => {
+    var _a, _b, _c, _d;
+    const aStart = (_b = (_a = left.startTimeISO) != null ? _a : left.startTime) != null ? _b : "";
+    const bStart = (_d = (_c = right.startTimeISO) != null ? _c : right.startTime) != null ? _d : "";
+    return aStart.localeCompare(bStart);
+  });
+}
+function objectDetailScore(value) {
+  if (!value || typeof value !== "object") return 0;
+  let score = 0;
+  for (const item of Object.values(value)) {
+    if (Array.isArray(item)) score += item.length * 3;
+    else if (item && typeof item === "object") score += Object.keys(item).length * 2;
+    else if (item !== void 0 && item !== null && item !== "") score += 1;
+  }
+  return score;
+}
+function dayDetailScore(day) {
+  var _a;
+  return schemaVersionOf(day) * 1e3 + objectDetailScore(day.activity) + objectDetailScore(day.heart) + objectDetailScore(day.vitals) + objectDetailScore(day.sleep) + objectDetailScore(day.mobility) + objectDetailScore(day.hearing) + ((_a = day.workouts) != null ? _a : []).reduce((sum, workout) => sum + workoutDetailScore(workout), 0);
+}
+function preferMeaningfulValue(fallback, preferred) {
+  if (preferred === void 0 || preferred === null || preferred === "") return fallback;
+  if (Array.isArray(preferred) && preferred.length === 0 && Array.isArray(fallback) && fallback.length > 0) return fallback;
+  if (typeof preferred === "number" && preferred === 0 && typeof fallback === "number" && fallback !== 0) return fallback;
+  return preferred;
+}
+function mergeSection(fallback, preferred) {
+  if (!fallback) return preferred;
+  if (!preferred) return fallback;
+  const fallbackRecord = fallback;
+  const merged = { ...fallbackRecord };
+  for (const [key, value] of Object.entries(preferred)) {
+    merged[key] = preferMeaningfulValue(fallbackRecord[key], value);
+  }
+  return merged;
+}
 function mergeDays(a, b) {
-  var _a, _b, _c, _d, _e, _f, _g, _h;
+  var _a, _b, _c, _d, _e;
+  const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
+  const fallback = preferred === b ? a : b;
+  const schemaVersion = Math.max(schemaVersionOf(a), schemaVersionOf(b));
+  const unitSystem = (_c = (_b = (_a = preferred.unitSystem) != null ? _a : preferred.unit_system) != null ? _b : fallback.unitSystem) != null ? _c : fallback.unit_system;
   return {
     type: "health-data",
     date: a.date,
+    schema: (_d = preferred.schema) != null ? _d : fallback.schema,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
     sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths),
-    units: (_a = a.units) != null ? _a : b.units,
-    activity: (_b = a.activity) != null ? _b : b.activity,
-    heart: (_c = a.heart) != null ? _c : b.heart,
-    vitals: (_d = a.vitals) != null ? _d : b.vitals,
-    sleep: (_e = a.sleep) != null ? _e : b.sleep,
-    mobility: (_f = a.mobility) != null ? _f : b.mobility,
-    workouts: (_g = a.workouts) != null ? _g : b.workouts,
-    hearing: (_h = a.hearing) != null ? _h : b.hearing
+    units: (_e = preferred.units) != null ? _e : fallback.units,
+    unitSystem,
+    unit_system: unitSystem,
+    activity: mergeSection(fallback.activity, preferred.activity),
+    heart: mergeSection(fallback.heart, preferred.heart),
+    vitals: mergeSection(fallback.vitals, preferred.vitals),
+    sleep: mergeSection(fallback.sleep, preferred.sleep),
+    mobility: mergeSection(fallback.mobility, preferred.mobility),
+    workouts: mergeWorkouts(a.workouts, b.workouts),
+    hearing: mergeSection(fallback.hearing, preferred.hearing)
   };
 }
 
@@ -11443,6 +13067,113 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   ]);
 };
 
+// src/workout-utils.ts
+function pickWorkout(data, config) {
+  const dateKey = config.date != null ? String(config.date).trim() : "";
+  const indexRaw = config.workout;
+  const index = typeof indexRaw === "number" ? indexRaw : indexRaw != null ? parseInt(String(indexRaw), 10) : 0;
+  const idx = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0;
+  if (dateKey) {
+    const day = data.find((d) => d.date === dateKey);
+    if (!day || !day.workouts || !day.workouts.length) return null;
+    const w = day.workouts[idx];
+    if (!w) return null;
+    return { day, workout: w, indexInDay: idx };
+  }
+  for (let i = data.length - 1; i >= 0; i--) {
+    const day = data[i];
+    if (day.workouts && day.workouts.length > idx) {
+      return { day, workout: day.workouts[idx], indexInDay: idx };
+    }
+  }
+  return null;
+}
+function resolveUnits(day) {
+  var _a, _b;
+  const unitSystem = (_b = (_a = day.unitSystem) != null ? _a : day.unit_system) != null ? _b : typeof day.units === "string" ? day.units : void 0;
+  return unitSystem === "imperial" ? "imperial" : "metric";
+}
+function parseDistanceFormatted(value) {
+  if (!value) return void 0;
+  const match = /([-+]?\d*\.?\d+(?:e[-+]?\d+)?)/i.exec(value.replace(/,/g, ""));
+  if (!match) return void 0;
+  const n = Number(match[1]);
+  if (!Number.isFinite(n)) return void 0;
+  const normalized = value.toLowerCase();
+  if (/\bkm\b/.test(normalized)) return n * 1e3;
+  if (/\bmi\b|miles?\b/.test(normalized)) return n * 1609.344;
+  if (/\byd\b|yards?\b/.test(normalized)) return n * 0.9144;
+  if (/\bm\b|meters?\b/.test(normalized)) return n;
+  return void 0;
+}
+function workoutDistanceMeters(workout) {
+  if (workout.distanceMeters != null) return workout.distanceMeters;
+  if (workout.distanceKm != null) return workout.distanceKm * 1e3;
+  if (workout.distanceMi != null) return workout.distanceMi * 1609.344;
+  const formattedMeters = parseDistanceFormatted(workout.distanceFormatted);
+  if (formattedMeters != null) return formattedMeters;
+  if (workout.distance == null) return void 0;
+  return workout.distance > 100 ? workout.distance : workout.distance * 1e3;
+}
+function formatDistance(meters, day, preFormatted) {
+  if (preFormatted) return preFormatted;
+  if (resolveUnits(day) === "imperial") {
+    const mi = meters / 1609.344;
+    return mi >= 10 ? `${mi.toFixed(1)} mi` : `${mi.toFixed(2)} mi`;
+  }
+  const km = meters / 1e3;
+  return km >= 10 ? `${km.toFixed(1)} km` : `${km.toFixed(2)} km`;
+}
+function formatWorkoutDistance(workout, day) {
+  const meters = workoutDistanceMeters(workout);
+  return meters == null ? void 0 : formatDistance(meters, day, workout.distanceFormatted);
+}
+function intervalRateDisplay(interval) {
+  var _a;
+  return (_a = interval.paceFormatted) != null ? _a : interval.speedFormatted;
+}
+function formatPace(meters, seconds, day, preFormatted) {
+  if (preFormatted) return preFormatted;
+  if (!meters || !seconds) return "\u2014";
+  const unitDistance = resolveUnits(day) === "imperial" ? 1609.344 : 1e3;
+  const secPerUnit = seconds / (meters / unitDistance);
+  const m = Math.floor(secPerUnit / 60);
+  const s = Math.round(secPerUnit % 60);
+  const suffix = resolveUnits(day) === "imperial" ? "/mi" : "/km";
+  return `${m}:${s.toString().padStart(2, "0")}${suffix}`;
+}
+function formatElevation(meters, day) {
+  if (resolveUnits(day) === "imperial") {
+    return `${Math.round(meters * 3.28084)} ft`;
+  }
+  return `${Math.round(meters)} m`;
+}
+function elapsedSeconds(startTime, sampleTimestamp) {
+  if (!startTime) return NaN;
+  const start = Date.parse(startTime);
+  const sample = Date.parse(sampleTimestamp);
+  if (!Number.isFinite(start) || !Number.isFinite(sample)) return NaN;
+  return (sample - start) / 1e3;
+}
+function formatElapsed(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "\u2014";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor(seconds % 3600 / 60);
+  const s = Math.floor(seconds % 60);
+  const pad = (n) => n.toString().padStart(2, "0");
+  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+  return `${m}:${pad(s)}`;
+}
+function drawEmptyState(ctx, w, h, bg, muted, message) {
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = muted;
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(message, w / 2, h / 2);
+}
+
 // src/visualizations/workout-log.ts
 var TYPE_LABELS = {
   running: "Run",
@@ -11486,12 +13217,14 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       if (!w.duration) continue;
       entries.push({
         date: day.date,
-        type: w.type || "Workout",
+        type: w.activityType || w.type || "Workout",
         duration: w.duration,
         calories: w.calories || 0,
-        distance: w.distance,
+        distanceMeters: workoutDistanceMeters(w),
         durationFormatted: w.durationFormatted,
-        distanceFormatted: w.distanceFormatted
+        distanceFormatted: formatWorkoutDistance(w, day),
+        avgHeartRate: w.avgHeartRate,
+        avgPower: w.avgPower
       });
     }
   }
@@ -11557,7 +13290,9 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       details: [
         { label: "Duration", value: (_a = entry.durationFormatted) != null ? _a : formatDuration(entry.duration) },
         ...entry.calories ? [{ label: "Calories", value: `${Math.round(entry.calories)} kcal` }] : [],
-        ...entry.distance != null ? [{ label: "Distance", value: (_b = entry.distanceFormatted) != null ? _b : `${entry.distance.toFixed(2)} km` }] : []
+        ...entry.distanceMeters != null ? [{ label: "Distance", value: (_b = entry.distanceFormatted) != null ? _b : `${(entry.distanceMeters / 1e3).toFixed(2)} km` }] : [],
+        ...entry.avgHeartRate != null ? [{ label: "Avg HR", value: `${Math.round(entry.avgHeartRate)} BPM` }] : [],
+        ...entry.avgPower != null ? [{ label: "Avg Power", value: `${Math.round(entry.avgPower)} W` }] : []
       ],
       payload: entry
     });
@@ -12654,7 +14389,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const max = Math.max(...values, 0);
   const nonZero = values.filter((v) => v > 0);
   const total = values.reduce((s, v) => s + v, 0);
-  const average = nonZero.length ? total / nonZero.length : 0;
+  const average3 = nonZero.length ? total / nonZero.length : 0;
   const goal = config.goal != null ? Number(config.goal) : void 0;
   const showAverage = config.showAverage === void 0 || config.showAverage === "true" || config.showAverage === 1 || config.showAverage === "1";
   const chartEffectiveMax = goal && goal > max ? goal : max;
@@ -12667,7 +14402,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const padR = 36;
   const plotTop = padT + kpiH;
   const plotH = H - plotTop - padB;
-  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average);
+  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average3);
   const subtitle = `${formatDate(days[0].date)} \u2013 ${formatDate(days[n - 1].date)}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -12687,8 +14422,8 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.textBaseline = "top";
     ctx.fillText(meta.formatValue(chartEffectiveMax), W - 4, plotTop);
   }
-  if (showAverage && average > 0 && chartEffectiveMax > 0) {
-    const y = plotTop + plotH - average / denom * plotH;
+  if (showAverage && average3 > 0 && chartEffectiveMax > 0) {
+    const y = plotTop + plotH - average3 / denom * plotH;
     ctx.save();
     ctx.strokeStyle = hexToRgba(theme.fg, 0.4);
     ctx.lineWidth = 1;
@@ -12702,7 +14437,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText(`avg ${meta.formatValue(average)}`, W - padR - 4, y - 2);
+    ctx.fillText(`avg ${meta.formatValue(average3)}`, W - padR - 4, y - 2);
   }
   if (goal && chartEffectiveMax > 0) {
     const y = plotTop + plotH - goal / denom * plotH;
@@ -12793,7 +14528,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
       value: meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(total),
       label: `Total ${meta.unit}`
     },
-    { value: meta.formatValue(average), label: "Daily avg" },
+    { value: meta.formatValue(average3), label: "Daily avg" },
     { value: meta.formatValue(best), label: `Best (${bestLabel})` }
   ]);
 };
@@ -12801,11 +14536,11 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
 // src/visualizations/sleep-schedule.ts
 var DAY_MS = 864e5;
 function parseWindow(str) {
-  const clock = parseClockTime(str);
+  const clock = parseClockTime2(str);
   if (!clock) return { h: 0, m: 0 };
   return { h: clock.h, m: clock.m };
 }
-function parseClockTime(raw) {
+function parseClockTime2(raw) {
   var _a, _b;
   const value = raw == null ? void 0 : raw.trim();
   if (!value) return null;
@@ -12844,8 +14579,8 @@ function resolveExplicitBedWake(night, sleep) {
   const bedRaw = (_b = (_a = sleep.bedtimeISO) != null ? _a : sleep.sessionStart) != null ? _b : sleep.bedtime;
   const wakeRaw = (_d = (_c = sleep.wakeTimeISO) != null ? _c : sleep.sessionEnd) != null ? _d : sleep.wakeTime;
   if (!bedRaw || !wakeRaw) return null;
-  const bedClock = parseClockTime(bedRaw);
-  const wakeClock = parseClockTime(wakeRaw);
+  const bedClock = parseClockTime2(bedRaw);
+  const wakeClock = parseClockTime2(wakeRaw);
   let bedMs = bedClock ? clockMsOnDate(night.date, bedClock) : parseAbsoluteMs(bedRaw);
   let wakeMs = wakeClock ? clockMsOnDate(night.date, wakeClock) : parseAbsoluteMs(wakeRaw);
   if (!isFinite(bedMs) || !isFinite(wakeMs)) return null;
@@ -12890,7 +14625,7 @@ function localDateIso(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function addDaysIso(dateIso, days) {
+function addDaysIso2(dateIso, days) {
   const d = /* @__PURE__ */ new Date(`${dateIso}T00:00:00`);
   d.setDate(d.getDate() + days);
   return localDateIso(d.getTime());
@@ -12959,13 +14694,13 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     const bedDate = localDateIso(night.bedMs);
     const wakeDate = localDateIso(night.wakeMs);
     const candidates = Array.from(/* @__PURE__ */ new Set([
-      addDaysIso(night.date, -1),
+      addDaysIso2(night.date, -1),
       night.date,
-      addDaysIso(night.date, 1),
-      addDaysIso(bedDate, -1),
+      addDaysIso2(night.date, 1),
+      addDaysIso2(bedDate, -1),
       bedDate,
-      addDaysIso(bedDate, 1),
-      addDaysIso(wakeDate, -1),
+      addDaysIso2(bedDate, 1),
+      addDaysIso2(wakeDate, -1),
       wakeDate
     ]));
     let best = windowBoundsFor(night.date);
@@ -13434,80 +15169,142 @@ var renderOxygenRange = (ctx, data, W, H, config, theme, statsEl, hits) => {
   renderRangeChart(ctx, data, W, H, theme, statsEl, hits, specFor(metric));
 };
 
-// src/workout-utils.ts
-function pickWorkout(data, config) {
-  const dateKey = config.date != null ? String(config.date).trim() : "";
-  const indexRaw = config.workout;
-  const index = typeof indexRaw === "number" ? indexRaw : indexRaw != null ? parseInt(String(indexRaw), 10) : 0;
-  const idx = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0;
-  if (dateKey) {
-    const day = data.find((d) => d.date === dateKey);
-    if (!day || !day.workouts || !day.workouts.length) return null;
-    const w = day.workouts[idx];
-    if (!w) return null;
-    return { day, workout: w, indexInDay: idx };
+// src/visualizations/workout-zones.ts
+var ZONE_HUES = [210, 180, 120, 40, 0];
+var DEFAULT_ZONE_LABELS = ["Recovery", "Aerobic", "Tempo", "Threshold", "Max"];
+var DEFAULT_ZONE_FRACTIONS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.01];
+function resolveMaxHeartRate(config, theme) {
+  const cfg = config.maxHeartRate;
+  if (typeof cfg === "number" && cfg > 0) return cfg;
+  if (typeof cfg === "string") {
+    const n = parseInt(cfg, 10);
+    if (Number.isFinite(n) && n > 0) return n;
   }
-  for (let i = data.length - 1; i >= 0; i--) {
-    const day = data[i];
-    if (day.workouts && day.workouts.length > idx) {
-      return { day, workout: day.workouts[idx], indexInDay: idx };
+  return theme.maxHeartRate;
+}
+function formatZoneDuration(zone) {
+  var _a;
+  return (_a = zone.durationFormatted) != null ? _a : formatDuration(zone.seconds);
+}
+function zonesFromSamples(samples, maxHr) {
+  if (!samples.length || !maxHr) return [];
+  const zones = DEFAULT_ZONE_LABELS.map((label, idx) => ({
+    index: idx + 1,
+    label,
+    range: `${Math.round(maxHr * DEFAULT_ZONE_FRACTIONS[idx])}-${Math.round(maxHr * DEFAULT_ZONE_FRACTIONS[idx + 1])}`,
+    seconds: 0
+  }));
+  for (let i = 0; i < samples.length; i++) {
+    const current = samples[i];
+    const next = samples[i + 1];
+    const currentMs = Date.parse(current.timestamp);
+    const nextMs = next ? Date.parse(next.timestamp) : NaN;
+    const seconds = Number.isFinite(currentMs) && Number.isFinite(nextMs) ? Math.max(1, Math.min(300, (nextMs - currentMs) / 1e3)) : 60;
+    const frac = current.value / maxHr;
+    let zoneIndex = zones.findIndex((zone, idx) => frac >= DEFAULT_ZONE_FRACTIONS[idx] && frac < DEFAULT_ZONE_FRACTIONS[idx + 1]);
+    if (zoneIndex === -1 && frac >= 1) zoneIndex = zones.length - 1;
+    if (zoneIndex !== -1) zones[zoneIndex].seconds += seconds;
+  }
+  return zones.filter((zone) => zone.seconds > 0);
+}
+var renderWorkoutZones = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a, _b, _c, _d;
+  const picked = pickWorkout(data, config);
+  if (!picked) {
+    drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No workout found");
+    statsEl.empty();
+    return;
+  }
+  const { day, workout } = picked;
+  const zones = ((_a = workout.heartRateZones) != null ? _a : []).filter((zone) => zone.seconds > 0);
+  const fallbackZones = zones.length ? [] : zonesFromSamples((_c = (_b = workout.timeSeries) == null ? void 0 : _b.heartRate) != null ? _c : [], resolveMaxHeartRate(config, theme));
+  const visibleZones = zones.length ? zones : fallbackZones;
+  if (!visibleZones.length) {
+    drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No heart-rate zones for this workout");
+    statsEl.empty();
+    return;
+  }
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const total = visibleZones.reduce((sum, zone) => sum + zone.seconds, 0);
+  const padX = 28;
+  const titleY = 14;
+  const barY = Math.max(52, H * 0.32);
+  const barH = Math.min(34, Math.max(22, H * 0.14));
+  const barW = W - padX * 2;
+  const radius = barH / 2;
+  ctx.fillStyle = theme.fg;
+  ctx.font = "600 13px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(`${(_d = workout.activityType) != null ? _d : workout.type} zones`, padX, titleY);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "10px sans-serif";
+  ctx.fillText(day.date, padX, titleY + 18);
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(padX, barY, barW, barH, radius);
+  ctx.clip();
+  let x = padX;
+  visibleZones.forEach((zone) => {
+    const w = zone.seconds / total * barW;
+    const hue = ZONE_HUES[(zone.index - 1 + ZONE_HUES.length) % ZONE_HUES.length];
+    ctx.fillStyle = `hsl(${hue},70%,${theme.isDark ? 52 : 46}%)`;
+    ctx.fillRect(x, barY, Math.max(0, w), barH);
+    if (w > 42) {
+      ctx.fillStyle = hexToRgba("#ffffff", 0.92);
+      ctx.font = "700 10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`Z${zone.index}`, x + w / 2, barY + barH / 2);
     }
-  }
-  return null;
-}
-function resolveUnits(day) {
-  return day.units === "imperial" ? "imperial" : "metric";
-}
-function formatDistance(meters, day, preFormatted) {
-  if (preFormatted) return preFormatted;
-  if (resolveUnits(day) === "imperial") {
-    const mi = meters / 1609.344;
-    return mi >= 10 ? `${mi.toFixed(1)} mi` : `${mi.toFixed(2)} mi`;
-  }
-  const km = meters / 1e3;
-  return km >= 10 ? `${km.toFixed(1)} km` : `${km.toFixed(2)} km`;
-}
-function formatPace(meters, seconds, day, preFormatted) {
-  if (preFormatted) return preFormatted;
-  if (!meters || !seconds) return "\u2014";
-  const unitDistance = resolveUnits(day) === "imperial" ? 1609.344 : 1e3;
-  const secPerUnit = seconds / (meters / unitDistance);
-  const m = Math.floor(secPerUnit / 60);
-  const s = Math.round(secPerUnit % 60);
-  const suffix = resolveUnits(day) === "imperial" ? "/mi" : "/km";
-  return `${m}:${s.toString().padStart(2, "0")}${suffix}`;
-}
-function formatElevation(meters, day) {
-  if (resolveUnits(day) === "imperial") {
-    return `${Math.round(meters * 3.28084)} ft`;
-  }
-  return `${Math.round(meters)} m`;
-}
-function elapsedSeconds(startTime, sampleTimestamp) {
-  if (!startTime) return NaN;
-  const start = Date.parse(startTime);
-  const sample = Date.parse(sampleTimestamp);
-  if (!Number.isFinite(start) || !Number.isFinite(sample)) return NaN;
-  return (sample - start) / 1e3;
-}
-function formatElapsed(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "\u2014";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor(seconds % 3600 / 60);
-  const s = Math.floor(seconds % 60);
-  const pad = (n) => n.toString().padStart(2, "0");
-  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
-  return `${m}:${pad(s)}`;
-}
-function drawEmptyState(ctx, w, h, bg, muted, message) {
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = muted;
-  ctx.font = "12px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(message, w / 2, h / 2);
-}
+    hits.add({
+      shape: "rect",
+      x,
+      y: barY,
+      w: Math.max(1, w),
+      h: barH,
+      title: `Zone ${zone.index} \u2014 ${zone.label}`,
+      details: [
+        { label: "Time", value: formatZoneDuration(zone) },
+        { label: "Share", value: `${Math.round(zone.seconds / total * 100)}%` },
+        ...zone.range ? [{ label: "Range", value: `${zone.range} bpm` }] : []
+      ],
+      payload: day
+    });
+    x += w;
+  });
+  ctx.restore();
+  const legendY = barY + barH + 22;
+  const colW = barW / visibleZones.length;
+  visibleZones.forEach((zone, idx) => {
+    const hue = ZONE_HUES[(zone.index - 1 + ZONE_HUES.length) % ZONE_HUES.length];
+    const lx = padX + idx * colW;
+    ctx.fillStyle = `hsl(${hue},70%,${theme.isDark ? 58 : 42}%)`;
+    ctx.beginPath();
+    ctx.arc(lx + 5, legendY + 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = theme.fg;
+    ctx.font = "700 10px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(`Z${zone.index}`, lx + 14, legendY - 1);
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.fillText(formatZoneDuration(zone), lx + 14, legendY + 12);
+  });
+  const dominant = visibleZones.reduce((best, zone) => zone.seconds > best.seconds ? zone : best, visibleZones[0]);
+  renderInlineStats(statsEl, [
+    [
+      { text: "Zone time " },
+      { text: formatDuration(total), strong: true }
+    ],
+    [
+      { text: "Dominant " },
+      { text: `Z${dominant.index} ${dominant.label}`, strong: true }
+    ]
+  ]);
+};
 
 // src/visualizations/workout-heart-rate.ts
 var ZONES = [
@@ -13525,7 +15322,7 @@ function zoneFor(bpm, maxHr) {
   if (frac >= 1) return ZONES[ZONES.length - 1];
   return null;
 }
-function resolveMaxHeartRate(config, theme) {
+function resolveMaxHeartRate2(config, theme) {
   const cfg = config.maxHeartRate;
   if (typeof cfg === "number" && cfg > 0) return cfg;
   if (typeof cfg === "string") {
@@ -13699,7 +15496,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   }
 }
 var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => {
-  var _a;
+  var _a, _b;
   const picked = pickWorkout(data, config);
   if (!picked) {
     drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No workout found");
@@ -13707,7 +15504,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     return;
   }
   const { workout } = picked;
-  const maxHr = resolveMaxHeartRate(config, theme);
+  const maxHr = resolveMaxHeartRate2(config, theme);
   const workoutStart = (_a = workout.startTimeISO) != null ? _a : workout.startTime;
   const sources = heartRateSampleSources(picked);
   let pts = [];
@@ -13721,6 +15518,10 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     }
   }
   if (!pts.length) {
+    if ((_b = workout.heartRateZones) == null ? void 0 : _b.some((zone) => zone.seconds > 0)) {
+      renderWorkoutZones(ctx, data, W, H, config, theme, statsEl, hits);
+      return;
+    }
     const avg5 = workout.avgHeartRate;
     const lo2 = workout.minHeartRate;
     const hi2 = workout.maxHeartRate;
@@ -13903,6 +15704,232 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   renderInlineStats(statsEl, rows);
 };
 
+// src/visualizations/workout-trends.ts
+var METRICS5 = [
+  {
+    key: "duration",
+    label: "Duration",
+    unit: "min",
+    color: (theme) => theme.colors.accent,
+    value: (workout) => workout.duration > 0 ? workout.duration / 60 : void 0,
+    format: (value) => formatDuration(value * 60)
+  },
+  {
+    key: "distance",
+    label: "Distance",
+    unit: "km",
+    color: (theme) => theme.colors.secondary,
+    value: (workout) => {
+      const meters = workoutDistanceMeters(workout);
+      return meters == null ? void 0 : meters / 1e3;
+    },
+    format: (value) => `${value.toFixed(value >= 10 ? 1 : 2)} km`
+  },
+  {
+    key: "calories",
+    label: "Calories",
+    unit: "kcal",
+    color: () => "#f97316",
+    value: (workout) => workout.calories,
+    format: (value) => `${Math.round(value)} kcal`
+  },
+  {
+    key: "hr_avg",
+    label: "Avg HR",
+    unit: "bpm",
+    color: (theme) => theme.colors.heart,
+    value: (workout) => workout.avgHeartRate,
+    format: (value) => `${Math.round(value)} BPM`
+  },
+  {
+    key: "power_avg",
+    label: "Avg Power",
+    unit: "W",
+    color: () => "#a855f7",
+    value: (workout) => workout.avgPower,
+    format: (value) => `${Math.round(value)} W`
+  }
+];
+function metricAliases(raw) {
+  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  switch (normalized) {
+    case "hr":
+    case "heart_rate":
+    case "avg_heart_rate":
+      return "hr_avg";
+    case "power":
+    case "avg_power":
+      return "power_avg";
+    case "cal":
+    case "energy":
+      return "calories";
+    default:
+      return normalized;
+  }
+}
+function collectWorkoutPoints(data) {
+  var _a, _b, _c;
+  const points = [];
+  for (const day of data) {
+    for (const workout of (_a = day.workouts) != null ? _a : []) {
+      const timestamp = (_c = (_b = workout.startTimeISO) != null ? _b : workout.startTime) != null ? _c : `${day.date}T00:00:00`;
+      const ms = Date.parse(timestamp);
+      points.push({
+        day,
+        workout,
+        timestamp,
+        ms: Number.isFinite(ms) ? ms : Date.parse(`${day.date}T00:00:00`)
+      });
+    }
+  }
+  return points.sort((a, b) => a.ms - b.ms);
+}
+function niceStep(range) {
+  if (range <= 5) return 1;
+  if (range <= 20) return 5;
+  if (range <= 60) return 10;
+  if (range <= 200) return 25;
+  return 50;
+}
+function drawPanel(ctx, points, metric, x, y, w, h, theme, hits) {
+  const values = [];
+  for (const point of points) {
+    const value = metric.value(point.workout);
+    if (value !== void 0 && Number.isFinite(value)) {
+      values.push({ ...point, value });
+    }
+  }
+  if (!values.length) return;
+  const minMs = values[0].ms;
+  const maxMs = values[values.length - 1].ms;
+  let minValue = Math.min(...values.map((point) => point.value));
+  let maxValue = Math.max(...values.map((point) => point.value));
+  if (minValue === maxValue) {
+    minValue = Math.max(0, minValue * 0.8 - 1);
+    maxValue = maxValue * 1.2 + 1;
+  }
+  if (minValue > 0) minValue = Math.max(0, minValue - (maxValue - minValue) * 0.12);
+  maxValue += (maxValue - minValue) * 0.12;
+  const xFor = (ms) => x + (ms - minMs) / (maxMs - minMs || 1) * w;
+  const yFor = (value) => y + (1 - (value - minValue) / (maxValue - minValue || 1)) * h;
+  const color = metric.color(theme);
+  ctx.fillStyle = theme.fg;
+  ctx.font = "600 11px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(metric.label, x, y - 18);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "9px sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(metric.unit, x + w, y - 17);
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
+  ctx.lineWidth = 1;
+  const step = niceStep(maxValue - minValue);
+  const start = Math.ceil(minValue / step) * step;
+  for (let tick = start; tick <= maxValue; tick += step) {
+    const ty = yFor(tick);
+    ctx.beginPath();
+    ctx.moveTo(x, ty);
+    ctx.lineTo(x + w, ty);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  values.forEach((point, index) => {
+    const px = xFor(point.ms);
+    const py = yFor(point.value);
+    if (index === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+  ctx.fillStyle = color;
+  values.forEach((point) => {
+    var _a;
+    const px = xFor(point.ms);
+    const py = yFor(point.value);
+    ctx.beginPath();
+    ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    hits.add({
+      shape: "circle",
+      cx: px,
+      cy: py,
+      r: 8,
+      title: `${formatDate(point.day.date)} \u2014 ${(_a = point.workout.activityType) != null ? _a : point.workout.type}`,
+      details: [
+        { label: metric.label, value: metric.format(point.value) },
+        { label: "Duration", value: formatDuration(point.workout.duration) },
+        ...point.workout.calories != null ? [{ label: "Calories", value: `${Math.round(point.workout.calories)} kcal` }] : []
+      ],
+      payload: point.day
+    });
+  });
+  ctx.fillStyle = theme.muted;
+  ctx.font = "8px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(formatDate(values[0].day.date), x, y + h + 4);
+  ctx.textAlign = "right";
+  ctx.fillText(formatDate(values[values.length - 1].day.date), x + w, y + h + 4);
+}
+var renderWorkoutTrends = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const points = collectWorkoutPoints(data);
+  if (!points.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("No workouts in range", W / 2, H / 2);
+    statsEl.empty();
+    return;
+  }
+  const metricRaw = config.metric == null ? "all" : String(config.metric);
+  const requested = metricAliases(metricRaw);
+  const metrics = requested === "all" ? METRICS5.filter((metric) => points.some((point) => metric.value(point.workout) !== void 0)) : METRICS5.filter((metric) => metric.key === requested);
+  if (!metrics.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`No workout data for metric: ${metricRaw}`, W / 2, H / 2);
+    statsEl.empty();
+    return;
+  }
+  const padL = 34;
+  const padR = 18;
+  const padT = 34;
+  const padB = 22;
+  const gap = metrics.length > 1 ? 34 : 18;
+  const panelH = (H - padT - padB - gap * (metrics.length - 1)) / metrics.length;
+  const panelW = W - padL - padR;
+  ctx.fillStyle = theme.fg;
+  ctx.font = "700 13px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("Workout trends", padL, 10);
+  metrics.forEach((metric, index) => {
+    drawPanel(ctx, points, metric, padL, padT + index * (panelH + gap), panelW, Math.max(24, panelH), theme, hits);
+  });
+  const totalDuration = points.reduce((sum, point) => sum + (point.workout.duration || 0), 0);
+  const totalDistanceMeters = points.reduce((sum, point) => {
+    var _a;
+    return sum + ((_a = workoutDistanceMeters(point.workout)) != null ? _a : 0);
+  }, 0);
+  renderInlineStats(statsEl, [
+    [{ text: `${points.length} workouts` }],
+    [
+      { text: "Total time " },
+      { text: formatDuration(totalDuration), strong: true }
+    ],
+    ...totalDistanceMeters > 0 ? [[{ text: "Distance " }, { text: `${(totalDistanceMeters / 1e3).toFixed(1)} km`, strong: true }]] : []
+  ]);
+};
+
 // src/visualizations/workout-map.ts
 var L2 = __toESM(require_leaflet_src());
 var MAX_POINTS = 1500;
@@ -13981,7 +16008,7 @@ function totalRouteDistance(route) {
   return d;
 }
 function renderHeader(host, day, workout) {
-  var _a;
+  var _a, _b;
   const header = host.createDiv({ cls: "health-md-workout-header" });
   const title = header.createDiv({ cls: "health-md-workout-title" });
   title.textContent = workout.type ? workout.type.charAt(0).toUpperCase() + workout.type.slice(1) : "Workout";
@@ -13991,14 +16018,16 @@ function renderHeader(host, day, workout) {
     cell.createDiv({ cls: "health-md-workout-stat-label", text: label });
     cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
   };
-  if (workout.distance != null) {
-    addStat("Distance", formatDistance(workout.distance, day, workout.distanceFormatted));
+  const distanceMeters = workoutDistanceMeters(workout);
+  const distanceDisplay = formatWorkoutDistance(workout, day);
+  if (distanceDisplay) {
+    addStat("Distance", distanceDisplay);
   }
   addStat("Duration", (_a = workout.durationFormatted) != null ? _a : formatDuration(workout.duration));
-  if (workout.distance != null && workout.duration > 0) {
+  if (distanceMeters != null && workout.duration > 0) {
     addStat(
-      "Avg pace",
-      formatPace(workout.distance, workout.duration, day, workout.avgPaceFormatted)
+      workout.avgSpeedFormatted ? "Avg speed" : "Avg pace",
+      (_b = workout.avgSpeedFormatted) != null ? _b : formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted)
     );
   }
   if (workout.elevationGainMeters != null) {
@@ -14174,6 +16203,84 @@ var renderWorkoutMap = (data, el, config, theme) => {
   }
 };
 
+// src/visualizations/workout-intervals.ts
+function titleCase(value) {
+  return value.split(/\s+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+function renderEmptyMessage2(host, message) {
+  const msg = host.createDiv({ cls: "health-md-workout-empty" });
+  msg.textContent = message;
+}
+function renderHeader2(host, day, workout) {
+  var _a, _b;
+  const header = host.createDiv({ cls: "health-md-workout-header" });
+  const title = header.createDiv({ cls: "health-md-workout-title" });
+  title.textContent = `${titleCase((_a = workout.activityType) != null ? _a : workout.type)} \u2014 ${day.date}`;
+  const stats = header.createDiv({ cls: "health-md-workout-stats" });
+  const addStat = (label, value) => {
+    if (!value) return;
+    const cell = stats.createDiv({ cls: "health-md-workout-stat" });
+    cell.createDiv({ cls: "health-md-workout-stat-label", text: label });
+    cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
+  };
+  addStat("Duration", (_b = workout.durationFormatted) != null ? _b : formatDuration(workout.duration));
+  addStat("Distance", formatWorkoutDistance(workout, day));
+  addStat("Avg HR", workout.avgHeartRate != null ? `${Math.round(workout.avgHeartRate)} BPM` : void 0);
+  addStat("Avg Power", workout.avgPower != null ? `${Math.round(workout.avgPower)} W` : void 0);
+}
+function formatMaybeNumber(value, suffix) {
+  return value == null ? "\u2014" : `${Math.round(value)} ${suffix}`;
+}
+function renderIntervalTable(host, label, rows) {
+  host.createEl("h4", { text: label, cls: "health-md-workout-table-heading" });
+  const wrapper = host.createDiv({ cls: "health-md-workout-table-wrap" });
+  const table = wrapper.createEl("table", { cls: "health-md-workout-table" });
+  const thead = table.createEl("thead");
+  const headerRow = thead.createEl("tr");
+  ["#", "Distance", "Time", "Pace / Speed", "Avg HR", "Max HR", "Avg Power", "Avg Cadence"].forEach((heading) => {
+    headerRow.createEl("th", { text: heading });
+  });
+  const tbody = table.createEl("tbody");
+  rows.forEach((row) => {
+    var _a, _b, _c;
+    const tr = tbody.createEl("tr");
+    tr.createEl("td", { text: String(row.index) });
+    tr.createEl("td", { text: (_a = row.distanceFormatted) != null ? _a : row.distance != null ? `${(row.distance / 1e3).toFixed(2)} km` : "\u2014" });
+    tr.createEl("td", { text: row.duration ? formatDuration(row.duration) : "\u2014" });
+    tr.createEl("td", { text: (_b = intervalRateDisplay(row)) != null ? _b : "\u2014" });
+    tr.createEl("td", { text: formatMaybeNumber(row.avgHeartRate, "BPM") });
+    tr.createEl("td", { text: formatMaybeNumber(row.maxHeartRate, "BPM") });
+    tr.createEl("td", { text: formatMaybeNumber(row.avgPower, "W") });
+    tr.createEl("td", { text: row.avgCadence == null ? "\u2014" : `${Math.round(row.avgCadence)} ${(_c = row.cadenceUnit) != null ? _c : ""}`.trim() });
+  });
+}
+var renderWorkoutIntervals = (data, el, config, _theme) => {
+  var _a, _b, _c, _d;
+  el.addClass("health-md-workout-container");
+  const picked = pickWorkout(data, config);
+  if (!picked) {
+    renderEmptyMessage2(el, "No workout found");
+    return;
+  }
+  const { day, workout } = picked;
+  renderHeader2(el, day, workout);
+  const kind = String((_b = (_a = config.kind) != null ? _a : config.table) != null ? _b : "auto").trim().toLowerCase();
+  const showLaps = kind === "auto" || kind === "laps" || kind === "lap";
+  const showSplits = kind === "auto" || kind === "splits" || kind === "split";
+  let rendered = false;
+  if (showLaps && ((_c = workout.laps) == null ? void 0 : _c.length)) {
+    renderIntervalTable(el, "Laps", workout.laps);
+    rendered = true;
+  }
+  if (showSplits && ((_d = workout.splits) == null ? void 0 : _d.length)) {
+    renderIntervalTable(el, "Splits", workout.splits);
+    rendered = true;
+  }
+  if (!rendered) {
+    renderEmptyMessage2(el, "No laps or splits were included for this workout.");
+  }
+};
+
 // src/visualizations/index.ts
 var VISUALIZATIONS = {
   "heart-terrain": renderHeartTerrain,
@@ -14194,16 +16301,27 @@ var VISUALIZATIONS = {
   "sleep-schedule": renderSleepSchedule,
   "weekday-average": renderWeekdayAverage,
   "oxygen-range": renderOxygenRange,
-  "workout-heart-rate": renderWorkoutHeartRate
+  "workout-heart-rate": renderWorkoutHeartRate,
+  "workout-zones": renderWorkoutZones,
+  "workout-heart-rate-zones": renderWorkoutZones,
+  "workout-trends": renderWorkoutTrends
 };
 var HTML_VISUALIZATIONS = {
   "intro-stats": renderIntroStats,
   "summary-card": renderSummaryCard,
   "trend-tile": renderTrendTile,
-  "workout-map": renderWorkoutMap
+  "workout-map": renderWorkoutMap,
+  "workout-intervals": renderWorkoutIntervals,
+  "workout-laps": renderWorkoutIntervals
 };
 
 // src/renderer.ts
+function noHealthDataMessage(plugin) {
+  var _a, _b;
+  const summary = (_b = (_a = plugin.dataLoader).getLastLoadSummary) == null ? void 0 : _b.call(_a);
+  const suffix = summary ? ` ${summary}` : "";
+  return `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.${suffix}`;
+}
 function parseConfig(source) {
   const config = { type: "" };
   for (const line of source.split("\n")) {
@@ -14217,6 +16335,94 @@ function parseConfig(source) {
     config[key] = isNaN(num) ? val : num;
   }
   return config;
+}
+var FRONTMATTER_DATE_VARIABLE_KEYS = ["from", "to", "date"];
+var FRONTMATTER_VARIABLE = /^\{([^{}]+)\}$/;
+function frontmatterDateValueToString(value, key) {
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    if (Number.isNaN(ms)) return null;
+    const iso = value.toISOString();
+    const isMidnightUtc = value.getUTCHours() === 0 && value.getUTCMinutes() === 0 && value.getUTCSeconds() === 0 && value.getUTCMilliseconds() === 0;
+    if (key === "date" || isMidnightUtc) return iso.slice(0, 10);
+    return iso.replace(/\.\d{3}Z$/, "Z");
+  }
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+function parseSimpleFrontmatter(source) {
+  const match = /^---\s*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source);
+  if (!match) return null;
+  const frontmatter = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || /^\s/.test(line)) continue;
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    if (!key) continue;
+    let value = line.slice(colonIdx + 1).trim();
+    if (value.startsWith('"') && value.endsWith('"') || value.startsWith("'") && value.endsWith("'")) {
+      value = value.slice(1, -1);
+    }
+    frontmatter[key] = value;
+  }
+  return frontmatter;
+}
+async function getFrontmatterForContext(plugin, ctx) {
+  var _a;
+  const contextFrontmatter = ctx.frontmatter;
+  const cachedFrontmatter = (_a = plugin.app.metadataCache.getCache(ctx.sourcePath)) == null ? void 0 : _a.frontmatter;
+  const cached = contextFrontmatter != null ? contextFrontmatter : cachedFrontmatter;
+  let parsed = null;
+  if (ctx.sourcePath) {
+    const sourceFile = plugin.app.vault.getAbstractFileByPath(
+      (0, import_obsidian2.normalizePath)(ctx.sourcePath)
+    );
+    if (sourceFile instanceof import_obsidian2.TFile) {
+      try {
+        parsed = parseSimpleFrontmatter(await plugin.app.vault.read(sourceFile));
+      } catch (error) {
+        console.warn("Health.md: failed to read note frontmatter", error);
+      }
+    }
+  }
+  if (parsed && isRecord2(cached)) return { ...parsed, ...cached };
+  return cached != null ? cached : parsed;
+}
+function resolveFrontmatterDateVariables(config, frontmatter) {
+  const resolved = { ...config };
+  for (const key of FRONTMATTER_DATE_VARIABLE_KEYS) {
+    const raw = config[key];
+    if (typeof raw !== "string") continue;
+    const match = FRONTMATTER_VARIABLE.exec(raw.trim());
+    if (!match) continue;
+    const variable = match[1].trim();
+    if (!variable) {
+      return { error: `Invalid frontmatter variable in "${key}".` };
+    }
+    if (!isRecord2(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
+      return {
+        error: `Missing frontmatter variable "${variable}" for "${key}". Add "${variable}" to this note's frontmatter or use a literal date.`
+      };
+    }
+    const value = frontmatter[variable];
+    const dateValue = frontmatterDateValueToString(value, key);
+    if (!dateValue) {
+      return {
+        error: `Frontmatter variable "${variable}" for "${key}" must be a date or datetime string.`
+      };
+    }
+    if (key === "date") {
+      const parsed = parseBoundary(dateValue, key);
+      if ("error" in parsed) return { error: parsed.error };
+      resolved[key] = parsed.date;
+      continue;
+    }
+    resolved[key] = dateValue;
+  }
+  return { config: resolved };
 }
 var DATE_OR_DATETIME = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 function toISODate(d) {
@@ -14537,7 +16743,7 @@ function renderTooltipContent(tooltipEl, region) {
   });
 }
 var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null;
 }
 function normalizeDataPointClickAction(value) {
@@ -14571,7 +16777,7 @@ function collectPayloadNavigation(payload, dates, sourcePaths) {
     payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
     return;
   }
-  if (!isRecord(payload)) return;
+  if (!isRecord2(payload)) return;
   const date = payload.date;
   if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
   const paths = payload.sourcePaths;
@@ -14696,14 +16902,21 @@ var VizRenderChild = class extends import_obsidian2.MarkdownRenderChild {
 };
 async function renderCodeBlock(plugin, source, el, ctx) {
   var _a, _b, _c, _d, _e;
-  const config = parseConfig(source);
-  if (!config.type) {
+  const parsedConfig = parseConfig(source);
+  if (!parsedConfig.type) {
     el.createEl("p", {
       text: "Missing type. Example: type: heart-terrain",
       cls: "health-md-error"
     });
     return;
   }
+  const frontmatter = await getFrontmatterForContext(plugin, ctx);
+  const configResolution = resolveFrontmatterDateVariables(parsedConfig, frontmatter);
+  if ("error" in configResolution) {
+    el.createEl("p", { text: configResolution.error, cls: "health-md-error" });
+    return;
+  }
+  const config = configResolution.config;
   const range = resolveDateRange(config);
   if (range.error) {
     el.createEl("p", { text: range.error, cls: "health-md-error" });
@@ -14718,7 +16931,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     const allData2 = await plugin.dataLoader.load();
     if (!allData2.length) {
       el.createEl("p", {
-        text: `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.`
+        text: noHealthDataMessage(plugin)
       });
       return;
     }
@@ -14747,7 +16960,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
   const allData = await plugin.dataLoader.load();
   if (!allData.length) {
     el.createEl("p", {
-      text: `No health data found in ${plugin.settings.dataFolder}/. Supported formats: JSON, CSV, or Markdown/Bases with YAML frontmatter.`
+      text: noHealthDataMessage(plugin)
     });
     return;
   }
@@ -14908,7 +17121,7 @@ var CATEGORIES = [
   {
     id: "workouts",
     label: "Workouts",
-    description: "Workout logs, heart-rate series, and GPS route maps."
+    description: "Workout logs, detailed zones, interval tables, trends, and GPS route maps."
   }
 ];
 var SUMMARY_METRICS = [
@@ -14958,6 +17171,14 @@ var HEART_RANGE_METRICS = [
 var OXYGEN_RANGE_METRICS = [
   { value: "blood-oxygen", label: "Blood oxygen" },
   { value: "respiratory-rate", label: "Respiratory rate" }
+];
+var WORKOUT_TREND_METRICS = [
+  { value: "all", label: "All workout metrics" },
+  { value: "duration", label: "Duration" },
+  { value: "distance", label: "Distance" },
+  { value: "calories", label: "Calories" },
+  { value: "hr_avg", label: "Average heart rate" },
+  { value: "power_avg", label: "Average power" }
 ];
 var VISUALIZATIONS2 = [
   {
@@ -15347,6 +17568,98 @@ var VISUALIZATIONS2 = [
         placeholder: "190",
         optional: true,
         validation: "positive-number"
+      }
+    ]
+  },
+  {
+    type: "workout-zones",
+    label: "Workout zones",
+    category: "workouts",
+    description: "Stacked heart-rate zone time from detailed workout notes.",
+    defaultLast: 30,
+    defaultHeight: 180,
+    params: [
+      {
+        kind: "text",
+        key: "date",
+        label: "Workout date",
+        desc: "Optional workout day to select, in YYYY-MM-DD format.",
+        placeholder: "2026-03-27",
+        optional: true,
+        validation: "date"
+      },
+      {
+        kind: "text",
+        key: "workout",
+        label: "Workout index",
+        desc: "Zero-based workout number on that day. 0 means first workout.",
+        defaultValue: "0",
+        validation: "non-negative-integer"
+      },
+      {
+        kind: "text",
+        key: "maxHeartRate",
+        label: "Max heart rate",
+        desc: "Optional BPM used to derive zones from samples when frontmatter zones are absent.",
+        placeholder: "190",
+        optional: true,
+        validation: "positive-number"
+      }
+    ]
+  },
+  {
+    type: "workout-trends",
+    label: "Workout trends",
+    category: "workouts",
+    description: "Trends for duration, distance, calories, average HR, and power.",
+    defaultLast: 90,
+    defaultHeight: 420,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Metric",
+        desc: "Choose all workout trend panels or focus one metric.",
+        options: WORKOUT_TREND_METRICS,
+        defaultValue: "all"
+      }
+    ]
+  },
+  {
+    type: "workout-intervals",
+    label: "Workout intervals",
+    category: "workouts",
+    description: "HTML table for detailed workout laps and splits.",
+    defaultLast: 30,
+    params: [
+      {
+        kind: "text",
+        key: "date",
+        label: "Workout date",
+        desc: "Optional workout day to select, in YYYY-MM-DD format.",
+        placeholder: "2026-03-27",
+        optional: true,
+        validation: "date"
+      },
+      {
+        kind: "text",
+        key: "workout",
+        label: "Workout index",
+        desc: "Zero-based workout number on that day. 0 means first workout.",
+        defaultValue: "0",
+        validation: "non-negative-integer"
+      },
+      {
+        kind: "select",
+        key: "kind",
+        label: "Interval kind",
+        desc: "Show laps, splits, or whichever detailed tables are available.",
+        options: [
+          { value: "auto", label: "Auto" },
+          { value: "laps", label: "Laps" },
+          { value: "splits", label: "Splits" }
+        ],
+        defaultValue: "auto"
       }
     ]
   },
@@ -15772,7 +18085,7 @@ function formatBytes(bytes) {
   if (kb < 1024) return `${kb.toFixed(1)} KB`;
   return `${(kb / 1024).toFixed(1)} MB`;
 }
-function parseCsvLine(line) {
+function parseCsvLine3(line) {
   const cells = [];
   let cell = "";
   let inQuotes = false;
@@ -15801,7 +18114,7 @@ function parseCsvPreview(content) {
   const rows = [];
   let truncatedColumns = false;
   for (const line of lines.slice(0, CSV_PREVIEW_MAX_ROWS)) {
-    const cells = parseCsvLine(line);
+    const cells = parseCsvLine3(line);
     if (cells.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
     rows.push(cells.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }
@@ -15971,6 +18284,8 @@ var DEFAULT_SETTINGS = {
   dataFolder: "Health",
   filePattern: "*",
   dataFormat: "auto",
+  dataFolderGranularity: "flat",
+  dataFolderCustomPathTemplate: DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE,
   theme: "auto",
   defaultWidth: 800,
   defaultHeight: 400,
@@ -15988,8 +18303,19 @@ var DEFAULT_SETTINGS = {
   mapTileAttribution: "\xA9 OpenStreetMap contributors \xA9 CARTO"
 };
 var DATA_POINT_CLICK_ACTIONS = ["pin", "source", "daily"];
+var DATA_FOLDER_GRANULARITIES = [
+  "flat",
+  "year",
+  "month",
+  "week",
+  "day",
+  "custom"
+];
 function isDataPointClickAction(value) {
   return typeof value === "string" && DATA_POINT_CLICK_ACTIONS.includes(value);
+}
+function isDataFolderGranularity(value) {
+  return typeof value === "string" && DATA_FOLDER_GRANULARITIES.includes(value);
 }
 var HealthMdPlugin = class extends import_obsidian5.Plugin {
   constructor() {
@@ -16006,7 +18332,7 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
   }
   async onload() {
     await this.loadSettings();
-    this.dataLoader = new DataLoader(this.app.vault, this.settings);
+    this.dataLoader = new DataLoader(this.app.vault, this.settings, this.app.metadataCache);
     this.registerMarkdownCodeBlockProcessor(
       "health-viz",
       (source, el, ctx) => renderCodeBlock(this, source, el, ctx)
@@ -16047,6 +18373,7 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
     });
   }
   async loadSettings() {
+    var _a;
     this.settings = Object.assign(
       {},
       DEFAULT_SETTINGS,
@@ -16055,6 +18382,12 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
     if (!isDataPointClickAction(this.settings.dataPointClickAction)) {
       this.settings.dataPointClickAction = DEFAULT_SETTINGS.dataPointClickAction;
     }
+    if (!isDataFolderGranularity(this.settings.dataFolderGranularity)) {
+      this.settings.dataFolderGranularity = DEFAULT_SETTINGS.dataFolderGranularity;
+    }
+    this.settings.dataFolderCustomPathTemplate = normalizeDataFolderPathTemplate(
+      (_a = this.settings.dataFolderCustomPathTemplate) != null ? _a : DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE
+    );
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -16093,6 +18426,26 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    this.renderSettingItems(containerEl, this.getSettingItems());
+  }
+  renderSettingItems(containerEl, items) {
+    var _a;
+    for (const item of items) {
+      if (item.visible === false) continue;
+      if (typeof item.visible === "function" && !item.visible()) continue;
+      if (item.type === "group" || item.type === "list") {
+        if (item.heading) new import_obsidian5.Setting(containerEl).setName(item.heading).setHeading();
+        if (item.items) this.renderSettingItems(containerEl, item.items);
+        continue;
+      }
+      if (item.render) {
+        const setting = new import_obsidian5.Setting(containerEl).setName((_a = item.name) != null ? _a : "");
+        if (item.desc) setting.setDesc(item.desc);
+        item.render(setting);
+      }
+    }
+  }
+  getSettingItems() {
     const updateDataFolder = async (value) => {
       const next = value.trim().replace(/^\/+|\/+$/g, "");
       if (next === this.plugin.settings.dataFolder) return;
@@ -16101,71 +18454,15 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
       await this.plugin.saveSettings();
       this.plugin.refreshViews();
     };
-    new import_obsidian5.Setting(containerEl).setName("Data folder").setDesc(
-      "Path to the folder containing health data files. Start typing to pick an existing folder."
-    ).addSearch((search) => {
-      search.setPlaceholder("Health").setValue(this.plugin.settings.dataFolder).onChange(async (value) => {
-        await updateDataFolder(value);
-      });
-      const folderSuggest = new FolderInputSuggest(this.app, search.inputEl);
-      folderSuggest.onSelect((value) => {
-        void updateDataFolder(value);
-      });
-      search.inputEl.addEventListener("focus", () => folderSuggest.open());
-      search.inputEl.addEventListener("click", () => folderSuggest.open());
-    });
-    new import_obsidian5.Setting(containerEl).setName("File pattern").setDesc(
-      "Glob pattern to match files. Use * to include all supported files."
-    ).addText(
-      (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
-        this.plugin.settings.filePattern = value.trim();
-        this.plugin.dataLoader.invalidate();
-        await this.plugin.saveSettings();
-        this.plugin.refreshViews();
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Data format").setDesc(
-      "Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter."
-    ).addDropdown(
-      (dropdown) => dropdown.addOption("auto", "Auto-detect by extension").addOption("json", "JSON").addOption("csv", "CSV").addOption("markdown", "Markdown (YAML frontmatter required)").addOption("bases", "Obsidian bases (YAML frontmatter)").setValue(this.plugin.settings.dataFormat).onChange(async (value) => {
-        this.plugin.settings.dataFormat = value;
-        this.plugin.dataLoader.invalidate();
-        await this.plugin.saveSettings();
-        this.plugin.refreshViews();
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Theme").setDesc("Color theme for visualizations").addDropdown(
-      (dropdown) => dropdown.addOption("auto", "Auto (match Obsidian)").addOption("dark", "Dark").addOption("light", "Light").setValue(this.plugin.settings.theme).onChange(async (value) => {
-        this.plugin.settings.theme = value;
-        await this.plugin.saveSettings();
-        this.plugin.redrawAll();
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Default width").setDesc("Default canvas width in pixels").addText(
-      (text) => text.setValue(String(this.plugin.settings.defaultWidth)).onChange(async (value) => {
-        const num = parseInt(value, 10);
-        if (!isNaN(num) && num > 0) {
-          this.plugin.settings.defaultWidth = num;
-          await this.plugin.saveSettings();
-        }
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Default height").setDesc("Default canvas height in pixels").addText(
-      (text) => text.setValue(String(this.plugin.settings.defaultHeight)).onChange(async (value) => {
-        const num = parseInt(value, 10);
-        if (!isNaN(num) && num > 0) {
-          this.plugin.settings.defaultHeight = num;
-          await this.plugin.saveSettings();
-        }
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Data point click action").setDesc("Choose what happens when clicking a hoverable point in canvas charts.").addDropdown(
-      (dropdown) => dropdown.addOption("pin", "Pin tooltip").addOption("source", "Open source data file").addOption("daily", "Open daily note").setValue(this.plugin.settings.dataPointClickAction).onChange(async (value) => {
-        this.plugin.settings.dataPointClickAction = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Colors").setHeading();
+    const updateCustomPathTemplate = async (value) => {
+      const next = normalizeDataFolderPathTemplate(value);
+      if (next === this.plugin.settings.dataFolderCustomPathTemplate) return;
+      this.plugin.settings.dataFolderCustomPathTemplate = next;
+      this.plugin.dataLoader.invalidate();
+      await this.plugin.saveSettings();
+      this.plugin.refreshViews();
+    };
+    const customTemplateVariables = DATA_FOLDER_PATH_TEMPLATE_VARIABLES.map((variable) => `{${variable}}`).join(", ");
     const colorInputs = {};
     const applyScheme = async (schemeId) => {
       this.plugin.settings.colorScheme = schemeId;
@@ -16190,17 +18487,6 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
       this.plugin.redrawAll();
     };
     let schemeDropdown;
-    new import_obsidian5.Setting(containerEl).setName("Color scheme").setDesc("Choose a preset palette or customize individual colors below").addDropdown((dropdown) => {
-      Object.keys(COLOR_SCHEMES).forEach((id) => {
-        dropdown.addOption(id, COLOR_SCHEMES[id].label);
-      });
-      dropdown.addOption("custom", "Custom");
-      dropdown.setValue(this.plugin.settings.colorScheme);
-      dropdown.onChange(async (value) => {
-        await applyScheme(value);
-      });
-      schemeDropdown = dropdown.selectEl;
-    });
     const colorSettings = [
       { key: "colorAccent", name: "Accent", desc: "Primary color for activity charts (steps, breathing, rings)" },
       { key: "colorSecondary", name: "Secondary", desc: "Secondary color for calories, asymmetry, and distance" },
@@ -16210,67 +18496,256 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
       { key: "colorSleepCore", name: "Core sleep", desc: "Color for core sleep stages" },
       { key: "colorSleepAwake", name: "Awake", desc: "Color for awake periods in sleep charts" }
     ];
-    colorSettings.forEach(({ key, name, desc }) => {
-      const setting = new import_obsidian5.Setting(containerEl).setName(name).setDesc(desc);
-      const input = setting.controlEl.createEl("input");
-      input.type = "color";
-      input.value = this.plugin.settings[key];
-      colorInputs[key] = input;
-      input.addEventListener("change", () => {
-        void (async () => {
-          this.plugin.settings[key] = input.value;
-          this.plugin.settings.colorScheme = "custom";
-          if (schemeDropdown) schemeDropdown.value = "custom";
-          await this.plugin.saveSettings();
-          this.plugin.redrawAll();
-        })();
-      });
-    });
-    new import_obsidian5.Setting(containerEl).setName("Workouts").setHeading();
-    new import_obsidian5.Setting(containerEl).setName("Maximum heart rate").setDesc(
-      "Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age."
-    ).addText(
-      (text) => text.setPlaceholder("190").setValue(
-        this.plugin.settings.maxHeartRate != null ? String(this.plugin.settings.maxHeartRate) : ""
-      ).onChange(async (value) => {
-        const trimmed = value.trim();
-        if (!trimmed) {
-          this.plugin.settings.maxHeartRate = void 0;
-        } else {
-          const num = parseInt(trimmed, 10);
-          if (Number.isFinite(num) && num > 0) {
-            this.plugin.settings.maxHeartRate = num;
-          }
+    return [
+      {
+        name: "Health.md schema compatibility",
+        desc: this.plugin.dataLoader.getLastLoadSummary(),
+        render: (setting) => {
+          setting.addButton(
+            (button) => button.setButtonText("Scan now").onClick(async () => {
+              this.plugin.dataLoader.invalidate();
+              await this.plugin.dataLoader.load();
+              setting.setDesc(this.plugin.dataLoader.getLastLoadSummary());
+            })
+          );
         }
-        await this.plugin.saveSettings();
-        this.plugin.redrawAll();
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Show map tiles").setDesc(
-      "Render workout maps with tile imagery (requires network). When off, the route is drawn as a polyline on a plain background."
-    ).addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.mapTilesEnabled).onChange(async (value) => {
-        this.plugin.settings.mapTilesEnabled = value;
-        await this.plugin.saveSettings();
-        this.plugin.redrawAll();
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Map tile URL").setDesc(
-      "Leaflet tile URL template. Replace with a different provider's URL if you have your own API key."
-    ).addText(
-      (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl).setValue(this.plugin.settings.mapTileUrl).onChange(async (value) => {
-        this.plugin.settings.mapTileUrl = value.trim() || DEFAULT_SETTINGS.mapTileUrl;
-        await this.plugin.saveSettings();
-        this.plugin.redrawAll();
-      })
-    );
-    new import_obsidian5.Setting(containerEl).setName("Map attribution").setDesc("Attribution string shown on the map. Required by most tile providers.").addText(
-      (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution).setValue(this.plugin.settings.mapTileAttribution).onChange(async (value) => {
-        this.plugin.settings.mapTileAttribution = value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
-        await this.plugin.saveSettings();
-        this.plugin.redrawAll();
-      })
-    );
+      },
+      {
+        name: "Data folder",
+        desc: "Path to the folder containing health data files. Start typing to pick an existing folder.",
+        render: (setting) => {
+          setting.addSearch((search) => {
+            search.setPlaceholder("Health").setValue(this.plugin.settings.dataFolder).onChange(async (value) => {
+              await updateDataFolder(value);
+            });
+            const folderSuggest = new FolderInputSuggest(this.app, search.inputEl);
+            folderSuggest.onSelect((value) => {
+              void updateDataFolder(value);
+            });
+            search.inputEl.addEventListener("focus", () => folderSuggest.open());
+            search.inputEl.addEventListener("click", () => folderSuggest.open());
+          });
+        }
+      },
+      {
+        name: "Data folder structure",
+        desc: "Opt in to nested data folders. Flat keeps the existing direct-file behavior; nested choices scan up to that depth and also keep direct files loadable for gradual migrations.",
+        render: (setting) => {
+          setting.addDropdown(
+            (dropdown) => dropdown.addOption("flat", "Flat (health/file.json)").addOption("year", "Year folders (health/yyyy/file.json)").addOption("month", "Month folders (health/yyyy/mm/file.json)").addOption("week", "Week folders (health/yyyy/w23/file.json)").addOption("day", "Day folders (health/yyyy/mm/dd/file.json)").addOption("custom", "Custom template").setValue(this.plugin.settings.dataFolderGranularity).onChange(async (value) => {
+              this.plugin.settings.dataFolderGranularity = value;
+              this.plugin.dataLoader.invalidate();
+              await this.plugin.saveSettings();
+              this.plugin.refreshViews();
+            })
+          );
+        }
+      },
+      {
+        name: "Custom folder path template",
+        desc: `Used when Data folder structure is Custom. Available variables: ${customTemplateVariables}. Example: {year}/{month}/{day}.`,
+        render: (setting) => {
+          setting.addText(
+            (text) => text.setPlaceholder(DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE).setValue(this.plugin.settings.dataFolderCustomPathTemplate).onChange(async (value) => {
+              await updateCustomPathTemplate(value);
+            })
+          );
+        }
+      },
+      {
+        name: "File pattern",
+        desc: "Glob pattern to match file names or nested paths. Use * to include all supported files.",
+        render: (setting) => {
+          setting.addText(
+            (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
+              this.plugin.settings.filePattern = value.trim();
+              this.plugin.dataLoader.invalidate();
+              await this.plugin.saveSettings();
+              this.plugin.refreshViews();
+            })
+          );
+        }
+      },
+      {
+        name: "Data format",
+        desc: "Automatically detect file format by extension. Markdown and bases files must include YAML frontmatter.",
+        render: (setting) => {
+          setting.addDropdown(
+            (dropdown) => dropdown.addOption("auto", "Auto-detect by extension").addOption("json", "JSON").addOption("csv", "CSV").addOption("markdown", "Markdown (YAML frontmatter required)").addOption("bases", "Obsidian bases (YAML frontmatter)").setValue(this.plugin.settings.dataFormat).onChange(async (value) => {
+              this.plugin.settings.dataFormat = value;
+              this.plugin.dataLoader.invalidate();
+              await this.plugin.saveSettings();
+              this.plugin.refreshViews();
+            })
+          );
+        }
+      },
+      {
+        name: "Theme",
+        desc: "Color theme for visualizations",
+        render: (setting) => {
+          setting.addDropdown(
+            (dropdown) => dropdown.addOption("auto", "Auto (match Obsidian)").addOption("dark", "Dark").addOption("light", "Light").setValue(this.plugin.settings.theme).onChange(async (value) => {
+              this.plugin.settings.theme = value;
+              await this.plugin.saveSettings();
+              this.plugin.redrawAll();
+            })
+          );
+        }
+      },
+      {
+        name: "Default width",
+        desc: "Default canvas width in pixels",
+        render: (setting) => {
+          setting.addText(
+            (text) => text.setValue(String(this.plugin.settings.defaultWidth)).onChange(async (value) => {
+              const num = parseInt(value, 10);
+              if (!isNaN(num) && num > 0) {
+                this.plugin.settings.defaultWidth = num;
+                await this.plugin.saveSettings();
+              }
+            })
+          );
+        }
+      },
+      {
+        name: "Default height",
+        desc: "Default canvas height in pixels",
+        render: (setting) => {
+          setting.addText(
+            (text) => text.setValue(String(this.plugin.settings.defaultHeight)).onChange(async (value) => {
+              const num = parseInt(value, 10);
+              if (!isNaN(num) && num > 0) {
+                this.plugin.settings.defaultHeight = num;
+                await this.plugin.saveSettings();
+              }
+            })
+          );
+        }
+      },
+      {
+        name: "Data point click action",
+        desc: "Choose what happens when clicking a hoverable point in canvas charts.",
+        render: (setting) => {
+          setting.addDropdown(
+            (dropdown) => dropdown.addOption("pin", "Pin tooltip").addOption("source", "Open source data file").addOption("daily", "Open daily note").setValue(this.plugin.settings.dataPointClickAction).onChange(async (value) => {
+              this.plugin.settings.dataPointClickAction = value;
+              await this.plugin.saveSettings();
+            })
+          );
+        }
+      },
+      {
+        type: "group",
+        heading: "Colors",
+        items: [
+          {
+            name: "Color scheme",
+            desc: "Choose a preset palette or customize individual colors below",
+            render: (setting) => {
+              setting.addDropdown((dropdown) => {
+                Object.keys(COLOR_SCHEMES).forEach((id) => {
+                  dropdown.addOption(id, COLOR_SCHEMES[id].label);
+                });
+                dropdown.addOption("custom", "Custom");
+                dropdown.setValue(this.plugin.settings.colorScheme);
+                dropdown.onChange(async (value) => {
+                  await applyScheme(value);
+                });
+                schemeDropdown = dropdown.selectEl;
+              });
+            }
+          },
+          ...colorSettings.map(({ key, name, desc }) => ({
+            name,
+            desc,
+            render: (setting) => {
+              const input = setting.controlEl.createEl("input");
+              input.type = "color";
+              input.value = this.plugin.settings[key];
+              colorInputs[key] = input;
+              input.addEventListener("change", () => {
+                void (async () => {
+                  this.plugin.settings[key] = input.value;
+                  this.plugin.settings.colorScheme = "custom";
+                  if (schemeDropdown) schemeDropdown.value = "custom";
+                  await this.plugin.saveSettings();
+                  this.plugin.redrawAll();
+                })();
+              });
+            }
+          }))
+        ]
+      },
+      {
+        type: "group",
+        heading: "Workouts",
+        items: [
+          {
+            name: "Maximum heart rate",
+            desc: "Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age.",
+            render: (setting) => {
+              setting.addText(
+                (text) => text.setPlaceholder("190").setValue(
+                  this.plugin.settings.maxHeartRate != null ? String(this.plugin.settings.maxHeartRate) : ""
+                ).onChange(async (value) => {
+                  const trimmed = value.trim();
+                  if (!trimmed) {
+                    this.plugin.settings.maxHeartRate = void 0;
+                  } else {
+                    const num = parseInt(trimmed, 10);
+                    if (Number.isFinite(num) && num > 0) {
+                      this.plugin.settings.maxHeartRate = num;
+                    }
+                  }
+                  await this.plugin.saveSettings();
+                  this.plugin.redrawAll();
+                })
+              );
+            }
+          },
+          {
+            name: "Show map tiles",
+            desc: "Render workout maps with tile imagery (requires network). When off, the route is drawn as a polyline on a plain background.",
+            render: (setting) => {
+              setting.addToggle(
+                (toggle) => toggle.setValue(this.plugin.settings.mapTilesEnabled).onChange(async (value) => {
+                  this.plugin.settings.mapTilesEnabled = value;
+                  await this.plugin.saveSettings();
+                  this.plugin.redrawAll();
+                })
+              );
+            }
+          },
+          {
+            name: "Map tile URL",
+            desc: "Leaflet tile URL template. Replace with a different provider's URL if you have your own API key.",
+            render: (setting) => {
+              setting.addText(
+                (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl).setValue(this.plugin.settings.mapTileUrl).onChange(async (value) => {
+                  this.plugin.settings.mapTileUrl = value.trim() || DEFAULT_SETTINGS.mapTileUrl;
+                  await this.plugin.saveSettings();
+                  this.plugin.redrawAll();
+                })
+              );
+            }
+          },
+          {
+            name: "Map attribution",
+            desc: "Attribution string shown on the map. Required by most tile providers.",
+            render: (setting) => {
+              setting.addText(
+                (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution).setValue(this.plugin.settings.mapTileAttribution).onChange(async (value) => {
+                  this.plugin.settings.mapTileAttribution = value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
+                  await this.plugin.saveSettings();
+                  this.plugin.redrawAll();
+                })
+              );
+            }
+          }
+        ]
+      }
+    ];
   }
 };
 /*! Bundled license information:
