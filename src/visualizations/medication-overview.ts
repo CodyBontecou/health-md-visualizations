@@ -306,36 +306,121 @@ function renderRecentEvents(host: HTMLElement, days: HealthDay[], latestDetails:
 	});
 }
 
+type MedicationDaySummary = ReturnType<typeof getMedicationDaySummary>;
+
+interface MedicationRenderContext {
+	latest: MedicationDaySummary;
+	taken: number;
+	skipped: number;
+	other: number;
+}
+
+const MEDICATION_EMPTY_MESSAGE =
+	"No medication data in range. Health.md schema v2 exports medication_count, medication_details, and medication_dose_events.";
+
+function hasMedicationInventoryValues(summary: MedicationDaySummary): boolean {
+	return summary.medicationCount > 0 ||
+		summary.activeMedicationCount > 0 ||
+		summary.archivedMedicationCount > 0 ||
+		summary.details.length > 0 ||
+		summary.medications.length > 0;
+}
+
+function getMedicationRenderContext(data: HealthDay[]): MedicationRenderContext | null {
+	const summaries = data.map(getMedicationDaySummary).filter((summary) => summary.hasMedicationData);
+	if (!summaries.length) return null;
+
+	const latestMedicationSummary = [...summaries]
+		.reverse()
+		.find((summary) => summary.hasInventory || summary.hasDoseEvents || summary.hasDoseCounts) ??
+		summaries[summaries.length - 1];
+	const latest = [...summaries].reverse().find(hasMedicationInventoryValues) ?? latestMedicationSummary;
+	const taken = summaries.reduce((sum, summary) => sum + summary.medicationTakenCount, 0);
+	const skipped = summaries.reduce((sum, summary) => sum + summary.medicationSkippedCount, 0);
+	const doseCount = summaries.reduce((sum, summary) => sum + summary.medicationDoseCount, 0);
+	const other = Math.max(0, doseCount - taken - skipped);
+
+	return { latest, taken, skipped, other };
+}
+
+function renderMedicationComponent(
+	data: HealthDay[],
+	el: HTMLElement,
+	render: (context: MedicationRenderContext) => void
+): void {
+	el.addClass("health-md-med-container");
+	const context = getMedicationRenderContext(data);
+	if (!context) {
+		renderEmpty(el, MEDICATION_EMPTY_MESSAGE);
+		return;
+	}
+	render(context);
+}
+
+export const renderMedicationInventory: HtmlRenderFn = (
+	data: HealthDay[],
+	el: HTMLElement
+): void => {
+	renderMedicationComponent(data, el, ({ latest }) => renderInventory(el, latest));
+};
+
+export const renderMedicationAdherenceSummary: HtmlRenderFn = (
+	data: HealthDay[],
+	el: HTMLElement
+): void => {
+	renderMedicationComponent(data, el, ({ taken, skipped, other }) =>
+		renderAdherence(el, taken, skipped, other)
+	);
+};
+
+export const renderMedicationDoseStatus: HtmlRenderFn = (
+	data: HealthDay[],
+	el: HTMLElement
+): void => {
+	renderMedicationComponent(data, el, ({ latest }) =>
+		renderBreakdown(el, buildMedicationBreakdown(data, latest.details))
+	);
+};
+
+export const renderMedicationAdherenceTrend: HtmlRenderFn = (
+	data: HealthDay[],
+	el: HTMLElement,
+	config: VizConfig
+): void => {
+	renderMedicationComponent(data, el, () =>
+		renderTrend(el, data, { ...config, trend: config.trend ?? "daily" })
+	);
+};
+
+export const renderMedicationRecentDoseEvents: HtmlRenderFn = (
+	data: HealthDay[],
+	el: HTMLElement,
+	config: VizConfig
+): void => {
+	renderMedicationComponent(data, el, ({ latest }) =>
+		renderRecentEvents(el, data, latest.details, config)
+	);
+};
+
 export const renderMedicationOverview: HtmlRenderFn = (
 	data: HealthDay[],
 	el: HTMLElement,
 	config: VizConfig,
 	_theme
 ): void => {
-	el.addClass("health-md-med-container");
-	const summaries = data.map(getMedicationDaySummary).filter((summary) => summary.hasMedicationData);
-	if (!summaries.length) {
-		renderEmpty(el, "No medication data in range. Health.md schema v2 exports medication_count, medication_details, and medication_dose_events.");
-		return;
-	}
+	renderMedicationComponent(data, el, ({ latest, taken, skipped, other }) => {
+		const header = el.createDiv({ cls: "health-md-med-header" });
+		const title = header.createDiv({ cls: "health-md-med-title" });
+		title.textContent = data.length > 1 ? "Medication overview" : `Medication overview — ${data[0].date}`;
+		const subtitle = header.createDiv({ cls: "health-md-med-subtitle" });
+		subtitle.textContent = data.length > 1
+			? `${data[0].date} – ${data[data.length - 1].date}`
+			: "Health.md schema v2 medication export";
 
-	const latest = [...summaries].reverse().find((summary) => summary.hasInventory || summary.hasDoseEvents || summary.hasDoseCounts) ?? summaries[summaries.length - 1];
-	const taken = summaries.reduce((sum, summary) => sum + summary.medicationTakenCount, 0);
-	const skipped = summaries.reduce((sum, summary) => sum + summary.medicationSkippedCount, 0);
-	const doseCount = summaries.reduce((sum, summary) => sum + summary.medicationDoseCount, 0);
-	const other = Math.max(0, doseCount - taken - skipped);
-
-	const header = el.createDiv({ cls: "health-md-med-header" });
-	const title = header.createDiv({ cls: "health-md-med-title" });
-	title.textContent = data.length > 1 ? "Medication overview" : `Medication overview — ${data[0].date}`;
-	const subtitle = header.createDiv({ cls: "health-md-med-subtitle" });
-	subtitle.textContent = data.length > 1
-		? `${data[0].date} – ${data[data.length - 1].date}`
-		: "Health.md schema v2 medication export";
-
-	renderInventory(el, latest);
-	renderAdherence(el, taken, skipped, other);
-	renderBreakdown(el, buildMedicationBreakdown(data, latest.details));
-	renderTrend(el, data, config);
-	renderRecentEvents(el, data, latest.details, config);
+		renderInventory(el, latest);
+		renderAdherence(el, taken, skipped, other);
+		renderBreakdown(el, buildMedicationBreakdown(data, latest.details));
+		renderTrend(el, data, config);
+		renderRecentEvents(el, data, latest.details, config);
+	});
 };

@@ -26,7 +26,14 @@ import { renderWorkoutTrends } from "./workout-trends";
 import { renderWorkoutMap } from "./workout-map";
 import { renderWorkoutIntervals } from "./workout-intervals";
 import { renderMoodTrend } from "./mood-trend";
-import { renderMedicationOverview } from "./medication-overview";
+import {
+	renderMedicationAdherenceSummary,
+	renderMedicationAdherenceTrend,
+	renderMedicationDoseStatus,
+	renderMedicationInventory,
+	renderMedicationOverview,
+	renderMedicationRecentDoseEvents,
+} from "./medication-overview";
 
 export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"heart-terrain": renderHeartTerrain,
@@ -65,4 +72,12 @@ export const HTML_VISUALIZATIONS: Record<string, HtmlRenderFn> = {
 	"medication-overview": renderMedicationOverview,
 	"medications": renderMedicationOverview,
 	"medication-adherence": renderMedicationOverview,
+	"medication-inventory": renderMedicationInventory,
+	"medication-adherence-summary": renderMedicationAdherenceSummary,
+	"medication-dose-status": renderMedicationDoseStatus,
+	"per-medication-dose-status": renderMedicationDoseStatus,
+	"medication-adherence-trend": renderMedicationAdherenceTrend,
+	"medication-daily-adherence-trend": renderMedicationAdherenceTrend,
+	"medication-recent-dose-events": renderMedicationRecentDoseEvents,
+	"medication-dose-events": renderMedicationRecentDoseEvents,
 };

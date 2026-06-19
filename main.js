@@ -18211,29 +18211,78 @@ function renderRecentEvents(host, days, latestDetails, config) {
     tr.createEl("td", { text: (_b = (_a2 = event.scheduleType) != null ? _a2 : event.schedule_type) != null ? _b : "\u2014" });
   });
 }
-var renderMedicationOverview = (data, el, config, _theme) => {
-  var _a;
-  el.addClass("health-md-med-container");
+var MEDICATION_EMPTY_MESSAGE = "No medication data in range. Health.md schema v2 exports medication_count, medication_details, and medication_dose_events.";
+function hasMedicationInventoryValues(summary) {
+  return summary.medicationCount > 0 || summary.activeMedicationCount > 0 || summary.archivedMedicationCount > 0 || summary.details.length > 0 || summary.medications.length > 0;
+}
+function getMedicationRenderContext(data) {
+  var _a, _b;
   const summaries = data.map(getMedicationDaySummary).filter((summary) => summary.hasMedicationData);
-  if (!summaries.length) {
-    renderEmpty(el, "No medication data in range. Health.md schema v2 exports medication_count, medication_details, and medication_dose_events.");
-    return;
-  }
-  const latest = (_a = [...summaries].reverse().find((summary) => summary.hasInventory || summary.hasDoseEvents || summary.hasDoseCounts)) != null ? _a : summaries[summaries.length - 1];
+  if (!summaries.length) return null;
+  const latestMedicationSummary = (_a = [...summaries].reverse().find((summary) => summary.hasInventory || summary.hasDoseEvents || summary.hasDoseCounts)) != null ? _a : summaries[summaries.length - 1];
+  const latest = (_b = [...summaries].reverse().find(hasMedicationInventoryValues)) != null ? _b : latestMedicationSummary;
   const taken = summaries.reduce((sum, summary) => sum + summary.medicationTakenCount, 0);
   const skipped = summaries.reduce((sum, summary) => sum + summary.medicationSkippedCount, 0);
   const doseCount = summaries.reduce((sum, summary) => sum + summary.medicationDoseCount, 0);
   const other = Math.max(0, doseCount - taken - skipped);
-  const header = el.createDiv({ cls: "health-md-med-header" });
-  const title = header.createDiv({ cls: "health-md-med-title" });
-  title.textContent = data.length > 1 ? "Medication overview" : `Medication overview \u2014 ${data[0].date}`;
-  const subtitle = header.createDiv({ cls: "health-md-med-subtitle" });
-  subtitle.textContent = data.length > 1 ? `${data[0].date} \u2013 ${data[data.length - 1].date}` : "Health.md schema v2 medication export";
-  renderInventory(el, latest);
-  renderAdherence(el, taken, skipped, other);
-  renderBreakdown(el, buildMedicationBreakdown(data, latest.details));
-  renderTrend(el, data, config);
-  renderRecentEvents(el, data, latest.details, config);
+  return { latest, taken, skipped, other };
+}
+function renderMedicationComponent(data, el, render) {
+  el.addClass("health-md-med-container");
+  const context = getMedicationRenderContext(data);
+  if (!context) {
+    renderEmpty(el, MEDICATION_EMPTY_MESSAGE);
+    return;
+  }
+  render(context);
+}
+var renderMedicationInventory = (data, el) => {
+  renderMedicationComponent(data, el, ({ latest }) => renderInventory(el, latest));
+};
+var renderMedicationAdherenceSummary = (data, el) => {
+  renderMedicationComponent(
+    data,
+    el,
+    ({ taken, skipped, other }) => renderAdherence(el, taken, skipped, other)
+  );
+};
+var renderMedicationDoseStatus = (data, el) => {
+  renderMedicationComponent(
+    data,
+    el,
+    ({ latest }) => renderBreakdown(el, buildMedicationBreakdown(data, latest.details))
+  );
+};
+var renderMedicationAdherenceTrend = (data, el, config) => {
+  renderMedicationComponent(
+    data,
+    el,
+    () => {
+      var _a;
+      return renderTrend(el, data, { ...config, trend: (_a = config.trend) != null ? _a : "daily" });
+    }
+  );
+};
+var renderMedicationRecentDoseEvents = (data, el, config) => {
+  renderMedicationComponent(
+    data,
+    el,
+    ({ latest }) => renderRecentEvents(el, data, latest.details, config)
+  );
+};
+var renderMedicationOverview = (data, el, config, _theme) => {
+  renderMedicationComponent(data, el, ({ latest, taken, skipped, other }) => {
+    const header = el.createDiv({ cls: "health-md-med-header" });
+    const title = header.createDiv({ cls: "health-md-med-title" });
+    title.textContent = data.length > 1 ? "Medication overview" : `Medication overview \u2014 ${data[0].date}`;
+    const subtitle = header.createDiv({ cls: "health-md-med-subtitle" });
+    subtitle.textContent = data.length > 1 ? `${data[0].date} \u2013 ${data[data.length - 1].date}` : "Health.md schema v2 medication export";
+    renderInventory(el, latest);
+    renderAdherence(el, taken, skipped, other);
+    renderBreakdown(el, buildMedicationBreakdown(data, latest.details));
+    renderTrend(el, data, config);
+    renderRecentEvents(el, data, latest.details, config);
+  });
 };
 
 // src/visualizations/index.ts
@@ -18272,7 +18321,15 @@ var HTML_VISUALIZATIONS = {
   "workout-laps": renderWorkoutIntervals,
   "medication-overview": renderMedicationOverview,
   "medications": renderMedicationOverview,
-  "medication-adherence": renderMedicationOverview
+  "medication-adherence": renderMedicationOverview,
+  "medication-inventory": renderMedicationInventory,
+  "medication-adherence-summary": renderMedicationAdherenceSummary,
+  "medication-dose-status": renderMedicationDoseStatus,
+  "per-medication-dose-status": renderMedicationDoseStatus,
+  "medication-adherence-trend": renderMedicationAdherenceTrend,
+  "medication-daily-adherence-trend": renderMedicationAdherenceTrend,
+  "medication-recent-dose-events": renderMedicationRecentDoseEvents,
+  "medication-dose-events": renderMedicationRecentDoseEvents
 };
 
 // src/renderer.ts
@@ -19545,6 +19602,69 @@ var VISUALIZATIONS2 = [
         ],
         defaultValue: "auto"
       },
+      {
+        kind: "text",
+        key: "limit",
+        label: "Recent events",
+        desc: "Maximum number of recent medication dose events to list.",
+        defaultValue: "12",
+        validation: "positive-integer"
+      }
+    ]
+  },
+  {
+    type: "medication-inventory",
+    label: "Medication inventory",
+    category: "medications",
+    description: "Standalone inventory totals with active, archived, scheduled, and unscheduled medication rows.",
+    defaultLast: 30,
+    params: []
+  },
+  {
+    type: "medication-adherence-summary",
+    label: "Adherence summary",
+    category: "medications",
+    description: "Standalone taken/skipped/other counts and adherence percentage for the selected range.",
+    defaultLast: 30,
+    params: []
+  },
+  {
+    type: "medication-dose-status",
+    label: "Per-medication dose status",
+    category: "medications",
+    description: "Standalone dose-status breakdown and adherence rate for each medication.",
+    defaultLast: 30,
+    params: []
+  },
+  {
+    type: "medication-adherence-trend",
+    label: "Daily adherence trend",
+    category: "medications",
+    description: "Standalone adherence trend bars. Defaults to daily grouping; weekly and monthly grouping are available.",
+    defaultLast: 30,
+    params: [
+      {
+        kind: "select",
+        key: "trend",
+        label: "Trend grouping",
+        desc: "Group adherence trend bars by day, week, month, or choose automatically from the date range.",
+        options: [
+          { value: "daily", label: "Daily" },
+          { value: "weekly", label: "Weekly" },
+          { value: "monthly", label: "Monthly" },
+          { value: "auto", label: "Auto" }
+        ],
+        defaultValue: "daily"
+      }
+    ]
+  },
+  {
+    type: "medication-recent-dose-events",
+    label: "Recent dose events",
+    category: "medications",
+    description: "Standalone table of the most recent medication dose events in the selected range.",
+    defaultLast: 30,
+    params: [
       {
         kind: "text",
         key: "limit",
