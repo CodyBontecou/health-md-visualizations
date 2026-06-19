@@ -18,6 +18,20 @@ to: 2026-04-14
 
 ---
 
+## Mood & Context
+
+State of Mind valence around this day with recent sleep and exercise context.
+
+```health-viz
+type: mood-trend
+to: 2026-04-14
+last: 14
+height: 220
+showContext: true
+```
+
+---
+
 ## Heart Rate — Full Day
 
 Heart rate terrain for today. Each column is a 15-minute bucket; intensity

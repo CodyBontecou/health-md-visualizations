@@ -392,6 +392,26 @@ test("CSV parser accepts current iOS/Android aliases and granular samples", asyn
 	assert.equal(day.hearing?.headphoneAudioLevel, 64.5);
 });
 
+test("CSV parser reads mood/state-of-mind rows", async () => {
+	const { parseCSV } = await loadParsers();
+	const csv = `Date,Category,Metric,Value,Unit,Timestamp
+2026-03-15,Mood,State of Mind Valence,0.6,score,2026-03-15T09:00:00
+2026-03-15,Mood,Emotion Label,Calm,text,2026-03-15T09:00:00
+2026-03-15,Mood,Association,Work,text,2026-03-15T09:00:00
+2026-03-15,Mood,Daily Mood Score,4,score,
+2026-03-15,Activity,Exercise Minutes,30,minutes,
+2026-03-15,Sleep,Total Duration,28800,seconds,`;
+
+	const [day] = parseCSV(csv);
+
+	assert.equal(day.mood?.entries.length, 2);
+	assert.equal(Math.round((day.mood?.averageValence ?? 0) * 100) / 100, 0.55);
+	assert.equal(day.mood?.entries[0].label, "Calm");
+	assert.deepEqual(day.mood?.entries[0].associations, ["Work"]);
+	assert.equal(day.activity?.exerciseMinutes, 30);
+	assert.equal(day.sleep?.totalDuration, 28800);
+});
+
 test("CSV parser preserves legacy plugin labels", async () => {
 	const { parseCSV } = await loadParsers();
 	const csv = `Date,Category,Metric,Value,Unit
@@ -526,6 +546,29 @@ workouts: [running]
 	assert.equal(day.hearing?.headphoneAudioLevel, 64.5);
 });
 
+test("Markdown parser reads mood/state-of-mind frontmatter", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = `---
+date: 2026-03-15
+type: health-data
+mood_valence: -0.4
+mood_label: Stressed
+mood_kind: dailyMood
+mood_associations: [Work, Health]
+sleep_total_hours: 7
+---
+`;
+
+	const day = parseMarkdown(markdown);
+
+	assert.ok(day);
+	assert.equal(day.mood?.entries.length, 1);
+	assert.equal(day.mood?.averageValence, -0.4);
+	assert.equal(day.mood?.primaryLabel, "Stressed");
+	assert.deepEqual(day.mood?.entries[0].associations, ["Work", "Health"]);
+	assert.equal(day.sleep?.totalDuration, 25200);
+});
+
 test("Markdown parser reads schema v1 metadata, units map, and data dictionary aliases", async () => {
 	const { parseMarkdown } = await loadParsers();
 	const markdown = `---
@@ -554,6 +597,108 @@ units:
 	assert.equal(day.units.walking_running_mi, "mi");
 	assert.equal(day.activity?.steps, 12345);
 	assert.equal(Math.round((day.activity?.walkingRunningDistanceKm ?? 0) * 100) / 100, 9.99);
+});
+
+test("Markdown parser reads Health.md schema v2 medication frontmatter", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = `---
+schema: healthmd.health_data
+schema_version: 2
+date: 2026-06-18
+type: health-data
+medication_count: 2
+active_medication_count: 1
+archived_medication_count: 1
+medication_dose_count: 3
+medication_taken_count: 2
+medication_skipped_count: 1
+medications: [Atorvastatin, Vitamin D]
+medication_details:
+  - name: atorvastatin
+    concept_identifier: rx-123
+    display_name: Atorvastatin
+    general_form: tablet
+    is_archived: false
+    has_schedule: true
+    nickname: Statin
+    rxnorm_codes: [83367]
+  - name: vitamin-d
+    concept_identifier: rx-456
+    display_name: Vitamin D
+    general_form: capsule
+    is_archived: true
+    has_schedule: false
+medication_dose_events: '[{"name":"Atorvastatin","status":"taken","status_display":"Taken","id":"dose-1","medication_concept_identifier":"rx-123","scheduled_date":"2026-06-18T08:00:00","dose_quantity":1,"unit":"tablet","schedule_type":"daily"},{"name":"Vitamin D","status":"skipped","id":"dose-2","medication_concept_identifier":"rx-456","scheduled_date":"2026-06-18T09:00:00","scheduled_dose_quantity":1,"unit":"capsule","schedule_type":"daily"}]'
+---
+`;
+
+	const day = parseMarkdown(markdown);
+
+	assert.ok(day);
+	assert.equal(day.schemaVersion, 2);
+	assert.equal(day.medicationCount, 2);
+	assert.equal(day.activeMedicationCount, 1);
+	assert.equal(day.archivedMedicationCount, 1);
+	assert.equal(day.medicationDoseCount, 3);
+	assert.equal(day.medicationTakenCount, 2);
+	assert.equal(day.medicationSkippedCount, 1);
+	assert.deepEqual(day.medications, ["Atorvastatin", "Vitamin D"]);
+	assert.equal(day.medicationDetails?.length, 2);
+	assert.equal(day.medicationDetails?.[0].displayName, "Atorvastatin");
+	assert.equal(day.medicationDetails?.[0].conceptIdentifier, "rx-123");
+	assert.equal(day.medicationDetails?.[0].isArchived, false);
+	assert.equal(day.medicationDetails?.[1].isArchived, true);
+	assert.equal(day.medicationDoseEvents?.length, 2);
+	assert.equal(day.medicationDoseEvents?.[0].status, "taken");
+	assert.equal(day.medicationDoseEvents?.[0].doseQuantity, 1);
+	assert.equal(day.medicationDoseEvents?.[1].status, "skipped");
+	assert.equal(day.medicationDoseEvents?.[1].scheduledDoseQuantity, 1);
+});
+
+test("Markdown parser falls back to medications list and stringified medication YAML", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const legacy = parseMarkdown(`---
+date: 2026-06-19
+type: health-data
+medication_count: 2
+medications: [Aspirin, Metformin]
+---
+`);
+	assert.ok(legacy);
+	assert.equal(legacy.medicationCount, 2);
+	assert.deepEqual(legacy.medications, ["Aspirin", "Metformin"]);
+	assert.equal(legacy.medicationDetails?.length, 2);
+	assert.equal(legacy.medicationDetails?.[0].displayName, "Aspirin");
+
+	const stringified = parseMarkdown(`---
+date: 2026-06-20
+type: health-data
+---
+`, {
+		medication_details: "- name: Lisinopril\n  display_name: Lisinopril\n  is_archived: false\n  has_schedule: true",
+		medication_dose_events: "- name: Lisinopril\n  status: completed\n  scheduled_date: 2026-06-20T07:30:00\n  dose_quantity: 5\n  unit: mg\n  schedule_type: daily",
+	});
+	assert.ok(stringified);
+	assert.equal(stringified.medicationCount, 1);
+	assert.equal(stringified.activeMedicationCount, 1);
+	assert.equal(stringified.medicationTakenCount, 1);
+	assert.equal(stringified.medicationDoseEvents?.[0].statusDisplay, "Taken");
+	assert.equal(stringified.medicationDoseEvents?.[0].doseQuantity, 5);
+
+	const zeroCounts = parseMarkdown(`---
+date: 2026-06-21
+type: health-data
+medication_count: 0
+active_medication_count: 0
+archived_medication_count: 0
+medication_dose_count: 0
+medication_taken_count: 0
+medication_skipped_count: 0
+---
+`);
+	assert.ok(zeroCounts);
+	assert.equal(zeroCounts.medicationCount, 0);
+	assert.equal(zeroCounts.medicationDoseCount, 0);
 });
 
 test("Markdown parser treats structured canonical units as authoritative over imperial prose", async () => {

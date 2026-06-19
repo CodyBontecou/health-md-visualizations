@@ -461,6 +461,98 @@ function buildMobility(rng, dayIndex, totalDays, recoveryFlag) {
 	};
 }
 
+function moodLabelForValence(valence) {
+	if (valence <= -0.72) return "Overwhelmed";
+	if (valence <= -0.44) return "Stressed";
+	if (valence <= -0.16) return "Drained";
+	if (valence < 0.16) return "Neutral";
+	if (valence < 0.44) return "Calm";
+	if (valence < 0.72) return "Satisfied";
+	return "Joyful";
+}
+
+function moodClassificationForValence(valence) {
+	if (valence <= -0.72) return "Very unpleasant";
+	if (valence <= -0.44) return "Unpleasant";
+	if (valence <= -0.16) return "Slightly unpleasant";
+	if (valence < 0.16) return "Neutral";
+	if (valence < 0.44) return "Slightly pleasant";
+	if (valence < 0.72) return "Pleasant";
+	return "Very pleasant";
+}
+
+function moodAssociations(rng, sleepHours, exerciseMinutes, workouts, recoveryFlag, dow) {
+	const associations = [];
+	if (sleepHours < 6.8) associations.push("Sleep");
+	if (exerciseMinutes >= 30 || workouts.length) associations.push("Fitness");
+	if (recoveryFlag) associations.push("Health");
+	if (dow >= 1 && dow <= 5) associations.push("Work");
+	if (dow === 0 || dow === 6) associations.push(choose(rng, ["Family", "Friends", "Leisure"]));
+	if (!associations.length) associations.push(choose(rng, ["Work", "Family", "Weather", "Hobbies"]));
+	return associations.filter((item, index, all) => all.indexOf(item) === index).slice(0, 3);
+}
+
+function buildMood(dateIso, rng, dayIndex, sleep, activity, workouts, recoveryFlag) {
+	const dow = dateFromIso(dateIso).getUTCDay();
+	const sleepHours = sleep.totalDuration / 3600;
+	const exerciseMinutes = Math.max(
+		activity.exerciseMinutes ?? 0,
+		workouts.reduce((sum, workout) => sum + (workout.duration || 0) / 60, 0)
+	);
+	const weekend = dow === 0 || dow === 6;
+	const seasonal = Math.sin(dayIndex / 44) * 0.12;
+	const weeklyRhythm = Math.sin(dayIndex / 7 * Math.PI * 2) * 0.08;
+	const sleepEffect = clamp((sleepHours - 7.25) * 0.22, -0.28, 0.28);
+	const workoutEffect = clamp(exerciseMinutes / 180, 0, 0.22);
+	const weekendEffect = weekend ? 0.12 : -0.02;
+	const recoveryEffect = recoveryFlag ? -0.44 : 0;
+	const dailyValence = round(clamp(
+		0.08 + seasonal + weeklyRhythm + sleepEffect + workoutEffect + weekendEffect + recoveryEffect + randBetween(rng, -0.24, 0.24),
+		-0.95,
+		0.95
+	), 2);
+	const primaryLabel = moodLabelForValence(dailyValence);
+	const associations = moodAssociations(rng, sleepHours, exerciseMinutes, workouts, recoveryFlag, dow);
+	const entries = [
+		{
+			timestamp: localTimestamp(dateIso, 20 * 60 + 30 + Math.round(randBetween(rng, -32, 28))),
+			kind: "dailyMood",
+			valence: dailyValence,
+			label: primaryLabel,
+			labels: [primaryLabel],
+			associations,
+			valenceClassification: moodClassificationForValence(dailyValence),
+		},
+	];
+
+	if (rng() < 0.46) {
+		const momentValence = round(clamp(
+			dailyValence + randBetween(rng, -0.22, 0.24) + (exerciseMinutes > 35 ? 0.08 : 0),
+			-0.98,
+			0.98
+		), 2);
+		const label = moodLabelForValence(momentValence);
+		entries.push({
+			timestamp: localTimestamp(dateIso, workouts[0]?.startTime ? 18 * 60 : 13 * 60 + Math.round(randBetween(rng, -45, 80))),
+			kind: "momentaryEmotion",
+			valence: momentValence,
+			label,
+			labels: [label],
+			associations: exerciseMinutes > 35 ? ["Fitness", ...associations.filter((item) => item !== "Fitness").slice(0, 1)] : associations.slice(0, 2),
+			valenceClassification: moodClassificationForValence(momentValence),
+		});
+	}
+
+	const valences = entries.map((entry) => entry.valence);
+	return {
+		entries,
+		averageValence: round(valences.reduce((sum, value) => sum + value, 0) / valences.length, 2),
+		minValence: Math.min(...valences),
+		maxValence: Math.max(...valences),
+		primaryLabel,
+	};
+}
+
 function buildDay(dateIso, dayIndex, totalDays) {
 	const rng = rngFor(dateIso, "day");
 	const recoveryFlag = dayIndex % 37 === 11 || dayIndex % 53 === 29;
@@ -475,6 +567,7 @@ function buildDay(dateIso, dayIndex, totalDays) {
 	const finalActivity = buildActivity(dateIso, rngFor(dateIso, "activity-final"), dayIndex, totalDays, refreshedWorkouts, recoveryFlag);
 	const vitals = buildVitals(dateIso, rngFor(dateIso, "vitals"), dayIndex, sleep, recoveryFlag);
 	const mobility = buildMobility(rngFor(dateIso, "mobility"), dayIndex, totalDays, recoveryFlag);
+	const mood = buildMood(dateIso, rngFor(dateIso, "mood"), dayIndex, sleep, finalActivity, refreshedWorkouts, recoveryFlag);
 	const day = {
 		type: "health-data",
 		date: dateIso,
@@ -484,6 +577,7 @@ function buildDay(dateIso, dayIndex, totalDays) {
 		vitals,
 		sleep,
 		mobility,
+		mood,
 		hearing: {
 			headphoneAudioLevel: round(clamp(64 + Math.sin(dayIndex / 11) * 3 + randBetween(rng, -4, 5), 48, 82), 1),
 		},
@@ -511,7 +605,7 @@ async function main() {
 		await writeFile(path.join(OUT_DIR, `${dates[i]}.json`), `${JSON.stringify(day)}\n`);
 	}
 
-	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, respiratory rate, mobility, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
+	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, respiratory rate, mobility, mood / State of Mind entries, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
 	await writeFile(path.join(OUT_DIR, "README.md"), readme);
 
 	console.log(`Wrote ${dates.length} mock Health.md JSON files to ${path.relative(REPO_ROOT, OUT_DIR)}`);

@@ -8,11 +8,19 @@ import {
 } from "../healthmd-schema";
 import {
 	HealthDay,
+	MoodEntry,
 	TimeSeriesSample,
 	WorkoutEntry,
 	WorkoutHeartRateZone,
 	WorkoutInterval,
 } from "../types";
+import {
+	createMoodSummary,
+	moodEntriesFromUnknown,
+	normalizeMoodValence,
+	stringArrayFromUnknown,
+} from "../mood-utils";
+import { hasMedicationData, normalizeMedicationFields } from "../medication-utils";
 
 interface ParsedFrontmatter {
 	frontmatter: Record<string, unknown> | null;
@@ -298,6 +306,85 @@ function getFirstStr(fm: Record<string, unknown>, ...keys: string[]): string | u
 		if (value !== undefined) return value;
 	}
 	return undefined;
+}
+
+function getFirstRaw(fm: Record<string, unknown>, ...keys: string[]): unknown {
+	for (const key of keys) {
+		if (Object.prototype.hasOwnProperty.call(fm, key)) return fm[key];
+	}
+	return undefined;
+}
+
+function parseMoodEntriesFromFrontmatter(fm: Record<string, unknown>, date: string): MoodEntry[] {
+	const entries: MoodEntry[] = [];
+	for (const key of [
+		"mood",
+		"moods",
+		"mood_entries",
+		"moodEntries",
+		"state_of_mind",
+		"stateOfMind",
+		"states_of_mind",
+		"statesOfMind",
+	]) {
+		entries.push(...moodEntriesFromUnknown(fm[key], date));
+	}
+
+	const explicitValence = getFirstNum(
+		fm,
+		"mood_valence",
+		"moodValence",
+		"state_of_mind_valence",
+		"stateOfMindValence",
+		"average_mood_valence",
+		"averageMoodValence"
+	);
+	const explicitScore = getFirstNum(
+		fm,
+		"mood_score",
+		"moodScore",
+		"mood_rating",
+		"moodRating",
+		"state_of_mind_score",
+		"stateOfMindScore"
+	);
+	const label = getFirstStr(
+		fm,
+		"mood_label",
+		"moodLabel",
+		"mood_state",
+		"moodState",
+		"state_of_mind_label",
+		"stateOfMindLabel",
+		"valence_classification",
+		"valenceClassification"
+	);
+	const kind = getFirstStr(fm, "mood_kind", "moodKind", "feeling_kind", "feelingKind", "state_of_mind_kind", "stateOfMindKind");
+	const timestamp = getFirstStr(fm, "mood_time", "moodTime", "mood_timestamp", "moodTimestamp", "state_of_mind_time", "stateOfMindTime");
+	const labels = [
+		...stringArrayFromUnknown(getFirstRaw(fm, "mood_labels", "moodLabels")),
+		...stringArrayFromUnknown(getFirstRaw(fm, "emotions", "feelings")),
+	].filter((item, index, all) => all.indexOf(item) === index);
+	const associations = [
+		...stringArrayFromUnknown(getFirstRaw(fm, "mood_associations", "moodAssociations")),
+		...stringArrayFromUnknown(getFirstRaw(fm, "associations", "contexts", "factors")),
+	].filter((item, index, all) => all.indexOf(item) === index);
+	const valence = normalizeMoodValence(explicitValence, "valence") ??
+		normalizeMoodValence(explicitScore, "score") ??
+		normalizeMoodValence(label ?? labels[0], "label");
+	if (valence !== undefined || label || labels.length || kind) {
+		entries.push({
+			timestamp: timestamp ?? `${date}T12:00:00`,
+			startDate: timestamp ?? `${date}T12:00:00`,
+			kind,
+			valence,
+			score: explicitScore,
+			label: label ?? labels[0],
+			labels: labels.length ? labels : undefined,
+			associations: associations.length ? associations : undefined,
+		});
+	}
+	return entries;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1062,6 +1149,8 @@ export function parseMarkdown(
 		day.workouts = [workout];
 	}
 
+	Object.assign(day, normalizeMedicationFields(fm));
+
 	// --- Activity ---
 	// Bases keys: steps, active_calories, exercise_minutes, walking_running_km, vo2_max, etc.
 	// Also check JSON-style keys that might appear in frontmatter.
@@ -1331,6 +1420,12 @@ export function parseMarkdown(
 		};
 	}
 
+	// --- Mood / State of Mind ---
+	const moodSummary = createMoodSummary(parseMoodEntriesFromFrontmatter(fm, date));
+	if (moodSummary) {
+		day.mood = moodSummary;
+	}
+
 	// --- Hearing ---
 	const headphone = getFirstNum(fm, "headphone_audio_level", "headphone_audio_db", "hearing_headphone_audio_level");
 	if (headphone !== undefined) {
@@ -1339,6 +1434,6 @@ export function parseMarkdown(
 
 	// Only return if we found at least some health data beyond just a date
 	const hasData =
-		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.hearing;
+		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing;
 	return hasData ? day : null;
 }

@@ -10,7 +10,7 @@ use `last` by itself when you want a dashboard that always follows today.
 
 > **Tip:** Every canvas chart supports hover tooltips and click-to-pin. The
 > HTML/SVG/Leaflet renderers (`intro-stats`, `summary-card`, `trend-tile`,
-> `workout-map`, `workout-intervals`) do not use the canvas tooltip layer.
+> `medication-overview`, `workout-map`, `workout-intervals`) do not use the canvas tooltip layer.
 
 ---
 
@@ -61,6 +61,8 @@ Notes:
 | `sleep-quality-bars` | Nightly sleep-stage composition | sleep stages | none |
 | `sleep-architecture` | Linear sleep-stage timeline | sleep stages | none |
 | `sleep-polar` | Clock-face sleep stages | sleep stages | none |
+| `mood-trend` | Mood valence with sleep/workout context | `mood.entries` or State of Mind exports | `showContext` |
+| `medication-overview` | Medication inventory, dose adherence, event table | schema v2 medication counts/details/dose events | `trend`, `limit` |
 | `walking-symmetry` | Walking speed and asymmetry | mobility | none |
 | `workout-log` | Workout list / duration bars | workouts | none |
 | `workout-heart-rate` | Heart rate during one workout | workout heart-rate series or detailed HR zones | `date`, `workout`, `maxHeartRate` |
@@ -518,6 +520,67 @@ type: sleep-polar
 to: 2026-05-17
 last: 14
 height: 280
+```
+
+---
+
+## Mood and mental wellbeing visualization
+
+### `mood-trend`
+
+Shows HealthKit State of Mind / mood valence on a -1 (unpleasant) to +1
+(pleasant) scale. When `showContext` is enabled, faint sleep-duration and
+exercise/workout bars render behind the mood dots so mood can be inspected
+alongside recovery and training load.
+
+The parser accepts JSON mood summaries (`mood.entries`, `mood.samples`, or
+`stateOfMind`), CSV rows in `Mood` / `State of Mind` categories, and daily-note
+frontmatter such as `mood_valence`, `mood_score`, `mood_label`,
+`mood_associations`, and `mood_kind`.
+
+| Argument | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `showContext` | `true`, `false` | `true` | Draws sleep and exercise/workout context columns behind the mood trend. |
+
+```health-viz
+# Mood trend with sleep and workout context.
+type: mood-trend
+to: 2026-05-17
+last: 30
+height: 260
+showContext: true
+```
+
+---
+
+## Medication visualization
+
+### `medication-overview`
+
+Shows Health.md schema v2 medication exports in one HTML component: latest
+inventory totals, active vs archived medication details, taken/skipped adherence
+summary, per-medication status breakdown, daily/weekly/monthly trend bars, and a
+recent dose-event table. The aliases `medications` and `medication-adherence`
+render the same component.
+
+The parser accepts count-only daily notes (`medication_count`,
+`medication_dose_count`, `medication_taken_count`, `medication_skipped_count`),
+rich `medication_details`, and `medication_dose_events`. If
+`medication_details` is absent, the legacy/simple `medications` list is used for
+inventory labels.
+
+| Argument | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `trend` | `auto`, `daily`, `weekly`, `monthly` | `auto` | Groups adherence trend bars. Auto uses daily for short ranges, weekly for medium ranges, and monthly for long ranges. |
+| `limit` | positive integer | `12` | Maximum number of recent dose events to show in the table. |
+
+```health-viz
+# Medication adherence over the last month.
+type: medication-overview
+to: 2026-05-17
+last: 30
+trend: auto
+limit: 12
 ```
 
 ---

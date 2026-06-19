@@ -679,6 +679,236 @@
 	background: rgba(255, 255, 255, 0.5);
 }
 
+/* Medication visualizations */
+.health-md-med-container {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.health-md-med-header {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.health-md-med-title {
+	font-weight: 650;
+	font-size: 1.08em;
+	color: var(--text-normal);
+}
+
+.health-md-med-subtitle {
+	font-size: 0.84em;
+	color: var(--text-muted);
+}
+
+.health-md-med-section {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-primary);
+	padding: 10px;
+}
+
+.health-md-med-section-title {
+	margin: 0 0 8px;
+	font-size: 0.95em;
+	color: var(--text-normal);
+}
+
+.health-md-med-stat-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+	gap: 8px;
+}
+
+.health-md-med-stat {
+	background: var(--background-secondary);
+	border-radius: 8px;
+	padding: 8px 10px;
+}
+
+.health-md-med-stat-value {
+	font-weight: 700;
+	font-size: 1.35em;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-normal);
+}
+
+.health-md-med-stat-label {
+	font-size: 0.72em;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--text-muted);
+}
+
+.health-md-med-stat-sub {
+	margin-top: 2px;
+	font-size: 0.72em;
+	color: var(--text-faint);
+}
+
+.health-md-med-inventory,
+.health-md-med-breakdown {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+.health-md-med-inventory-row,
+.health-md-med-breakdown-row {
+	background: var(--background-secondary);
+	border-radius: 8px;
+	padding: 8px 10px;
+}
+
+.health-md-med-inventory-name,
+.health-md-med-breakdown-name {
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.health-md-med-inventory-meta,
+.health-md-med-breakdown-counts,
+.health-md-med-breakdown-rate {
+	font-size: 0.8em;
+	color: var(--text-muted);
+}
+
+.health-md-med-breakdown-header {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	align-items: baseline;
+}
+
+.health-md-med-stack {
+	display: flex;
+	height: 12px;
+	margin-top: 8px;
+	overflow: hidden;
+	border-radius: 999px;
+	background: var(--background-modifier-border);
+}
+
+.health-md-med-stack.is-small {
+	height: 8px;
+}
+
+.health-md-med-stack-segment.is-taken,
+.health-md-med-trend-segment.is-taken,
+.health-md-med-legend-item.is-taken .health-md-med-legend-swatch {
+	background: #2e7d32;
+}
+
+.health-md-med-stack-segment.is-skipped,
+.health-md-med-trend-segment.is-skipped,
+.health-md-med-legend-item.is-skipped .health-md-med-legend-swatch {
+	background: #b45309;
+}
+
+.health-md-med-stack-segment.is-other,
+.health-md-med-trend-segment.is-other,
+.health-md-med-legend-item.is-other .health-md-med-legend-swatch {
+	background: var(--text-muted);
+}
+
+.health-md-med-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-top: 8px;
+	font-size: 0.8em;
+	color: var(--text-muted);
+}
+
+.health-md-med-legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.health-md-med-legend-swatch {
+	display: inline-block;
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+}
+
+.health-md-med-trend {
+	display: flex;
+	gap: 6px;
+	align-items: flex-end;
+	height: 150px;
+	overflow-x: auto;
+	padding-top: 4px;
+}
+
+.health-md-med-trend-col {
+	display: flex;
+	min-width: 42px;
+	height: 100%;
+	flex: 1 0 42px;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+}
+
+.health-md-med-trend-bar {
+	display: flex;
+	width: 18px;
+	min-height: 8px;
+	flex-direction: column;
+	justify-content: flex-end;
+	overflow: hidden;
+	border-radius: 5px 5px 2px 2px;
+	background: var(--background-modifier-border);
+}
+
+.health-md-med-trend-label {
+	width: 100%;
+	overflow: hidden;
+	text-align: center;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.68em;
+	color: var(--text-muted);
+}
+
+.health-md-med-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px 7px;
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	font-weight: 600;
+	font-size: 0.82em;
+	white-space: nowrap;
+}
+
+.health-md-med-status.is-taken {
+	color: #2e7d32;
+}
+
+.health-md-med-status.is-skipped {
+	color: #b45309;
+}
+
+.health-md-med-status.is-other {
+	color: var(--text-muted);
+}
+
+.health-md-med-status-symbol {
+	font-weight: 800;
+}
+
+.health-md-med-event-table td:nth-child(2) {
+	text-align: left;
+}
+
 /* Source data viewer (JSON/CSV opened from chart data points) */
 .health-md-source-view {
 	padding: 16px;

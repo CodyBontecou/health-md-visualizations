@@ -187,6 +187,20 @@ height: 240
 
 ---
 
+## Mood Trend
+
+State of Mind valence for the week, with sleep and exercise/workout context
+behind each day.
+
+```health-viz
+type: mood-trend
+last: 7
+height: 220
+showContext: true
+```
+
+---
+
 ## Blood Oxygen
 
 ```health-viz

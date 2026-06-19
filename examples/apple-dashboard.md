@@ -86,6 +86,21 @@ sleepGoal: 8
 
 ---
 
+## Mood & Recovery
+
+State of Mind valence over the past month, layered with sleep duration and
+exercise/workout context so recovery and training patterns are visible next to
+mood.
+
+```health-viz
+type: mood-trend
+last: 30
+height: 260
+showContext: true
+```
+
+---
+
 ## Patterns
 
 Apple's "Averages by Day of Week" next to SpO₂ / respiratory range bars.

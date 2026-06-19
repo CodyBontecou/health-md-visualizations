@@ -124,6 +124,86 @@ export interface HealthRollupSummary {
 	sourcePaths?: string[];
 }
 
+export interface MedicationInventoryItem {
+	name?: string;
+	conceptIdentifier?: string;
+	concept_identifier?: string;
+	displayName?: string;
+	display_name?: string;
+	generalForm?: string;
+	general_form?: string;
+	isArchived?: boolean;
+	is_archived?: boolean;
+	hasSchedule?: boolean;
+	has_schedule?: boolean;
+	nickname?: string;
+	relatedCodings?: unknown[];
+	related_codings?: unknown[];
+	rxnormCodes?: string[];
+	rxnorm_codes?: string[];
+	[key: string]: unknown;
+}
+
+export interface MedicationDoseEvent {
+	name?: string;
+	displayName?: string;
+	display_name?: string;
+	status?: string;
+	statusDisplay?: string;
+	status_display?: string;
+	id?: string;
+	medicationConceptIdentifier?: string;
+	medication_concept_identifier?: string;
+	startDate?: string;
+	start_date?: string;
+	endDate?: string;
+	end_date?: string;
+	scheduledDate?: string;
+	scheduled_date?: string;
+	doseQuantity?: number;
+	dose_quantity?: number;
+	scheduledDoseQuantity?: number;
+	scheduled_dose_quantity?: number;
+	unit?: string;
+	scheduleType?: string;
+	schedule_type?: string;
+	metadata?: unknown;
+	[key: string]: unknown;
+}
+
+export interface MoodEntry {
+	/** Timestamp for a HealthKit State of Mind sample or daily mood entry. */
+	timestamp?: string;
+	startDate?: string;
+	endDate?: string;
+	/** HealthKit feeling kind such as dailyMood or momentaryEmotion. */
+	kind?: string;
+	/** Normalized mood valence on HealthKit's -1 (unpleasant) to +1 (pleasant) scale. */
+	valence?: number;
+	/** Original score/rating when exported on a 1–5, 0–10, or 0–100 scale. */
+	score?: number;
+	/** Primary human-readable mood label, e.g. Happy, Calm, Stressed. */
+	label?: string;
+	labels?: string[];
+	associations?: string[];
+}
+
+export interface MoodSummary {
+	entries: MoodEntry[];
+	averageValence?: number;
+	minValence?: number;
+	maxValence?: number;
+	primaryLabel?: string;
+}
+
+export interface MindfulnessSession {
+	startTime?: string;
+	endTime?: string;
+	startDate?: string;
+	endDate?: string;
+	durationSeconds?: number;
+}
+
 export interface HealthDay {
 	type: string;
 	date: string;
@@ -205,6 +285,30 @@ export interface HealthDay {
 		stairDescentSpeed?: number;
 	};
 	workouts?: WorkoutEntry[];
+	mood?: MoodSummary;
+	mindfulness?: {
+		mindfulMinutes?: number;
+		mindfulSessions?: number;
+		sessions?: MindfulnessSession[];
+	};
+	medicationCount?: number;
+	medication_count?: number;
+	activeMedicationCount?: number;
+	active_medication_count?: number;
+	archivedMedicationCount?: number;
+	archived_medication_count?: number;
+	medicationDoseCount?: number;
+	medication_dose_count?: number;
+	medicationTakenCount?: number;
+	medication_taken_count?: number;
+	medicationSkippedCount?: number;
+	medication_skipped_count?: number;
+	/** Legacy/simple medication list exported before schema v2 inventory details. */
+	medications?: string[];
+	medicationDetails?: MedicationInventoryItem[];
+	medication_details?: MedicationInventoryItem[];
+	medicationDoseEvents?: MedicationDoseEvent[];
+	medication_dose_events?: MedicationDoseEvent[];
 	hearing?: {
 		headphoneAudioLevel?: number;
 	};

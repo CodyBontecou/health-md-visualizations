@@ -70,7 +70,7 @@ The plugin watches your data folder and automatically refreshes its cache when f
 
 ### Health.md schema compatibility
 
-The plugin supports legacy/unversioned Health.md daily exports as schema `v0` plus the first public versioned `healthmd.health_data` schema, `schema_version: 1`. Newer daily schemas are parsed best-effort and surfaced in the settings compatibility summary so you know when to update the plugin.
+The plugin supports legacy/unversioned Health.md daily exports as schema `v0`, the first public versioned `healthmd.health_data` schema (`schema_version: 1`), and schema v2 medication fields (`medication_count`, `medication_details`, `medication_dose_events`, and related dose counts). Newer daily schemas are parsed best-effort and surfaced in the settings compatibility summary so you know when to update the plugin.
 
 Health.md roll-up files (`schema: healthmd.rollup_summary`, `schema_version: 1`, or files under `Health/Rollups/`) are indexed separately from daily records so weekly/monthly/yearly summaries do not pollute day-level charts. The plugin also reads `_healthmd_data_dictionary.json` when present so custom frontmatter field names can be mapped back to stable canonical keys and units.
 
@@ -158,6 +158,14 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 <td><p><strong><code>sleep-polar</code></strong></p><p>Polar clock view of sleep stages per night.</p><p><strong>Extra arguments:</strong> none.</p></td>
 </tr>
 <tr>
+<td><em>Screenshot coming soon.</em></td>
+<td><p><strong><code>mood-trend</code></strong></p><p>State of Mind / mood valence over time with optional sleep and exercise context.</p><p><strong>Extra arguments:</strong> <code>showContext</code>.</p></td>
+</tr>
+<tr>
+<td><em>Screenshot coming soon.</em></td>
+<td><p><strong><code>medication-overview</code></strong> (aliases: <code>medications</code>, <code>medication-adherence</code>)</p><p>Schema v2 medication inventory, taken/skipped adherence summary, per-medication breakdown, trend, and recent dose-event table.</p><p><strong>Extra arguments:</strong> <code>trend</code>, <code>limit</code>.</p></td>
+</tr>
+<tr>
 <td><a href="examples/images/visualizations/walking-symmetry.png"><img src="examples/images/visualizations/walking-symmetry.png" alt="walking-symmetry visualization" width="420"></a></td>
 <td><p><strong><code>walking-symmetry</code></strong></p><p>Walking speed and asymmetry / gait metrics.</p><p><strong>Extra arguments:</strong> none.</p></td>
 </tr>
@@ -177,19 +185,19 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 
 Detailed Health.md individual workout notes are discovered from `type: workout`, `metric: workouts`, or workout/healthmd tags. The plugin normalizes their frontmatter, heart-rate zones, laps, and splits for `workout-log`, `workout-heart-rate`, `workout-zones`, `workout-trends`, and the HTML `workout-intervals` table.
 
-All canvas chart types support hover tooltips. Click behavior is configurable: keep the default click-to-pin tooltip behavior, open the source health data file for a point, or open the matching Daily Note. JSON and CSV source files open in a built-in Health.md read-only viewer inside Obsidian, so source navigation does not launch your OS default editor. Aggregate canvas regions that cover multiple dates, such as `weekday-average` bars, navigate to the latest matching date in the rendered range. The `intro-stats`, `summary-card`, `trend-tile`, `workout-map`, and `workout-intervals` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
+All canvas chart types support hover tooltips. Click behavior is configurable: keep the default click-to-pin tooltip behavior, open the source health data file for a point, or open the matching Daily Note. JSON and CSV source files open in a built-in Health.md read-only viewer inside Obsidian, so source navigation does not launch your OS default editor. Aggregate canvas regions that cover multiple dates, such as `weekday-average` bars, navigate to the latest matching date in the rendered range. The `intro-stats`, `summary-card`, `trend-tile`, `medication-overview`, `workout-map`, and `workout-intervals` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
 
 ### Bundled examples
 
 Starter dashboards live in the `examples/` folder — copy any of them into your vault to see the code blocks render:
 
 - `examples/visualization-reference.md` — comprehensive reference for every visualization, including supported arguments, defaults, metric values, and copy/paste blocks.
-- `examples/apple-dashboard.md` — full Apple Health-style summary using the Apple-inspired visualizations (summary cards, activity rings, heart range, bar chart, sleep schedule, weekday average, oxygen range, trend tiles).
+- `examples/apple-dashboard.md` — full Apple Health-style summary using the Apple-inspired visualizations (summary cards, activity rings, heart range, bar chart, sleep schedule, mood trend, weekday average, oxygen range, trend tiles).
 - `examples/daily-dashboard.md` — single-day overview for daily notes.
-- `examples/weekly-overview.md` — rolling week-at-a-glance across activity, heart, respiratory, sleep, mobility, and workouts.
+- `examples/weekly-overview.md` — rolling week-at-a-glance across activity, heart, respiratory, sleep, mood, mobility, and workouts.
 - `examples/sleep-analysis.md` — sleep-focused drill-down.
 
-This repo also ships deterministic mock data in `examples/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31). When the default `Health/` folder is empty or missing, the plugin falls back to this bundled dataset so cloned examples render immediately. You can also set **Settings → Health.md Visualizations → Data folder** to `examples/Health` explicitly.
+This repo also ships deterministic mock data in `examples/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31) including activity, heart, vitals, sleep, workouts, and mood / State of Mind entries. When the default `Health/` folder is empty or missing, the plugin falls back to this bundled dataset so cloned examples render immediately. You can also set **Settings → Health.md Visualizations → Data folder** to `examples/Health` explicitly.
 
 ## Embedding charts in notes
 
@@ -380,7 +388,7 @@ The plugin auto-detects the data format from the file extension. Each file shoul
 
 - `.json` — A `HealthDay` object (see `src/types.ts` for the full shape).
 - `.csv` — Health.md row exports (`Date,Category,Metric,Value,Unit[,Timestamp]`). The parser accepts both historical plugin labels and current iOS/Android labels such as `Min Heart Rate`, `Cardio Fitness (VO2 Max)`, `Respiratory Rate Avg`, and granular sample rows. See `src/parsers/csv-parser.ts`.
-- `.md` — A markdown file with YAML frontmatter that uses fields like `average_heart_rate`, `sleep_deep_hours`, `steps`, etc. Optional Health.md granular tables (`Time | BPM`, `Time | SpO2`, `Start | End | Stage`, …) are parsed when present. Frontmatter is recommended for aggregate metrics; markdown without frontmatter needs an ISO date in the title/body. See `src/parsers/markdown-parser.ts`. This format is compatible with Obsidian Bases.
+- `.md` — A markdown file with YAML frontmatter that uses fields like `average_heart_rate`, `sleep_deep_hours`, `steps`, schema v2 medication fields (`medication_count`, `medication_details`, `medication_dose_events`), etc. Optional Health.md granular tables (`Time | BPM`, `Time | SpO2`, `Start | End | Stage`, …) are parsed when present. Frontmatter is recommended for aggregate metrics; markdown without frontmatter needs an ISO date in the title/body. See `src/parsers/markdown-parser.ts`. This format is compatible with Obsidian Bases.
 
 The top-level `date` field on each day must be a `YYYY-MM-DD` ISO date — the date filter does fast lexicographic comparisons against this field.
 

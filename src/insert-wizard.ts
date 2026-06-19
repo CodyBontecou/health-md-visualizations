@@ -7,6 +7,8 @@ type VisualizationCategoryId =
 	| "heart"
 	| "respiratory"
 	| "sleep"
+	| "mental"
+	| "medications"
 	| "mobility"
 	| "workouts";
 
@@ -109,6 +111,16 @@ const CATEGORIES: VisualizationCategory[] = [
 		id: "sleep",
 		label: "Sleep",
 		description: "Schedules, sleep stages, quality bars, and polar clocks.",
+	},
+	{
+		id: "mental",
+		label: "Mood & mind",
+		description: "State of Mind mood valence with sleep and workout context.",
+	},
+	{
+		id: "medications",
+		label: "Medications",
+		description: "Medication inventory, dose events, and adherence trends.",
 	},
 	{
 		id: "mobility",
@@ -522,6 +534,53 @@ const VISUALIZATIONS: VisualizationOption[] = [
 		defaultLast: 14,
 		defaultHeight: 280,
 		params: [],
+	},
+	{
+		type: "mood-trend",
+		label: "Mood trend",
+		category: "mental",
+		description: "State of Mind mood valence over time with optional sleep and exercise context.",
+		defaultLast: 30,
+		defaultHeight: 260,
+		params: [
+			{
+				kind: "toggle",
+				key: "showContext",
+				label: "Show sleep/exercise context",
+				desc: "Draw faint sleep duration and exercise/workout bars behind the mood trend.",
+				defaultValue: true,
+			},
+		],
+	},
+	{
+		type: "medication-overview",
+		label: "Medication overview",
+		category: "medications",
+		description: "Medication inventory, taken/skipped dose summary, per-medication breakdown, adherence trend, and recent events.",
+		defaultLast: 30,
+		params: [
+			{
+				kind: "select",
+				key: "trend",
+				label: "Trend grouping",
+				desc: "Group adherence trend bars by day, week, month, or choose automatically from the date range.",
+				options: [
+					{ value: "auto", label: "Auto" },
+					{ value: "daily", label: "Daily" },
+					{ value: "weekly", label: "Weekly" },
+					{ value: "monthly", label: "Monthly" },
+				],
+				defaultValue: "auto",
+			},
+			{
+				kind: "text",
+				key: "limit",
+				label: "Recent events",
+				desc: "Maximum number of recent medication dose events to list.",
+				defaultValue: "12",
+				validation: "positive-integer",
+			},
+		],
 	},
 	{
 		type: "walking-symmetry",

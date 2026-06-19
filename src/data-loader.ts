@@ -7,6 +7,7 @@ import {
 	DetectedSchema,
 	HEALTHMD_DATA_DICTIONARY_FILENAME,
 	ParsedHealthMetricDataDictionary,
+	SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION,
 	SUPPORTED_HEALTHMD_SCHEMA_VERSION,
 	detectCsvSchema,
 	detectFrontmatterSchema,
@@ -20,6 +21,8 @@ import {
 	DataFormat,
 	DataFolderGranularity,
 	HealthRollupSummary,
+	MedicationDoseEvent,
+	MedicationInventoryItem,
 	WorkoutEntry,
 } from "./types";
 import { parseJSON } from "./parsers/json-parser";
@@ -119,7 +122,7 @@ export class DataLoader {
 			const content = await this.vault.cachedRead(file);
 			const format = detectFormat(file.extension, this.settings.dataFormat);
 			const cachedFrontmatter = format === "markdown" || format === "bases"
-				? this.metadataCache?.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined
+				? this.metadataCache?.getFileCache(file)?.frontmatter
 				: undefined;
 
 			try {
@@ -166,15 +169,15 @@ export class DataLoader {
 			const content = await this.vault.cachedRead(file);
 			const format = detectFormat(file.extension, this.settings.dataFormat);
 			const cachedFrontmatter = format === "markdown" || format === "bases"
-				? this.metadataCache?.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined
+				? this.metadataCache?.getFileCache(file)?.frontmatter
 				: undefined;
 			try {
 				const rollup = parseRollupByFormat(content, format, cachedFrontmatter);
 				if (rollup) {
 					const version = schemaVersionOf(rollup);
 					schemaVersions.add(version);
-					if (version > SUPPORTED_HEALTHMD_SCHEMA_VERSION) {
-						report.warnings.push(`${file.path} uses Health.md roll-up schema v${version}; parsing best-effort with v${SUPPORTED_HEALTHMD_SCHEMA_VERSION} support.`);
+					if (version > SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION) {
+						report.warnings.push(`${file.path} uses Health.md roll-up schema v${version}; parsing best-effort with v${SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION} support.`);
 					}
 					rollups.push(withRollupSourcePath(rollup, file.path));
 				} else {
@@ -549,7 +552,7 @@ function rollupKey(rollup: HealthRollupSummary): string {
 function rollupDetailScore(rollup: HealthRollupSummary): number {
 	return schemaVersionOf(rollup) * 1000 + Object.values(rollup).filter((value) => {
 		if (Array.isArray(value)) return value.length > 0;
-		if (value && typeof value === "object") return Object.keys(value).length > 0;
+		if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
 		return value !== undefined && value !== null && value !== "";
 	}).length;
 }
@@ -588,7 +591,7 @@ function workoutDetailScore(workout: WorkoutEntry): number {
 	let score = 0;
 	for (const value of Object.values(workout)) {
 		if (Array.isArray(value)) score += value.length * 3;
-		else if (value && typeof value === "object") score += Object.keys(value).length * 2;
+		else if (value && typeof value === "object") score += Object.keys(value as Record<string, unknown>).length * 2;
 		else if (value !== undefined && value !== null && value !== "") score += 1;
 	}
 	return score;
@@ -646,6 +649,66 @@ function mergeWorkouts(a: WorkoutEntry[] | undefined, b: WorkoutEntry[] | undefi
 	});
 }
 
+function medicationDetailKey(item: MedicationInventoryItem): string {
+	return (item.conceptIdentifier ?? item.concept_identifier ?? item.name ?? item.displayName ?? item.display_name ?? "").toLowerCase().trim();
+}
+
+function mergeMedicationDetails(
+	a: MedicationInventoryItem[] | undefined,
+	b: MedicationInventoryItem[] | undefined
+): MedicationInventoryItem[] | undefined {
+	const all = [...(a ?? []), ...(b ?? [])];
+	if (!all.length) return undefined;
+	const byKey = new Map<string, MedicationInventoryItem>();
+	const unkeyed: MedicationInventoryItem[] = [];
+	for (const item of all) {
+		const key = medicationDetailKey(item);
+		if (!key) {
+			unkeyed.push(item);
+			continue;
+		}
+		const existing = byKey.get(key);
+		byKey.set(key, existing ? { ...existing, ...item } : item);
+	}
+	return [...Array.from(byKey.values()), ...unkeyed].sort((left, right) =>
+		(left.displayName ?? left.display_name ?? left.name ?? "").localeCompare(right.displayName ?? right.display_name ?? right.name ?? "")
+	);
+}
+
+function medicationDoseEventKey(event: MedicationDoseEvent): string {
+	return (event.id ?? `${event.scheduledDate ?? event.scheduled_date ?? event.startDate ?? event.start_date ?? ""}|${event.name ?? ""}|${event.status ?? ""}`).toLowerCase().trim();
+}
+
+function mergeMedicationDoseEvents(
+	a: MedicationDoseEvent[] | undefined,
+	b: MedicationDoseEvent[] | undefined
+): MedicationDoseEvent[] | undefined {
+	const all = [...(a ?? []), ...(b ?? [])];
+	if (!all.length) return undefined;
+	const byKey = new Map<string, MedicationDoseEvent>();
+	const unkeyed: MedicationDoseEvent[] = [];
+	for (const event of all) {
+		const key = medicationDoseEventKey(event);
+		if (!key || key.startsWith("||")) {
+			unkeyed.push(event);
+			continue;
+		}
+		const existing = byKey.get(key);
+		byKey.set(key, existing ? { ...existing, ...event } : event);
+	}
+	return [...Array.from(byKey.values()), ...unkeyed].sort((left, right) => {
+		const leftDate = left.scheduledDate ?? left.scheduled_date ?? left.startDate ?? left.start_date ?? "";
+		const rightDate = right.scheduledDate ?? right.scheduled_date ?? right.startDate ?? right.start_date ?? "";
+		return leftDate.localeCompare(rightDate);
+	});
+}
+
+function mergeStringLists(a: string[] | undefined, b: string[] | undefined): string[] | undefined {
+	const merged = [...(a ?? []), ...(b ?? [])].filter(Boolean);
+	if (!merged.length) return undefined;
+	return Array.from(new Set(merged)).sort((left, right) => left.localeCompare(right));
+}
+
 function objectDetailScore(value: unknown): number {
 	if (!value || typeof value !== "object") return 0;
 	let score = 0;
@@ -664,7 +727,20 @@ function dayDetailScore(day: HealthDay): number {
 		objectDetailScore(day.vitals) +
 		objectDetailScore(day.sleep) +
 		objectDetailScore(day.mobility) +
+		objectDetailScore(day.mood) +
+		objectDetailScore(day.mindfulness) +
 		objectDetailScore(day.hearing) +
+		objectDetailScore({
+			medicationCount: day.medicationCount ?? day.medication_count,
+			activeMedicationCount: day.activeMedicationCount ?? day.active_medication_count,
+			archivedMedicationCount: day.archivedMedicationCount ?? day.archived_medication_count,
+			medicationDoseCount: day.medicationDoseCount ?? day.medication_dose_count,
+			medicationTakenCount: day.medicationTakenCount ?? day.medication_taken_count,
+			medicationSkippedCount: day.medicationSkippedCount ?? day.medication_skipped_count,
+			medications: day.medications,
+			medicationDetails: day.medicationDetails ?? day.medication_details,
+			medicationDoseEvents: day.medicationDoseEvents ?? day.medication_dose_events,
+		}) +
 		(day.workouts ?? []).reduce((sum, workout) => sum + workoutDetailScore(workout), 0);
 }
 
@@ -712,6 +788,25 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		sleep: mergeSection(fallback.sleep, preferred.sleep),
 		mobility: mergeSection(fallback.mobility, preferred.mobility),
 		workouts: mergeWorkouts(a.workouts, b.workouts),
+		mood: mergeSection(fallback.mood, preferred.mood),
+		mindfulness: mergeSection(fallback.mindfulness, preferred.mindfulness),
+		medicationCount: preferMeaningfulValue(fallback.medicationCount ?? fallback.medication_count, preferred.medicationCount ?? preferred.medication_count) as number | undefined,
+		medication_count: preferMeaningfulValue(fallback.medication_count ?? fallback.medicationCount, preferred.medication_count ?? preferred.medicationCount) as number | undefined,
+		activeMedicationCount: preferMeaningfulValue(fallback.activeMedicationCount ?? fallback.active_medication_count, preferred.activeMedicationCount ?? preferred.active_medication_count) as number | undefined,
+		active_medication_count: preferMeaningfulValue(fallback.active_medication_count ?? fallback.activeMedicationCount, preferred.active_medication_count ?? preferred.activeMedicationCount) as number | undefined,
+		archivedMedicationCount: preferMeaningfulValue(fallback.archivedMedicationCount ?? fallback.archived_medication_count, preferred.archivedMedicationCount ?? preferred.archived_medication_count) as number | undefined,
+		archived_medication_count: preferMeaningfulValue(fallback.archived_medication_count ?? fallback.archivedMedicationCount, preferred.archived_medication_count ?? preferred.archivedMedicationCount) as number | undefined,
+		medicationDoseCount: preferMeaningfulValue(fallback.medicationDoseCount ?? fallback.medication_dose_count, preferred.medicationDoseCount ?? preferred.medication_dose_count) as number | undefined,
+		medication_dose_count: preferMeaningfulValue(fallback.medication_dose_count ?? fallback.medicationDoseCount, preferred.medication_dose_count ?? preferred.medicationDoseCount) as number | undefined,
+		medicationTakenCount: preferMeaningfulValue(fallback.medicationTakenCount ?? fallback.medication_taken_count, preferred.medicationTakenCount ?? preferred.medication_taken_count) as number | undefined,
+		medication_taken_count: preferMeaningfulValue(fallback.medication_taken_count ?? fallback.medicationTakenCount, preferred.medication_taken_count ?? preferred.medicationTakenCount) as number | undefined,
+		medicationSkippedCount: preferMeaningfulValue(fallback.medicationSkippedCount ?? fallback.medication_skipped_count, preferred.medicationSkippedCount ?? preferred.medication_skipped_count) as number | undefined,
+		medication_skipped_count: preferMeaningfulValue(fallback.medication_skipped_count ?? fallback.medicationSkippedCount, preferred.medication_skipped_count ?? preferred.medicationSkippedCount) as number | undefined,
+		medications: mergeStringLists(fallback.medications, preferred.medications),
+		medicationDetails: mergeMedicationDetails(fallback.medicationDetails ?? fallback.medication_details, preferred.medicationDetails ?? preferred.medication_details),
+		medication_details: mergeMedicationDetails(fallback.medication_details ?? fallback.medicationDetails, preferred.medication_details ?? preferred.medicationDetails),
+		medicationDoseEvents: mergeMedicationDoseEvents(fallback.medicationDoseEvents ?? fallback.medication_dose_events, preferred.medicationDoseEvents ?? preferred.medication_dose_events),
+		medication_dose_events: mergeMedicationDoseEvents(fallback.medication_dose_events ?? fallback.medicationDoseEvents, preferred.medication_dose_events ?? preferred.medicationDoseEvents),
 		hearing: mergeSection(fallback.hearing, preferred.hearing),
 	};
 }

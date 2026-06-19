@@ -4,7 +4,8 @@ import {
 	detectCsvSchema,
 	schemaVersionOf,
 } from "../healthmd-schema";
-import { HealthDay, TimeSeriesSample } from "../types";
+import { HealthDay, MoodEntry, TimeSeriesSample } from "../types";
+import { createMoodSummary, normalizeMoodValence, stringArrayFromUnknown } from "../mood-utils";
 
 interface CsvRow {
 	date: string;
@@ -208,6 +209,84 @@ function samplesFromRows(
 		samples.push({ timestamp, value });
 	}
 	return samples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+function isMoodRow(row: CsvRow): boolean {
+	const category = normalizeLabel(row.category);
+	const metric = normalizeLabel(row.metric);
+	return (
+		category === "mood" ||
+		category === "state of mind" ||
+		category === "mental wellbeing" ||
+		category === "mental well-being" ||
+		category.includes("mood") ||
+		category.includes("state of mind") ||
+		metric.includes("mood") ||
+		metric.includes("state of mind")
+	);
+}
+
+function csvMoodKind(metric: string): string | undefined {
+	if (metric.includes("daily")) return "dailyMood";
+	if (metric.includes("momentary") || metric.includes("emotion")) return "momentaryEmotion";
+	return undefined;
+}
+
+function moodEntryFromRow(row: CsvRow): MoodEntry | null {
+	const metric = normalizeLabel(row.metric);
+	const value = row.value.trim();
+	if (!value) return null;
+
+	const timestamp = normalizeTimestamp(row.date, row.timestamp) ?? `${row.date}T12:00:00`;
+	const isScore = metric.includes("score") || metric.includes("rating");
+	const isLabel = metric.includes("label") || metric.includes("emotion") || metric.includes("feeling") || metric.includes("classification");
+	const labels = isLabel ? stringArrayFromUnknown(value) : [];
+	const associations = metric.includes("association") || metric.includes("context") || metric.includes("factor")
+		? stringArrayFromUnknown(value)
+		: [];
+	const label = labels[0] ?? (parseNumber(value) === undefined ? value : undefined);
+	const valence = normalizeMoodValence(value, isScore ? "score" : isLabel ? "label" : "valence") ??
+		normalizeMoodValence(label, "label");
+	const score = isScore ? parseNumber(value) : undefined;
+
+	if (valence === undefined && !label && !labels.length && !associations.length) return null;
+	return {
+		timestamp,
+		startDate: timestamp,
+		kind: csvMoodKind(metric),
+		valence,
+		score,
+		label,
+		labels: labels.length ? labels : undefined,
+		associations: associations.length ? associations : undefined,
+	};
+}
+
+function parseMoodEntries(rows: CsvRow[]): MoodEntry[] {
+	const entries: MoodEntry[] = [];
+	const pendingByTimestamp = new Map<string, MoodEntry>();
+	for (const row of rows) {
+		if (!isMoodRow(row)) continue;
+		const entry = moodEntryFromRow(row);
+		if (!entry) continue;
+		const timestamp = entry.timestamp ?? entry.startDate ?? row.date;
+		const existing = pendingByTimestamp.get(timestamp);
+		if (!existing) {
+			pendingByTimestamp.set(timestamp, entry);
+			continue;
+		}
+		pendingByTimestamp.set(timestamp, {
+			...existing,
+			...entry,
+			valence: existing.valence ?? entry.valence,
+			score: existing.score ?? entry.score,
+			label: existing.label ?? entry.label,
+			labels: [...(existing.labels ?? []), ...(entry.labels ?? [])].filter((item, index, all) => all.indexOf(item) === index),
+			associations: [...(existing.associations ?? []), ...(entry.associations ?? [])].filter((item, index, all) => all.indexOf(item) === index),
+		});
+	}
+	entries.push(...pendingByTimestamp.values());
+	return entries.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
 }
 
 function normalizeSleepStage(stage: string): string {
@@ -503,6 +582,12 @@ function buildDayFromRows(date: string, rows: CsvRow[], metadataRows: CsvRow[] =
 				getNum(rows, "Mobility", "Walking Double Support Percentage") ??
 				getNum(rows, "Mobility", "Walking Double Support Percent"),
 		};
+	}
+
+	// Mood / State of Mind
+	const moodSummary = createMoodSummary(parseMoodEntries(rows));
+	if (moodSummary) {
+		day.mood = moodSummary;
 	}
 
 	// Hearing

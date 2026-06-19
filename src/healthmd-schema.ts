@@ -1,8 +1,10 @@
 export const HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
 export const HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 export const HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
-/** Health.md's first public, versioned export schema. */
-export const SUPPORTED_HEALTHMD_SCHEMA_VERSION = 1;
+/** Latest Health.md daily export schema supported by this plugin. */
+export const SUPPORTED_HEALTHMD_SCHEMA_VERSION = 2;
+/** Latest Health.md roll-up summary schema supported by this plugin. */
+export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 1;
 
 export type HealthMdDataFormat = "json" | "csv" | "markdown" | "bases" | "unknown";
 
@@ -105,7 +107,7 @@ function detectKnownSchema(format: HealthMdDataFormat, schema: string | undefine
 			version,
 			format,
 			schema,
-			isFutureVersion: schemaIsFutureVersion(version),
+			isFutureVersion: version > SUPPORTED_HEALTHMD_SCHEMA_VERSION,
 		};
 	}
 	if (schema === HEALTHMD_ROLLUP_SCHEMA) {
@@ -114,7 +116,7 @@ function detectKnownSchema(format: HealthMdDataFormat, schema: string | undefine
 			version,
 			format,
 			schema,
-			isFutureVersion: schemaIsFutureVersion(version),
+			isFutureVersion: version > SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION,
 		};
 	}
 	return {
@@ -126,7 +128,7 @@ function detectKnownSchema(format: HealthMdDataFormat, schema: string | undefine
 	};
 }
 
-export function detectJsonSchema(contentOrValue: string | unknown): DetectedSchema {
+export function detectJsonSchema(contentOrValue: unknown): DetectedSchema {
 	try {
 		const parsed = typeof contentOrValue === "string" ? JSON.parse(contentOrValue) as unknown : contentOrValue;
 		if (isHealthMetricDataDictionaryValue(parsed)) {
@@ -183,7 +185,7 @@ export function detectCsvSchema(content: string): DetectedSchema {
 
 	const header = parseCsvLine(lines[0]).map(normalizeCsvLabel);
 	if (header[0] === "period" && header[1] === "period id") {
-		return { kind: "rollup-summary", version: SUPPORTED_HEALTHMD_SCHEMA_VERSION, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+		return { kind: "rollup-summary", version: SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
 	}
 	if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
 		return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };

@@ -1,6 +1,6 @@
 import {
 	HEALTHMD_ROLLUP_SCHEMA,
-	SUPPORTED_HEALTHMD_SCHEMA_VERSION,
+	SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION,
 	schemaVersionOf,
 } from "../healthmd-schema";
 import { HealthRollupPeriod, HealthRollupSummary } from "../types";
@@ -220,7 +220,7 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 		};
 	}
 
-	const schemaVersion = parseCsvNumber(csvValue(firstRow, schemaVersionIndex)) ?? SUPPORTED_HEALTHMD_SCHEMA_VERSION;
+	const schemaVersion = parseCsvNumber(csvValue(firstRow, schemaVersionIndex)) ?? SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION;
 	const sourceSchemaVersion = parseCsvNumber(csvValue(firstRow, sourceSchemaVersionIndex));
 
 	return {

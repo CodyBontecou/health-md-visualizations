@@ -1,4 +1,5 @@
 import { HEALTHMD_HEALTH_DATA_SCHEMA, HEALTHMD_ROLLUP_SCHEMA, isUnitMap, schemaVersionOf } from "../healthmd-schema";
+import { normalizeMedicationFields } from "../medication-utils";
 import { HealthDay } from "../types";
 
 export function parseJSON(content: string): HealthDay | null {
@@ -35,6 +36,8 @@ export function parseJSON(content: string): HealthDay | null {
 		if (isUnitMap(parsed.units)) {
 			day.units = parsed.units;
 		}
+
+		Object.assign(day, normalizeMedicationFields(parsed as Record<string, unknown>));
 
 		return day;
 	} catch {

@@ -10,6 +10,7 @@ import {
 import type HealthMdPlugin from "./main";
 import { DataPointClickAction, HealthDay, HitRegion, HitRegistry, VizConfig } from "./types";
 import { setupCanvas, resolveTheme, formatDuration } from "./canvas-utils";
+import { doseStatusKind } from "./medication-utils";
 import { HTML_VISUALIZATIONS, VISUALIZATIONS } from "./visualizations";
 
 function noHealthDataMessage(plugin: HealthMdPlugin): string {
@@ -477,6 +478,26 @@ function sliceBoundaryDay(
 			if (toMs !== undefined && ms > toMs) return false;
 			return true;
 		});
+	}
+	const medicationEvents = d.medicationDoseEvents ?? d.medication_dose_events;
+	if (medicationEvents) {
+		const slicedEvents = medicationEvents.filter((event) => {
+			const timestamp = event.scheduledDate ?? event.scheduled_date ?? event.startDate ?? event.start_date ?? event.endDate ?? event.end_date;
+			if (!timestamp) return true;
+			const ms = Date.parse(timestamp);
+			if (Number.isNaN(ms)) return true;
+			if (fromMs !== undefined && ms < fromMs) return false;
+			if (toMs !== undefined && ms > toMs) return false;
+			return true;
+		});
+		next.medicationDoseEvents = slicedEvents;
+		next.medication_dose_events = slicedEvents;
+		next.medicationDoseCount = slicedEvents.length;
+		next.medication_dose_count = slicedEvents.length;
+		next.medicationTakenCount = slicedEvents.filter((event) => doseStatusKind(event.status) === "taken").length;
+		next.medication_taken_count = next.medicationTakenCount;
+		next.medicationSkippedCount = slicedEvents.filter((event) => doseStatusKind(event.status) === "skipped").length;
+		next.medication_skipped_count = next.medicationSkippedCount;
 	}
 	return next;
 }
