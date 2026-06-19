@@ -9670,7 +9670,8 @@ function stripPathControlCharacters(value) {
 var HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
 var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
-var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 3;
+var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 2;
+var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 1;
 function schemaVersionOf(value) {
   var _a;
   const raw = (_a = value.schemaVersion) != null ? _a : value.schema_version;
@@ -9680,9 +9681,6 @@ function schemaVersionOf(value) {
     if (Number.isFinite(parsed)) return parsed;
   }
   return 0;
-}
-function schemaIsFutureVersion(version) {
-  return version > SUPPORTED_HEALTHMD_SCHEMA_VERSION;
 }
 function isUnitMap(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every((item) => typeof item === "string");
@@ -9702,7 +9700,7 @@ function detectKnownSchema(format, schema, version) {
       version,
       format,
       schema,
-      isFutureVersion: schemaIsFutureVersion(version)
+      isFutureVersion: version > SUPPORTED_HEALTHMD_SCHEMA_VERSION
     };
   }
   if (schema === HEALTHMD_ROLLUP_SCHEMA) {
@@ -9711,7 +9709,7 @@ function detectKnownSchema(format, schema, version) {
       version,
       format,
       schema,
-      isFutureVersion: schemaIsFutureVersion(version)
+      isFutureVersion: version > SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION
     };
   }
   return {
@@ -9775,7 +9773,7 @@ function detectCsvSchema(content) {
   if (!lines.length) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
   const header = parseCsvLine(lines[0]).map(normalizeCsvLabel);
   if (header[0] === "period" && header[1] === "period id") {
-    return { kind: "rollup-summary", version: SUPPORTED_HEALTHMD_SCHEMA_VERSION, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+    return { kind: "rollup-summary", version: SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
   }
   if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
     return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };
@@ -9798,9 +9796,11 @@ function detectCsvSchema(content) {
 }
 function parseHealthMetricDataDictionaryDetails(content) {
   const empty = {
+    entries: [],
     aliases: {},
     unitsByCanonicalKey: {},
     dailyAggregationByCanonicalKey: {},
+    healthKitAggregationByCanonicalKey: {},
     rollupByCanonicalKey: {},
     schemaVersion: 0
   };
@@ -9808,9 +9808,11 @@ function parseHealthMetricDataDictionaryDetails(content) {
     const parsed = JSON.parse(content);
     if (!Array.isArray(parsed)) return empty;
     const result = {
+      entries: [],
       aliases: {},
       unitsByCanonicalKey: {},
       dailyAggregationByCanonicalKey: {},
+      healthKitAggregationByCanonicalKey: {},
       rollupByCanonicalKey: {},
       schemaVersion: schemaVersionOfDictionaryValue(parsed)
     };
@@ -9819,21 +9821,42 @@ function parseHealthMetricDataDictionaryDetails(content) {
       const {
         key,
         canonicalKey,
+        displayName,
+        category,
         unit,
         aggregation,
         dailyAggregation,
-        rollup
+        healthKitAggregation,
+        rollup,
+        schemaVersion
       } = entry;
       if (typeof canonicalKey !== "string" || !canonicalKey) continue;
-      if (typeof key === "string" && key && key !== canonicalKey) {
-        result.aliases[key] = canonicalKey;
-      }
-      if (typeof unit === "string") {
-        result.unitsByCanonicalKey[canonicalKey] = unit;
-      }
+      const exportedKey = typeof key === "string" && key ? key : canonicalKey;
+      const normalizedEntry = {
+        key: exportedKey,
+        canonicalKey
+      };
+      if (typeof displayName === "string") normalizedEntry.displayName = displayName;
+      if (typeof category === "string") normalizedEntry.category = category;
+      if (typeof unit === "string") normalizedEntry.unit = unit;
       const aggregationValue = dailyAggregation != null ? dailyAggregation : aggregation;
-      if (typeof aggregationValue === "string") {
-        result.dailyAggregationByCanonicalKey[canonicalKey] = aggregationValue;
+      if (typeof aggregationValue === "string") normalizedEntry.dailyAggregation = aggregationValue;
+      if (typeof healthKitAggregation === "string") normalizedEntry.healthKitAggregation = healthKitAggregation;
+      if (rollup !== void 0) normalizedEntry.rollup = rollup;
+      const entrySchemaVersion = schemaVersionOf({ schemaVersion });
+      if (entrySchemaVersion > 0) normalizedEntry.schemaVersion = entrySchemaVersion;
+      result.entries.push(normalizedEntry);
+      if (exportedKey !== canonicalKey) {
+        result.aliases[exportedKey] = canonicalKey;
+      }
+      if (normalizedEntry.unit) {
+        result.unitsByCanonicalKey[canonicalKey] = normalizedEntry.unit;
+      }
+      if (normalizedEntry.dailyAggregation) {
+        result.dailyAggregationByCanonicalKey[canonicalKey] = normalizedEntry.dailyAggregation;
+      }
+      if (normalizedEntry.healthKitAggregation) {
+        result.healthKitAggregationByCanonicalKey[canonicalKey] = normalizedEntry.healthKitAggregation;
       }
       if (rollup !== void 0) {
         result.rollupByCanonicalKey[canonicalKey] = rollup;
@@ -9889,6 +9912,446 @@ function parseCsvLine(line) {
   return fields;
 }
 
+// src/medication-utils.ts
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function parseNumberValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return void 0;
+  const normalized = value.trim().replace(/,/g, "");
+  const match = /^[-+]?\d*\.?\d+(?:e[-+]?\d+)?/i.exec(normalized);
+  if (!match) return void 0;
+  const num = Number(match[0]);
+  return Number.isFinite(num) ? num : void 0;
+}
+function stringValue2(value) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : void 0;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return void 0;
+}
+function booleanValue(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value !== 0;
+  if (typeof value !== "string") return void 0;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "yes", "y", "1"].includes(normalized)) return true;
+  if (["false", "no", "n", "0"].includes(normalized)) return false;
+  return void 0;
+}
+function firstRaw(source, ...keys) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
+  }
+  return void 0;
+}
+function firstString(source, ...keys) {
+  for (const key of keys) {
+    const value = stringValue2(source[key]);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
+function firstNumber(source, ...keys) {
+  for (const key of keys) {
+    const value = parseNumberValue(source[key]);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
+function firstBoolean(source, ...keys) {
+  for (const key of keys) {
+    const value = booleanValue(source[key]);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
+function splitInlineArray(inner) {
+  const parts = [];
+  let current = "";
+  let quote = null;
+  let bracketDepth = 0;
+  let braceDepth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if ((ch === '"' || ch === "'") && inner[i - 1] !== "\\") {
+      quote = quote === ch ? null : quote != null ? quote : ch;
+    }
+    if (!quote) {
+      if (ch === "[") bracketDepth++;
+      else if (ch === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+      else if (ch === "{") braceDepth++;
+      else if (ch === "}") braceDepth = Math.max(0, braceDepth - 1);
+      else if (ch === "," && bracketDepth === 0 && braceDepth === 0) {
+        parts.push(current.trim());
+        current = "";
+        continue;
+      }
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+function splitYamlKeyValue(text) {
+  const colonIdx = text.indexOf(":");
+  if (colonIdx === -1) return null;
+  const key = text.slice(0, colonIdx).trim();
+  if (!key) return null;
+  return [key, text.slice(colonIdx + 1).trim()];
+}
+function parseScalar(raw) {
+  let value = raw.trim();
+  if (!value) return null;
+  if (value.startsWith('"') && value.endsWith('"') || value.startsWith("'") && value.endsWith("'")) {
+    value = value.slice(1, -1);
+    return value.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  if (value.startsWith("[") && value.endsWith("]")) {
+    return splitInlineArray(value.slice(1, -1)).map(parseScalar);
+  }
+  if (value.startsWith("{") && value.endsWith("}")) {
+    try {
+      return JSON.parse(value);
+    } catch (e) {
+      return value;
+    }
+  }
+  const lower = value.toLowerCase();
+  if (lower === "true") return true;
+  if (lower === "false") return false;
+  if (lower === "null" || lower === "~") return null;
+  const num = Number(value.replace(/,/g, ""));
+  if (Number.isFinite(num) && /^[-+]?\d/.test(value)) return num;
+  return value;
+}
+function parseYamlishList(value) {
+  const lines = value.split(/\r?\n/).map((line) => {
+    var _a, _b;
+    return { indent: (_b = (_a = /^ */.exec(line)) == null ? void 0 : _a[0].length) != null ? _b : 0, text: line.trim() };
+  }).filter((line) => line.text && !line.text.startsWith("#"));
+  if (!lines.length) return void 0;
+  if (!lines.some((line) => line.text.startsWith("- "))) {
+    const object = {};
+    let hasKeys = false;
+    for (const line of lines) {
+      const pair = splitYamlKeyValue(line.text);
+      if (!pair) return void 0;
+      object[pair[0]] = parseScalar(pair[1]);
+      hasKeys = true;
+    }
+    return hasKeys ? [object] : void 0;
+  }
+  const result = [];
+  let current = null;
+  let currentScalar;
+  let hasCurrentScalar = false;
+  for (const line of lines) {
+    if (line.text.startsWith("- ")) {
+      if (current) result.push(current);
+      else if (hasCurrentScalar) result.push(currentScalar);
+      current = null;
+      currentScalar = void 0;
+      hasCurrentScalar = false;
+      const rest = line.text.slice(2).trim();
+      if (!rest) {
+        current = {};
+        continue;
+      }
+      const pair = splitYamlKeyValue(rest);
+      if (pair) {
+        current = { [pair[0]]: parseScalar(pair[1]) };
+        continue;
+      }
+      currentScalar = parseScalar(rest);
+      hasCurrentScalar = true;
+      continue;
+    }
+    if (current && line.indent > 0) {
+      const pair = splitYamlKeyValue(line.text);
+      if (pair) current[pair[0]] = parseScalar(pair[1]);
+    }
+  }
+  if (current) result.push(current);
+  else if (hasCurrentScalar) result.push(currentScalar);
+  return result.length ? result : void 0;
+}
+function parseUnknownCollection(value) {
+  if (Array.isArray(value)) return value;
+  if (value == null) return [];
+  if (isRecord(value)) return [value];
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+      if (isRecord(parsed)) return [parsed];
+    } catch (e) {
+    }
+  }
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return splitInlineArray(trimmed.slice(1, -1)).map(parseScalar);
+  }
+  const yamlish = parseYamlishList(trimmed);
+  if (yamlish) return yamlish;
+  return trimmed.split(/[,;\n]/).map((item) => item.trim()).filter(Boolean);
+}
+function stringArrayFromUnknown(value) {
+  return parseUnknownCollection(value).flatMap((item) => {
+    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+      const text = String(item).trim();
+      return text ? [text] : [];
+    }
+    if (isRecord(item)) {
+      const name = firstString(item, "display_name", "displayName", "name", "nickname");
+      return name ? [name] : [];
+    }
+    return [];
+  }).filter((item, index, all) => all.indexOf(item) === index);
+}
+function normalizeMedicationDetails(value) {
+  return parseUnknownCollection(value).flatMap((item) => {
+    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+      const name2 = String(item).trim();
+      return name2 ? [{ name: name2, displayName: name2, display_name: name2 }] : [];
+    }
+    if (!isRecord(item)) return [];
+    const name = firstString(item, "name", "medication", "display_name", "displayName", "nickname");
+    const displayName = firstString(item, "display_name", "displayName", "name", "nickname");
+    const conceptIdentifier = firstString(item, "concept_identifier", "conceptIdentifier", "medication_concept_identifier", "medicationConceptIdentifier");
+    const generalForm = firstString(item, "general_form", "generalForm", "form");
+    const isArchived = firstBoolean(item, "is_archived", "isArchived", "archived");
+    const hasSchedule = firstBoolean(item, "has_schedule", "hasSchedule", "scheduled");
+    const nickname = firstString(item, "nickname", "nick_name", "nickName");
+    const rxnormCodes = stringArrayFromUnknown(firstRaw(item, "rxnorm_codes", "rxnormCodes", "rxnorm"));
+    const relatedCodings = parseUnknownCollection(firstRaw(item, "related_codings", "relatedCodings", "codings"));
+    return [{
+      ...item,
+      name,
+      conceptIdentifier,
+      concept_identifier: conceptIdentifier,
+      displayName,
+      display_name: displayName,
+      generalForm,
+      general_form: generalForm,
+      isArchived,
+      is_archived: isArchived,
+      hasSchedule,
+      has_schedule: hasSchedule,
+      nickname,
+      relatedCodings: relatedCodings.length ? relatedCodings : void 0,
+      related_codings: relatedCodings.length ? relatedCodings : void 0,
+      rxnormCodes: rxnormCodes.length ? rxnormCodes : void 0,
+      rxnorm_codes: rxnormCodes.length ? rxnormCodes : void 0
+    }];
+  });
+}
+function normalizeMedicationDoseEvents(value) {
+  return parseUnknownCollection(value).flatMap((item) => {
+    var _a;
+    if (!isRecord(item)) return [];
+    const status = firstString(item, "status", "dose_status", "doseStatus");
+    const statusDisplay = (_a = firstString(item, "status_display", "statusDisplay")) != null ? _a : statusLabel(status);
+    const startDate = firstString(item, "start_date", "startDate", "start", "started_at", "startedAt");
+    const endDate = firstString(item, "end_date", "endDate", "end", "ended_at", "endedAt");
+    const scheduledDate = firstString(item, "scheduled_date", "scheduledDate", "scheduled", "scheduled_at", "scheduledAt", "time", "timestamp");
+    const doseQuantity = firstNumber(item, "dose_quantity", "doseQuantity", "quantity");
+    const scheduledDoseQuantity = firstNumber(item, "scheduled_dose_quantity", "scheduledDoseQuantity", "scheduled_quantity", "scheduledQuantity");
+    const scheduleType = firstString(item, "schedule_type", "scheduleType", "schedule");
+    const conceptIdentifier = firstString(item, "medication_concept_identifier", "medicationConceptIdentifier", "concept_identifier", "conceptIdentifier");
+    return [{
+      ...item,
+      name: firstString(item, "name", "medication", "display_name", "displayName"),
+      status,
+      statusDisplay,
+      status_display: statusDisplay,
+      id: firstString(item, "id", "identifier", "uuid"),
+      medicationConceptIdentifier: conceptIdentifier,
+      medication_concept_identifier: conceptIdentifier,
+      startDate,
+      start_date: startDate,
+      endDate,
+      end_date: endDate,
+      scheduledDate,
+      scheduled_date: scheduledDate,
+      doseQuantity,
+      dose_quantity: doseQuantity,
+      scheduledDoseQuantity,
+      scheduled_dose_quantity: scheduledDoseQuantity,
+      unit: firstString(item, "unit", "dose_unit", "doseUnit"),
+      scheduleType,
+      schedule_type: scheduleType,
+      metadata: firstRaw(item, "metadata", "meta")
+    }];
+  }).sort((a, b) => medicationEventTimestamp(a).localeCompare(medicationEventTimestamp(b)));
+}
+function normalizeMedicationFields(source) {
+  var _a, _b, _c, _d, _e, _f;
+  const detailsRaw = firstRaw(source, "medication_details", "medicationDetails");
+  const legacyMedicationsRaw = firstRaw(source, "medications", "medication_names", "medicationNames");
+  const doseEventsRaw = firstRaw(source, "medication_dose_events", "medicationDoseEvents");
+  let details = normalizeMedicationDetails(detailsRaw);
+  const medicationNames = stringArrayFromUnknown(legacyMedicationsRaw);
+  if (!details.length && medicationNames.length) {
+    details = medicationNames.map((name) => ({ name, displayName: name, display_name: name }));
+  }
+  const doseEvents = normalizeMedicationDoseEvents(doseEventsRaw);
+  const derivedActive = details.filter((item) => item.isArchived !== true && item.is_archived !== true).length;
+  const derivedArchived = details.filter((item) => item.isArchived === true || item.is_archived === true).length;
+  const takenFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "taken").length;
+  const skippedFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "skipped").length;
+  const medicationCount = (_a = firstNumber(source, "medication_count", "medicationCount")) != null ? _a : details.length || medicationNames.length || void 0;
+  const activeMedicationCount = (_b = firstNumber(source, "active_medication_count", "activeMedicationCount")) != null ? _b : details.length ? derivedActive : void 0;
+  const archivedMedicationCount = (_c = firstNumber(source, "archived_medication_count", "archivedMedicationCount")) != null ? _c : details.length ? derivedArchived : void 0;
+  const medicationDoseCount = (_d = firstNumber(source, "medication_dose_count", "medicationDoseCount")) != null ? _d : doseEvents.length || void 0;
+  const medicationTakenCount = (_e = firstNumber(source, "medication_taken_count", "medicationTakenCount")) != null ? _e : doseEvents.length ? takenFromEvents : void 0;
+  const medicationSkippedCount = (_f = firstNumber(source, "medication_skipped_count", "medicationSkippedCount")) != null ? _f : doseEvents.length ? skippedFromEvents : void 0;
+  const patch = {};
+  if (medicationCount !== void 0) {
+    patch.medicationCount = medicationCount;
+    patch.medication_count = medicationCount;
+  }
+  if (activeMedicationCount !== void 0) {
+    patch.activeMedicationCount = activeMedicationCount;
+    patch.active_medication_count = activeMedicationCount;
+  }
+  if (archivedMedicationCount !== void 0) {
+    patch.archivedMedicationCount = archivedMedicationCount;
+    patch.archived_medication_count = archivedMedicationCount;
+  }
+  if (medicationDoseCount !== void 0) {
+    patch.medicationDoseCount = medicationDoseCount;
+    patch.medication_dose_count = medicationDoseCount;
+  }
+  if (medicationTakenCount !== void 0) {
+    patch.medicationTakenCount = medicationTakenCount;
+    patch.medication_taken_count = medicationTakenCount;
+  }
+  if (medicationSkippedCount !== void 0) {
+    patch.medicationSkippedCount = medicationSkippedCount;
+    patch.medication_skipped_count = medicationSkippedCount;
+  }
+  if (medicationNames.length) patch.medications = medicationNames;
+  if (details.length) {
+    patch.medicationDetails = details;
+    patch.medication_details = details;
+  }
+  if (doseEvents.length) {
+    patch.medicationDoseEvents = doseEvents;
+    patch.medication_dose_events = doseEvents;
+  }
+  return patch;
+}
+function medicationEventTimestamp(event) {
+  var _a, _b, _c, _d, _e, _f;
+  return (_f = (_e = (_d = (_c = (_b = (_a = event.scheduledDate) != null ? _a : event.scheduled_date) != null ? _b : event.startDate) != null ? _c : event.start_date) != null ? _d : event.endDate) != null ? _e : event.end_date) != null ? _f : "";
+}
+function doseStatusKind(status) {
+  const normalized = (status != null ? status : "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["taken", "completed", "complete", "logged", "administered", "consumed", "done"].includes(normalized)) return "taken";
+  if (["skipped", "missed", "not_taken", "not_taken_as_scheduled", "declined", "omitted"].includes(normalized)) return "skipped";
+  return "other";
+}
+function statusLabel(status) {
+  const kind = doseStatusKind(status);
+  if (kind === "taken") return "Taken";
+  if (kind === "skipped") return "Skipped";
+  const raw = (status != null ? status : "Unknown").trim();
+  if (!raw) return "Unknown";
+  return raw.replace(/[_-]+/g, " ").replace(/\s+/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+function medicationDisplayName(item) {
+  var _a, _b, _c, _d, _e, _f;
+  return (_f = (_e = (_d = (_c = (_b = (_a = item.nickname) != null ? _a : item.displayName) != null ? _b : item.display_name) != null ? _c : item.name) != null ? _d : item.conceptIdentifier) != null ? _e : item.concept_identifier) != null ? _f : "Medication";
+}
+function doseEventMedicationName(event, details) {
+  var _a, _b, _c;
+  const direct = (_b = (_a = event.name) != null ? _a : event.displayName) != null ? _b : event.display_name;
+  if (direct) return direct;
+  const concept = (_c = event.medicationConceptIdentifier) != null ? _c : event.medication_concept_identifier;
+  if (concept) {
+    const match = details.find((item) => item.conceptIdentifier === concept || item.concept_identifier === concept);
+    if (match) return medicationDisplayName(match);
+  }
+  return "Medication";
+}
+function medicationDoseQuantityLabel(event) {
+  var _a, _b, _c;
+  const quantity = (_c = (_b = (_a = event.doseQuantity) != null ? _a : event.dose_quantity) != null ? _b : event.scheduledDoseQuantity) != null ? _c : event.scheduled_dose_quantity;
+  const unit = event.unit;
+  if (quantity === void 0) return unit != null ? unit : "\u2014";
+  const rounded = Number.isInteger(quantity) ? String(quantity) : String(Math.round(quantity * 100) / 100);
+  return unit ? `${rounded} ${unit}` : rounded;
+}
+function getMedicationDaySummary(day) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B;
+  const source = day;
+  const hasExplicitMedicationField = [
+    "medicationCount",
+    "medication_count",
+    "activeMedicationCount",
+    "active_medication_count",
+    "archivedMedicationCount",
+    "archived_medication_count",
+    "medicationDoseCount",
+    "medication_dose_count",
+    "medicationTakenCount",
+    "medication_taken_count",
+    "medicationSkippedCount",
+    "medication_skipped_count",
+    "medications",
+    "medicationDetails",
+    "medication_details",
+    "medicationDoseEvents",
+    "medication_dose_events"
+  ].some((key) => Object.prototype.hasOwnProperty.call(source, key));
+  const normalized = normalizeMedicationFields(source);
+  const details = (_c = (_b = (_a = normalized.medicationDetails) != null ? _a : day.medicationDetails) != null ? _b : day.medication_details) != null ? _c : [];
+  const doseEvents = (_f = (_e = (_d = normalized.medicationDoseEvents) != null ? _d : day.medicationDoseEvents) != null ? _e : day.medication_dose_events) != null ? _f : [];
+  const medications = (_h = (_g = normalized.medications) != null ? _g : day.medications) != null ? _h : details.map(medicationDisplayName);
+  const takenFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "taken").length;
+  const skippedFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "skipped").length;
+  const otherFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "other").length;
+  const medicationCount = (_m = (_l = (_k = (_j = (_i = normalized.medicationCount) != null ? _i : day.medicationCount) != null ? _j : day.medication_count) != null ? _k : details.length) != null ? _l : medications.length) != null ? _m : 0;
+  const activeMedicationCount = (_p = (_o = (_n = normalized.activeMedicationCount) != null ? _n : day.activeMedicationCount) != null ? _o : day.active_medication_count) != null ? _p : details.filter((item) => item.isArchived !== true && item.is_archived !== true).length;
+  const archivedMedicationCount = (_s = (_r = (_q = normalized.archivedMedicationCount) != null ? _q : day.archivedMedicationCount) != null ? _r : day.archived_medication_count) != null ? _s : details.filter((item) => item.isArchived === true || item.is_archived === true).length;
+  const medicationDoseCount = (_v = (_u = (_t = normalized.medicationDoseCount) != null ? _t : day.medicationDoseCount) != null ? _u : day.medication_dose_count) != null ? _v : doseEvents.length;
+  const medicationTakenCount = (_y = (_x = (_w = normalized.medicationTakenCount) != null ? _w : day.medicationTakenCount) != null ? _x : day.medication_taken_count) != null ? _y : takenFromEvents;
+  const medicationSkippedCount = (_B = (_A = (_z = normalized.medicationSkippedCount) != null ? _z : day.medicationSkippedCount) != null ? _A : day.medication_skipped_count) != null ? _B : skippedFromEvents;
+  const medicationOtherDoseCount = Math.max(0, medicationDoseCount - medicationTakenCount - medicationSkippedCount, otherFromEvents);
+  const hasInventory = medicationCount > 0 || details.length > 0 || medications.length > 0 || hasExplicitMedicationField;
+  const hasDoseCounts = medicationDoseCount > 0 || medicationTakenCount > 0 || medicationSkippedCount > 0 || hasExplicitMedicationField;
+  const hasDoseEvents = doseEvents.length > 0;
+  const hasMedicationData2 = hasExplicitMedicationField || hasInventory || hasDoseCounts || hasDoseEvents;
+  return {
+    date: day.date,
+    medicationCount,
+    activeMedicationCount,
+    archivedMedicationCount,
+    medicationDoseCount,
+    medicationTakenCount,
+    medicationSkippedCount,
+    medicationOtherDoseCount,
+    medications,
+    details,
+    doseEvents,
+    hasInventory,
+    hasDoseCounts,
+    hasDoseEvents,
+    hasMedicationData: hasMedicationData2
+  };
+}
+function hasMedicationData(day) {
+  return getMedicationDaySummary(day).hasMedicationData;
+}
+
 // src/parsers/json-parser.ts
 function parseJSON(content) {
   try {
@@ -9906,14 +10369,343 @@ function parseJSON(content) {
     if (typeof parsed.unit_system === "string") {
       day.unitSystem = parsed.unit_system;
       day.unit_system = parsed.unit_system;
+    } else if (day.schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1) {
+      day.unitSystem = "metric";
+      day.unit_system = "metric";
     }
     if (isUnitMap(parsed.units)) {
       day.units = parsed.units;
     }
+    Object.assign(day, normalizeMedicationFields(parsed));
     return day;
   } catch (e) {
     return null;
   }
+}
+
+// src/mood-utils.ts
+var VALENCE_LABELS = [
+  { max: -0.72, label: "Very unpleasant" },
+  { max: -0.44, label: "Unpleasant" },
+  { max: -0.16, label: "Slightly unpleasant" },
+  { max: 0.16, label: "Neutral" },
+  { max: 0.44, label: "Slightly pleasant" },
+  { max: 0.72, label: "Pleasant" },
+  { max: Infinity, label: "Very pleasant" }
+];
+var LABEL_VALENCE = {
+  "very unpleasant": -1,
+  unpleasant: -0.67,
+  "slightly unpleasant": -0.33,
+  neutral: 0,
+  "slightly pleasant": 0.33,
+  pleasant: 0.67,
+  "very pleasant": 1,
+  amazed: 0.75,
+  amused: 0.65,
+  angry: -0.72,
+  anxious: -0.62,
+  ashamed: -0.72,
+  brave: 0.35,
+  calm: 0.55,
+  content: 0.62,
+  disappointed: -0.55,
+  discouraged: -0.64,
+  disgusted: -0.7,
+  embarrassed: -0.55,
+  excited: 0.78,
+  frustrated: -0.65,
+  grateful: 0.75,
+  guilty: -0.62,
+  happy: 0.82,
+  hopeless: -0.9,
+  irritated: -0.58,
+  jealous: -0.55,
+  joyful: 0.95,
+  lonely: -0.72,
+  passionate: 0.74,
+  peaceful: 0.72,
+  proud: 0.78,
+  relieved: 0.55,
+  sad: -0.82,
+  scared: -0.78,
+  stressed: -0.72,
+  surprised: 0.1,
+  worried: -0.65,
+  annoyed: -0.5,
+  confident: 0.7,
+  drained: -0.55,
+  hopeful: 0.65,
+  indifferent: 0,
+  overwhelmed: -0.68,
+  satisfied: 0.7
+};
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function normalizeKey(value) {
+  return value.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").toLowerCase();
+}
+function clampValence(value) {
+  return Math.max(-1, Math.min(1, value));
+}
+function parseNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return void 0;
+  const trimmed = value.trim();
+  if (!trimmed) return void 0;
+  const parsed = Number(trimmed.replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : void 0;
+}
+function normalizeScore(value) {
+  if (value >= 1 && value <= 5) return clampValence((value - 3) / 2);
+  if (value >= 0 && value <= 10) return clampValence(value / 5 - 1);
+  if (value >= 0 && value <= 100) return clampValence(value / 50 - 1);
+  if (value >= -1 && value <= 1) return clampValence(value);
+  return void 0;
+}
+function normalizeMoodValence(value, hint = "valence") {
+  const numeric = parseNumber(value);
+  if (numeric !== void 0) {
+    if (hint === "score") return normalizeScore(numeric);
+    if (numeric >= -1 && numeric <= 1) return clampValence(numeric);
+    return normalizeScore(numeric);
+  }
+  if (typeof value !== "string") return void 0;
+  const key = normalizeKey(value);
+  return LABEL_VALENCE[key];
+}
+function moodLabelForValence(valence) {
+  var _a, _b;
+  if (valence === void 0 || !Number.isFinite(valence)) return "Unknown";
+  const clamped = clampValence(valence);
+  return (_b = (_a = VALENCE_LABELS.find((item) => clamped <= item.max)) == null ? void 0 : _a.label) != null ? _b : "Neutral";
+}
+function formatMoodValence(valence) {
+  if (valence === void 0 || !Number.isFinite(valence)) return "\u2014";
+  const clamped = clampValence(valence);
+  return `${clamped >= 0 ? "+" : ""}${clamped.toFixed(2)}`;
+}
+function stringArrayFromUnknown2(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (typeof item === "number" || typeof item === "boolean" || typeof item === "bigint") return String(item);
+      return "";
+    }).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value.split(/[,;|]/g).map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+function firstString2(record, keys) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+  }
+  return void 0;
+}
+function firstNumber2(record, keys) {
+  for (const key of keys) {
+    const parsed = parseNumber(record[key]);
+    if (parsed !== void 0) return parsed;
+  }
+  return void 0;
+}
+function normalizeTimestamp(raw, fallbackDate) {
+  if (!raw) return fallbackDate;
+  const value = raw.trim();
+  if (!value) return fallbackDate;
+  if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(value) && fallbackDate) {
+    const [h = "0", m = "0", s = "0"] = value.split(":");
+    return `${fallbackDate}T${h.padStart(2, "0")}:${m.padStart(2, "0")}:${s.padStart(2, "0")}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T12:00:00`;
+  return value;
+}
+function moodEntryFromRecord(record, fallbackDate) {
+  var _a, _b, _c;
+  const valenceRaw = firstNumber2(record, [
+    "valence",
+    "moodValence",
+    "mood_valence",
+    "stateOfMindValence",
+    "state_of_mind_valence",
+    "averageValence",
+    "average_valence",
+    "avgValence",
+    "avg_valence"
+  ]);
+  const scoreRaw = firstNumber2(record, [
+    "score",
+    "moodScore",
+    "mood_score",
+    "rating",
+    "moodRating",
+    "mood_rating"
+  ]);
+  const label = firstString2(record, [
+    "label",
+    "primaryLabel",
+    "primary_label",
+    "moodLabel",
+    "mood_label",
+    "classification",
+    "valenceClassification",
+    "valence_classification",
+    "state"
+  ]);
+  const rawMood = record.mood;
+  const moodLabel = typeof rawMood === "string" && rawMood.trim() ? rawMood.trim() : void 0;
+  const labels = [
+    ...stringArrayFromUnknown2(record.labels),
+    ...stringArrayFromUnknown2(record.emotions),
+    ...stringArrayFromUnknown2(record.feelings)
+  ].filter((item, index, all) => all.indexOf(item) === index);
+  const primaryLabel2 = (_a = label != null ? label : moodLabel) != null ? _a : labels[0];
+  const valence = (_c = (_b = normalizeMoodValence(valenceRaw, "valence")) != null ? _b : normalizeMoodValence(scoreRaw, "score")) != null ? _c : normalizeMoodValence(primaryLabel2, "label");
+  const timestamp = normalizeTimestamp(firstString2(record, [
+    "timestamp",
+    "date",
+    "recordedAt",
+    "recorded_at",
+    "startDate",
+    "start_date",
+    "startTime",
+    "start_time",
+    "time"
+  ]), fallbackDate);
+  const endDate = normalizeTimestamp(firstString2(record, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
+  const kind = firstString2(record, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
+  const associations = [
+    ...stringArrayFromUnknown2(record.associations),
+    ...stringArrayFromUnknown2(record.contexts),
+    ...stringArrayFromUnknown2(record.factors)
+  ].filter((item, index, all) => all.indexOf(item) === index);
+  if (valence === void 0 && !primaryLabel2 && !labels.length && !kind) return null;
+  return {
+    timestamp,
+    startDate: timestamp,
+    endDate,
+    kind,
+    valence,
+    score: scoreRaw,
+    label: primaryLabel2,
+    labels: labels.length ? labels : void 0,
+    associations: associations.length ? associations : void 0
+  };
+}
+function primitiveMoodEntry(value, fallbackDate) {
+  const valence = normalizeMoodValence(value, typeof value === "number" ? "valence" : "label");
+  const label = typeof value === "string" && value.trim() ? value.trim() : void 0;
+  if (valence === void 0 && !label) return null;
+  return {
+    timestamp: fallbackDate ? `${fallbackDate}T12:00:00` : void 0,
+    startDate: fallbackDate ? `${fallbackDate}T12:00:00` : void 0,
+    valence,
+    label
+  };
+}
+function moodEntriesFromArray(values, fallbackDate) {
+  const entries = [];
+  for (const item of values) {
+    entries.push(...moodEntriesFromUnknown(item, fallbackDate));
+  }
+  return entries;
+}
+function moodEntriesFromUnknown(value, fallbackDate) {
+  if (value === void 0 || value === null || value === "") return [];
+  if (Array.isArray(value)) return moodEntriesFromArray(value, fallbackDate);
+  if (!isRecord2(value)) {
+    const entry = primitiveMoodEntry(value, fallbackDate);
+    return entry ? [entry] : [];
+  }
+  const entries = [];
+  for (const key of ["entries", "samples", "records", "states", "stateOfMind", "state_of_mind", "moods"]) {
+    const nested = value[key];
+    if (Array.isArray(nested)) entries.push(...moodEntriesFromArray(nested, fallbackDate));
+  }
+  if (!entries.length) {
+    const ownEntry = moodEntryFromRecord(value, fallbackDate);
+    if (ownEntry) entries.push(ownEntry);
+  }
+  return dedupeMoodEntries(entries);
+}
+function dedupeMoodEntries(entries) {
+  var _a, _b, _c, _d, _e, _f;
+  const seen = /* @__PURE__ */ new Set();
+  const deduped = [];
+  for (const entry of entries) {
+    const key = [
+      (_b = (_a = entry.timestamp) != null ? _a : entry.startDate) != null ? _b : "",
+      (_c = entry.kind) != null ? _c : "",
+      (_d = entry.valence) != null ? _d : "",
+      (_e = entry.label) != null ? _e : "",
+      ((_f = entry.labels) != null ? _f : []).join("|")
+    ].join("~");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(entry);
+  }
+  return deduped.sort((a, b) => {
+    var _a2, _b2, _c2, _d2;
+    return ((_b2 = (_a2 = a.timestamp) != null ? _a2 : a.startDate) != null ? _b2 : "").localeCompare((_d2 = (_c2 = b.timestamp) != null ? _c2 : b.startDate) != null ? _d2 : "");
+  });
+}
+function primaryLabel(entries, averageValence) {
+  var _a, _b;
+  const counts = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    const labels = ((_a = entry.labels) == null ? void 0 : _a.length) ? entry.labels : entry.label ? [entry.label] : [];
+    for (const label of labels) counts.set(label, ((_b = counts.get(label)) != null ? _b : 0) + 1);
+  }
+  let best;
+  let bestCount = 0;
+  for (const [label, count] of counts) {
+    if (count > bestCount) {
+      best = label;
+      bestCount = count;
+    }
+  }
+  return best != null ? best : averageValence !== void 0 ? moodLabelForValence(averageValence) : void 0;
+}
+function createMoodSummary(entries) {
+  const normalized = dedupeMoodEntries(entries).filter(
+    (entry) => {
+      var _a;
+      return entry.valence !== void 0 || entry.label || ((_a = entry.labels) == null ? void 0 : _a.length) || entry.kind;
+    }
+  );
+  if (!normalized.length) return void 0;
+  const values = normalized.map((entry) => entry.valence).filter((value) => value !== void 0 && Number.isFinite(value));
+  const averageValence = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : void 0;
+  return {
+    entries: normalized,
+    averageValence,
+    minValence: values.length ? Math.min(...values) : void 0,
+    maxValence: values.length ? Math.max(...values) : void 0,
+    primaryLabel: primaryLabel(normalized, averageValence)
+  };
+}
+function getMoodDaySummary(day) {
+  const dayRecord = day;
+  const entries = dedupeMoodEntries([
+    ...moodEntriesFromUnknown(dayRecord.mood, day.date),
+    ...moodEntriesFromUnknown(dayRecord.stateOfMind, day.date),
+    ...moodEntriesFromUnknown(dayRecord.state_of_mind, day.date),
+    ...moodEntriesFromUnknown(dayRecord.moods, day.date)
+  ]);
+  const summary = createMoodSummary(entries);
+  return {
+    date: day.date,
+    entries,
+    averageValence: summary == null ? void 0 : summary.averageValence,
+    minValence: summary == null ? void 0 : summary.minValence,
+    maxValence: summary == null ? void 0 : summary.maxValence,
+    primaryLabel: summary == null ? void 0 : summary.primaryLabel
+  };
 }
 
 // src/parsers/csv-parser.ts
@@ -9989,14 +10781,14 @@ function findRows(rows, lookups) {
   }
   return matches;
 }
-function parseNumber(value) {
+function parseNumber2(value) {
   const num = parseFloat(value.replace(/,/g, ""));
   return isNaN(num) ? void 0 : num;
 }
 function getNumFromLookups(rows, lookups) {
   const row = findRow(rows, lookups);
   if (!row) return void 0;
-  return parseNumber(row.value);
+  return parseNumber2(row.value);
 }
 function getStringFromLookups(rows, lookups) {
   const row = findRow(rows, lookups);
@@ -10013,7 +10805,7 @@ function lookup(category, metric) {
 }
 function normalizeDistanceKm(row) {
   if (!row) return void 0;
-  const value = parseNumber(row.value);
+  const value = parseNumber2(row.value);
   if (value === void 0) return void 0;
   const unit = normalizeLabel(row.unit);
   if (unit === "km" || unit.includes("kilometer")) return value;
@@ -10049,7 +10841,7 @@ function timestampFromClock(date, rawClock) {
   if (h > 23 || m > 59 || s > 59) return void 0;
   return `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
-function normalizeTimestamp(date, raw) {
+function normalizeTimestamp2(date, raw) {
   const value = raw == null ? void 0 : raw.trim();
   if (!value) return void 0;
   if (isFinite(Date.parse(value))) return value;
@@ -10058,14 +10850,79 @@ function normalizeTimestamp(date, raw) {
 function samplesFromRows(rows, lookups, transformValue = (value) => value) {
   const samples = [];
   for (const row of findRows(rows, lookups)) {
-    const parsedValue = parseNumber(row.value);
-    const timestamp = normalizeTimestamp(row.date, row.timestamp);
+    const parsedValue = parseNumber2(row.value);
+    const timestamp = normalizeTimestamp2(row.date, row.timestamp);
     if (parsedValue === void 0 || !timestamp) continue;
     const value = transformValue(parsedValue);
     if (value === void 0) continue;
     samples.push({ timestamp, value });
   }
   return samples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+function isMoodRow(row) {
+  const category = normalizeLabel(row.category);
+  const metric = normalizeLabel(row.metric);
+  return category === "mood" || category === "state of mind" || category === "mental wellbeing" || category === "mental well-being" || category.includes("mood") || category.includes("state of mind") || metric.includes("mood") || metric.includes("state of mind");
+}
+function csvMoodKind(metric) {
+  if (metric.includes("daily")) return "dailyMood";
+  if (metric.includes("momentary") || metric.includes("emotion")) return "momentaryEmotion";
+  return void 0;
+}
+function moodEntryFromRow(row) {
+  var _a, _b, _c;
+  const metric = normalizeLabel(row.metric);
+  const value = row.value.trim();
+  if (!value) return null;
+  const timestamp = (_a = normalizeTimestamp2(row.date, row.timestamp)) != null ? _a : `${row.date}T12:00:00`;
+  const isScore = metric.includes("score") || metric.includes("rating");
+  const isLabel = metric.includes("label") || metric.includes("emotion") || metric.includes("feeling") || metric.includes("classification");
+  const labels = isLabel ? stringArrayFromUnknown2(value) : [];
+  const associations = metric.includes("association") || metric.includes("context") || metric.includes("factor") ? stringArrayFromUnknown2(value) : [];
+  const label = (_b = labels[0]) != null ? _b : parseNumber2(value) === void 0 ? value : void 0;
+  const valence = (_c = normalizeMoodValence(value, isScore ? "score" : isLabel ? "label" : "valence")) != null ? _c : normalizeMoodValence(label, "label");
+  const score = isScore ? parseNumber2(value) : void 0;
+  if (valence === void 0 && !label && !labels.length && !associations.length) return null;
+  return {
+    timestamp,
+    startDate: timestamp,
+    kind: csvMoodKind(metric),
+    valence,
+    score,
+    label,
+    labels: labels.length ? labels : void 0,
+    associations: associations.length ? associations : void 0
+  };
+}
+function parseMoodEntries(rows) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+  const entries = [];
+  const pendingByTimestamp = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    if (!isMoodRow(row)) continue;
+    const entry = moodEntryFromRow(row);
+    if (!entry) continue;
+    const timestamp = (_b = (_a = entry.timestamp) != null ? _a : entry.startDate) != null ? _b : row.date;
+    const existing = pendingByTimestamp.get(timestamp);
+    if (!existing) {
+      pendingByTimestamp.set(timestamp, entry);
+      continue;
+    }
+    pendingByTimestamp.set(timestamp, {
+      ...existing,
+      ...entry,
+      valence: (_c = existing.valence) != null ? _c : entry.valence,
+      score: (_d = existing.score) != null ? _d : entry.score,
+      label: (_e = existing.label) != null ? _e : entry.label,
+      labels: [...(_f = existing.labels) != null ? _f : [], ...(_g = entry.labels) != null ? _g : []].filter((item, index, all) => all.indexOf(item) === index),
+      associations: [...(_h = existing.associations) != null ? _h : [], ...(_i = entry.associations) != null ? _i : []].filter((item, index, all) => all.indexOf(item) === index)
+    });
+  }
+  entries.push(...pendingByTimestamp.values());
+  return entries.sort((a, b) => {
+    var _a2, _b2;
+    return ((_a2 = a.timestamp) != null ? _a2 : "").localeCompare((_b2 = b.timestamp) != null ? _b2 : "");
+  });
 }
 function normalizeSleepStage(stage) {
   const normalized = normalizeLabel(stage).replace(/^asleep[_\s-]*/, "").replace(/^sleep[_\s-]*/, "");
@@ -10088,7 +10945,7 @@ function parseSleepStages(rows) {
     const metric = normalizeLabel(row.metric);
     if (metric === "sleep stage") {
       const durationSeconds = parseStageDurationSeconds(row.value);
-      const startDate = normalizeTimestamp(row.date, row.timestamp);
+      const startDate = normalizeTimestamp2(row.date, row.timestamp);
       if (durationSeconds === void 0 || !startDate) continue;
       const stageName = row.value.replace(/\s*\([^)]+\)\s*$/, "");
       const startMs = Date.parse(startDate);
@@ -10124,19 +10981,38 @@ function parseSleepStages(rows) {
 function sumStageSeconds(stages, stageName) {
   return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
-function buildDayFromRows(date, rows) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
-  const schema = getString(rows, "Metadata", "schema");
+function metricUnitKey(row) {
+  if (normalizeLabel(row.category) === "metadata") return void 0;
+  const key = normalizeLabel(row.metric).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return key || void 0;
+}
+function unitMapFromRows(rows) {
+  const units = {};
+  for (const row of rows) {
+    const key = metricUnitKey(row);
+    if (key && row.unit) units[key] = row.unit;
+  }
+  return Object.keys(units).length ? units : void 0;
+}
+function isMetadataRow(row) {
+  return normalizeLabel(row.category) === "metadata";
+}
+function buildDayFromRows(date, rows, metadataRows = []) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G;
+  const rowsWithMetadata = [...metadataRows, ...rows];
+  const schema = getString(rowsWithMetadata, "Metadata", "schema");
   if (schema === HEALTHMD_ROLLUP_SCHEMA) return null;
   if (schema && schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
-  const schemaVersion = schemaVersionOf({ schema_version: getNum(rows, "Metadata", "schema_version") });
-  const unitSystem = getString(rows, "Metadata", "unit_system");
+  const schemaVersion = schemaVersionOf({ schema_version: getNum(rowsWithMetadata, "Metadata", "schema_version") });
+  const unitSystem = (_a = getString(rowsWithMetadata, "Metadata", "unit_system")) != null ? _a : schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : void 0;
+  const units = unitMapFromRows(rows);
   const day = {
     type: "health-data",
     date,
     schema,
-    schemaVersion,
+    schemaVersion: schemaVersion || void 0,
     schema_version: schemaVersion || void 0,
+    units,
     unitSystem,
     unit_system: unitSystem
   };
@@ -10177,36 +11053,36 @@ function buildDayFromRows(date, rows) {
   const hrvSamples = samplesFromRows(rows, [lookup("Heart", "HRV Sample")]);
   const heartValues = heartRateSamples.map((sample) => sample.value);
   const restingHR = getNum(rows, "Heart", "Resting Heart Rate");
-  const avgHR = (_a = getNum(rows, "Heart", "Average Heart Rate")) != null ? _a : average(heartValues);
-  const heartRateMin = (_b = getNumFromLookups(rows, [
+  const avgHR = (_b = getNum(rows, "Heart", "Average Heart Rate")) != null ? _b : average(heartValues);
+  const heartRateMin = (_c = getNumFromLookups(rows, [
     lookup("Heart", "Heart Rate Min"),
     lookup("Heart", "Min Heart Rate")
-  ])) != null ? _b : heartValues.length ? Math.min(...heartValues) : void 0;
-  const heartRateMax = (_c = getNumFromLookups(rows, [
+  ])) != null ? _c : heartValues.length ? Math.min(...heartValues) : void 0;
+  const heartRateMax = (_d = getNumFromLookups(rows, [
     lookup("Heart", "Heart Rate Max"),
     lookup("Heart", "Max Heart Rate")
-  ])) != null ? _c : heartValues.length ? Math.max(...heartValues) : void 0;
+  ])) != null ? _d : heartValues.length ? Math.max(...heartValues) : void 0;
   if (restingHR !== void 0 || avgHR !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || heartRateSamples.length || hrvSamples.length) {
     day.heart = {
-      averageHeartRate: (_d = avgHR != null ? avgHR : restingHR) != null ? _d : 0,
-      heartRateMin: (_f = (_e = heartRateMin != null ? heartRateMin : avgHR) != null ? _e : restingHR) != null ? _f : 0,
-      heartRateMax: (_h = (_g = heartRateMax != null ? heartRateMax : avgHR) != null ? _g : restingHR) != null ? _h : 0,
+      averageHeartRate: (_e = avgHR != null ? avgHR : restingHR) != null ? _e : 0,
+      heartRateMin: (_g = (_f = heartRateMin != null ? heartRateMin : avgHR) != null ? _f : restingHR) != null ? _g : 0,
+      heartRateMax: (_i = (_h = heartRateMax != null ? heartRateMax : avgHR) != null ? _h : restingHR) != null ? _i : 0,
       heartRateSamples,
       hrvSamples,
       restingHeartRate: restingHR,
       walkingHeartRateAverage: getNum(rows, "Heart", "Walking Heart Rate Average"),
-      hrv: (_i = getNum(rows, "Heart", "HRV")) != null ? _i : average(hrvSamples.map((sample) => sample.value))
+      hrv: (_j = getNum(rows, "Heart", "HRV")) != null ? _j : average(hrvSamples.map((sample) => sample.value))
     };
   }
   const sleepStages = parseSleepStages(rows);
-  const sleepTotal = (_j = getNum(rows, "Sleep", "Total Duration")) != null ? _j : sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
-  const deepSleep = (_k = getNum(rows, "Sleep", "Deep Sleep")) != null ? _k : sumStageSeconds(sleepStages, "deep");
-  const remSleep = (_l = getNum(rows, "Sleep", "REM Sleep")) != null ? _l : sumStageSeconds(sleepStages, "rem");
-  const coreSleep = (_m = getNumFromLookups(rows, [
+  const sleepTotal = (_k = getNum(rows, "Sleep", "Total Duration")) != null ? _k : sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
+  const deepSleep = (_l = getNum(rows, "Sleep", "Deep Sleep")) != null ? _l : sumStageSeconds(sleepStages, "deep");
+  const remSleep = (_m = getNum(rows, "Sleep", "REM Sleep")) != null ? _m : sumStageSeconds(sleepStages, "rem");
+  const coreSleep = (_n = getNumFromLookups(rows, [
     lookup("Sleep", "Core Sleep"),
     lookup("Sleep", "Light Sleep")
-  ])) != null ? _m : sumStageSeconds(sleepStages, "core");
-  const awakeTime = (_n = getNum(rows, "Sleep", "Awake Time")) != null ? _n : sumStageSeconds(sleepStages, "awake");
+  ])) != null ? _n : sumStageSeconds(sleepStages, "core");
+  const awakeTime = (_o = getNum(rows, "Sleep", "Awake Time")) != null ? _o : sumStageSeconds(sleepStages, "awake");
   if (sleepTotal > 0 || sleepStages.length) {
     day.sleep = {
       sleepStages,
@@ -10215,18 +11091,18 @@ function buildDayFromRows(date, rows) {
       remSleep,
       coreSleep,
       awakeTime,
-      bedtime: (_q = (_p = getString(rows, "Sleep", "Bedtime")) != null ? _p : (_o = sleepStages[0]) == null ? void 0 : _o.startDate) != null ? _q : "",
-      bedtimeISO: (_r = sleepStages[0]) == null ? void 0 : _r.startDate,
-      wakeTime: (_u = (_t = getString(rows, "Sleep", "Wake Time")) != null ? _t : (_s = sleepStages[sleepStages.length - 1]) == null ? void 0 : _s.endDate) != null ? _u : "",
-      wakeTimeISO: (_v = sleepStages[sleepStages.length - 1]) == null ? void 0 : _v.endDate
+      bedtime: (_r = (_q = getString(rows, "Sleep", "Bedtime")) != null ? _q : (_p = sleepStages[0]) == null ? void 0 : _p.startDate) != null ? _r : "",
+      bedtimeISO: (_s = sleepStages[0]) == null ? void 0 : _s.startDate,
+      wakeTime: (_v = (_u = getString(rows, "Sleep", "Wake Time")) != null ? _u : (_t = sleepStages[sleepStages.length - 1]) == null ? void 0 : _t.endDate) != null ? _v : "",
+      wakeTimeISO: (_w = sleepStages[sleepStages.length - 1]) == null ? void 0 : _w.endDate
     };
   }
   const respiratorySamples = samplesFromRows(rows, [lookup("Vitals", "Respiratory Rate Sample")]);
   const respiratoryValues = respiratorySamples.map((sample) => sample.value);
-  const respRateAvg = (_w = getNumFromLookups(rows, [
+  const respRateAvg = (_x = getNumFromLookups(rows, [
     lookup("Vitals", "Respiratory Rate"),
     lookup("Vitals", "Respiratory Rate Avg")
-  ])) != null ? _w : average(respiratoryValues);
+  ])) != null ? _x : average(respiratoryValues);
   const bloodOxygenSamples = samplesFromRows(
     rows,
     [
@@ -10237,30 +11113,30 @@ function buildDayFromRows(date, rows) {
     normalizePercent
   ).map((sample) => ({ ...sample, percent: sample.value }));
   const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
-  const bloodOxAvg = (_x = normalizePercent(getNumFromLookups(rows, [
+  const bloodOxAvg = (_y = normalizePercent(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen"),
     lookup("Vitals", "Blood Oxygen Avg"),
     lookup("Vitals", "SpO2"),
     lookup("Vitals", "SpO2 Avg"),
     lookup("Vitals", "SpO\u2082"),
     lookup("Vitals", "SpO\u2082 Avg")
-  ]))) != null ? _x : average(bloodOxygenValues);
-  const bloodOxMin = (_y = normalizePercent(getNumFromLookups(rows, [
+  ]))) != null ? _y : average(bloodOxygenValues);
+  const bloodOxMin = (_z = normalizePercent(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen Min"),
     lookup("Vitals", "SpO2 Min"),
     lookup("Vitals", "SpO\u2082 Min")
-  ]))) != null ? _y : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
-  const bloodOxMax = (_z = normalizePercent(getNumFromLookups(rows, [
+  ]))) != null ? _z : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_A = normalizePercent(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen Max"),
     lookup("Vitals", "SpO2 Max"),
     lookup("Vitals", "SpO\u2082 Max")
-  ]))) != null ? _z : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  ]))) != null ? _A : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
   if (respRateAvg !== void 0 || respiratorySamples.length || bloodOxAvg !== void 0 || bloodOxygenSamples.length) {
     day.vitals = {
       respiratoryRate: respRateAvg,
       respiratoryRateAvg: respRateAvg,
-      respiratoryRateMin: (_A = getNum(rows, "Vitals", "Respiratory Rate Min")) != null ? _A : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0,
-      respiratoryRateMax: (_B = getNum(rows, "Vitals", "Respiratory Rate Max")) != null ? _B : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0,
+      respiratoryRateMin: (_B = getNum(rows, "Vitals", "Respiratory Rate Min")) != null ? _B : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0,
+      respiratoryRateMax: (_C = getNum(rows, "Vitals", "Respiratory Rate Max")) != null ? _C : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0,
       respiratoryRateSamples: respiratorySamples.length ? respiratorySamples : void 0,
       bloodOxygenPercent: bloodOxAvg,
       bloodOxygenAvg: bloodOxAvg,
@@ -10273,10 +11149,14 @@ function buildDayFromRows(date, rows) {
   if (walkSpeed !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
-      walkingAsymmetryPercentage: (_E = (_D = (_C = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _C : getNum(rows, "Mobility", "Walking Asymmetry Percent")) != null ? _D : getNum(rows, "Mobility", "Walking Asymmetry")) != null ? _E : 0,
+      walkingAsymmetryPercentage: (_F = (_E = (_D = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _D : getNum(rows, "Mobility", "Walking Asymmetry Percent")) != null ? _E : getNum(rows, "Mobility", "Walking Asymmetry")) != null ? _F : 0,
       walkingStepLength: getNum(rows, "Mobility", "Walking Step Length"),
-      walkingDoubleSupportPercentage: (_F = getNum(rows, "Mobility", "Walking Double Support Percentage")) != null ? _F : getNum(rows, "Mobility", "Walking Double Support Percent")
+      walkingDoubleSupportPercentage: (_G = getNum(rows, "Mobility", "Walking Double Support Percentage")) != null ? _G : getNum(rows, "Mobility", "Walking Double Support Percent")
     };
+  }
+  const moodSummary = createMoodSummary(parseMoodEntries(rows));
+  if (moodSummary) {
+    day.mood = moodSummary;
   }
   const headphone = getNumFromLookups(rows, [
     lookup("Hearing", "Headphone Audio Level"),
@@ -10292,8 +11172,10 @@ function parseCSV(content) {
   if (detected.kind === "rollup-summary" || detected.kind === "data-dictionary" || detected.kind === "unknown") return [];
   const rows = parseRows(content);
   if (!rows.length) return [];
+  const metadataRows = rows.filter(isMetadataRow);
   const byDate = /* @__PURE__ */ new Map();
   for (const row of rows) {
+    if (isMetadataRow(row) || !row.date) continue;
     const existing = byDate.get(row.date);
     if (existing) {
       existing.push(row);
@@ -10303,7 +11185,7 @@ function parseCSV(content) {
   }
   const days = [];
   for (const [date, dateRows] of byDate) {
-    const day = buildDayFromRows(date, dateRows);
+    const day = buildDayFromRows(date, dateRows, metadataRows);
     if (day) days.push(day);
   }
   return days;
@@ -10327,7 +11209,7 @@ function stripInlineComment(value) {
   }
   return value;
 }
-function splitInlineArray(inner) {
+function splitInlineArray2(inner) {
   const parts = [];
   let current = "";
   let quote = null;
@@ -10351,7 +11233,7 @@ function parseYamlScalar(raw) {
   if (!val) return null;
   if (val.startsWith("[") && val.endsWith("]")) {
     const inner = val.slice(1, -1);
-    return splitInlineArray(inner).map(parseYamlScalar);
+    return splitInlineArray2(inner).map(parseYamlScalar);
   }
   if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
     val = val.slice(1, -1);
@@ -10365,7 +11247,7 @@ function parseYamlScalar(raw) {
   if (!isNaN(num) && val !== "") return num;
   return val;
 }
-function splitYamlKeyValue(text) {
+function splitYamlKeyValue2(text) {
   const colonIdx = text.indexOf(":");
   if (colonIdx === -1) return null;
   const key = text.slice(0, colonIdx).trim();
@@ -10387,7 +11269,7 @@ function parseYamlBlock(lines, start, indent) {
         i2 = parsed.index;
         continue;
       }
-      const keyValue = splitYamlKeyValue(rest);
+      const keyValue = splitYamlKeyValue2(rest);
       if (keyValue) {
         const [key, rawValue] = keyValue;
         const item = {};
@@ -10401,7 +11283,7 @@ function parseYamlBlock(lines, start, indent) {
         }
         while (i2 < lines.length && lines[i2].indent > indent) {
           if (lines[i2].indent < indent + 2) break;
-          const nested = splitYamlKeyValue(lines[i2].text);
+          const nested = splitYamlKeyValue2(lines[i2].text);
           if (!nested) break;
           const [nestedKey, nestedValue] = nested;
           if (nestedValue) {
@@ -10426,7 +11308,7 @@ function parseYamlBlock(lines, start, indent) {
   while (i < lines.length && lines[i].indent >= indent) {
     if (lines[i].indent > indent) break;
     if (lines[i].text.startsWith("- ")) break;
-    const keyValue = splitYamlKeyValue(lines[i].text);
+    const keyValue = splitYamlKeyValue2(lines[i].text);
     if (!keyValue) {
       i++;
       continue;
@@ -10462,7 +11344,7 @@ function parseFrontmatter(content) {
 function normalizeLabel2(value) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
-function parseNumberValue(value) {
+function parseNumberValue2(value) {
   if (typeof value === "number") return value;
   if (typeof value !== "string") return void 0;
   const normalized = value.trim().replace(/,/g, "");
@@ -10472,7 +11354,7 @@ function parseNumberValue(value) {
   return isNaN(num) ? void 0 : num;
 }
 function getNum2(fm, key) {
-  return parseNumberValue(fm[key]);
+  return parseNumberValue2(fm[key]);
 }
 function getStr(fm, key) {
   const v = fm[key];
@@ -10514,7 +11396,82 @@ function getFirstStr(fm, ...keys) {
   }
   return void 0;
 }
-function isRecord(value) {
+function getFirstRaw(fm, ...keys) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(fm, key)) return fm[key];
+  }
+  return void 0;
+}
+function parseMoodEntriesFromFrontmatter(fm, date) {
+  var _a, _b;
+  const entries = [];
+  for (const key of [
+    "mood",
+    "moods",
+    "mood_entries",
+    "moodEntries",
+    "state_of_mind",
+    "stateOfMind",
+    "states_of_mind",
+    "statesOfMind"
+  ]) {
+    entries.push(...moodEntriesFromUnknown(fm[key], date));
+  }
+  const explicitValence = getFirstNum(
+    fm,
+    "mood_valence",
+    "moodValence",
+    "state_of_mind_valence",
+    "stateOfMindValence",
+    "average_mood_valence",
+    "averageMoodValence"
+  );
+  const explicitScore = getFirstNum(
+    fm,
+    "mood_score",
+    "moodScore",
+    "mood_rating",
+    "moodRating",
+    "state_of_mind_score",
+    "stateOfMindScore"
+  );
+  const label = getFirstStr(
+    fm,
+    "mood_label",
+    "moodLabel",
+    "mood_state",
+    "moodState",
+    "state_of_mind_label",
+    "stateOfMindLabel",
+    "valence_classification",
+    "valenceClassification"
+  );
+  const kind = getFirstStr(fm, "mood_kind", "moodKind", "feeling_kind", "feelingKind", "state_of_mind_kind", "stateOfMindKind");
+  const timestamp = getFirstStr(fm, "mood_time", "moodTime", "mood_timestamp", "moodTimestamp", "state_of_mind_time", "stateOfMindTime");
+  const labels = [
+    ...stringArrayFromUnknown2(getFirstRaw(fm, "mood_labels", "moodLabels")),
+    ...stringArrayFromUnknown2(getFirstRaw(fm, "emotions", "feelings"))
+  ].filter((item, index, all) => all.indexOf(item) === index);
+  const associations = [
+    ...stringArrayFromUnknown2(getFirstRaw(fm, "mood_associations", "moodAssociations")),
+    ...stringArrayFromUnknown2(getFirstRaw(fm, "associations", "contexts", "factors"))
+  ].filter((item, index, all) => all.indexOf(item) === index);
+  const valence = (_b = (_a = normalizeMoodValence(explicitValence, "valence")) != null ? _a : normalizeMoodValence(explicitScore, "score")) != null ? _b : normalizeMoodValence(label != null ? label : labels[0], "label");
+  if (valence !== void 0 || label || labels.length || kind) {
+    entries.push({
+      timestamp: timestamp != null ? timestamp : `${date}T12:00:00`,
+      startDate: timestamp != null ? timestamp : `${date}T12:00:00`,
+      kind,
+      valence,
+      score: explicitScore,
+      label: label != null ? label : labels[0],
+      labels: labels.length ? labels : void 0,
+      associations: associations.length ? associations : void 0
+    });
+  }
+  return entries;
+}
+function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function mergeFrontmatter(parsed, cached) {
@@ -10529,7 +11486,25 @@ function applyFrontmatterAliases(frontmatter, aliases) {
       normalized[canonicalKey] = normalized[outputKey];
     }
   }
+  if (isRecord3(normalized.units)) {
+    const units = { ...normalized.units };
+    for (const [outputKey, canonicalKey] of Object.entries(aliases)) {
+      if (units[canonicalKey] === void 0 && typeof units[outputKey] === "string") {
+        units[canonicalKey] = units[outputKey];
+      }
+    }
+    normalized.units = units;
+  }
   return normalized;
+}
+function mergeUnitMaps(dictionaryUnits, frontmatterUnits) {
+  const hasDictionaryUnits = dictionaryUnits && Object.keys(dictionaryUnits).length > 0;
+  const hasFrontmatterUnits = isUnitMap(frontmatterUnits);
+  if (!hasDictionaryUnits && !hasFrontmatterUnits) return void 0;
+  return {
+    ...hasDictionaryUnits ? dictionaryUnits : {},
+    ...hasFrontmatterUnits ? frontmatterUnits : {}
+  };
 }
 function getBool(fm, key) {
   const value = fm[key];
@@ -10683,7 +11658,7 @@ function samplesFromTimeValueTable(table, date, timeIndex, valueIndex, transform
       ms = timestampMsOnDate(date, rawTime, dayOffset);
     }
     if (ms === void 0) continue;
-    const parsed = parseNumberValue(rawValue);
+    const parsed = parseNumberValue2(rawValue);
     if (parsed === void 0) continue;
     const value = transformValue(parsed);
     if (value === void 0) continue;
@@ -10854,7 +11829,7 @@ function recordStr(record, key) {
   return void 0;
 }
 function recordNum(record, key) {
-  return parseNumberValue(record[key]);
+  return parseNumberValue2(record[key]);
 }
 function cleanDisplayValue(value) {
   if (!value) return void 0;
@@ -10872,7 +11847,7 @@ function formatDistanceField(meters, km, mi) {
 function parseDistanceToMeters(raw) {
   const value = cleanDisplayValue(raw);
   if (!value) return void 0;
-  const n = parseNumberValue(value);
+  const n = parseNumberValue2(value);
   if (n === void 0) return void 0;
   const normalized = value.toLowerCase();
   if (/\bkm\b/.test(normalized)) return n * 1e3;
@@ -10905,18 +11880,18 @@ function parseHeartRateZones(fm) {
   var _a;
   const raw = (_a = fm.heart_rate_zones) != null ? _a : fm.heartRateZones;
   const zones = [];
-  if (isRecord(raw)) {
+  if (isRecord3(raw)) {
     const entries = Object.entries(raw).sort(([a], [b]) => {
       var _a2, _b, _c, _d;
-      const ai = (_b = (_a2 = parseNumberValue(a)) != null ? _a2 : parseNumberValue(a.replace(/\D+/g, ""))) != null ? _b : 0;
-      const bi = (_d = (_c = parseNumberValue(b)) != null ? _c : parseNumberValue(b.replace(/\D+/g, ""))) != null ? _d : 0;
+      const ai = (_b = (_a2 = parseNumberValue2(a)) != null ? _a2 : parseNumberValue2(a.replace(/\D+/g, ""))) != null ? _b : 0;
+      const bi = (_d = (_c = parseNumberValue2(b)) != null ? _c : parseNumberValue2(b.replace(/\D+/g, ""))) != null ? _d : 0;
       return ai - bi || a.localeCompare(b);
     });
     entries.forEach(([key, value], idx) => {
       var _a2, _b, _c;
-      if (!isRecord(value)) return;
+      if (!isRecord3(value)) return;
       const seconds = (_a2 = recordNum(value, "seconds")) != null ? _a2 : 0;
-      const zoneIndex = (_b = parseNumberValue(key.replace(/\D+/g, ""))) != null ? _b : idx + 1;
+      const zoneIndex = (_b = parseNumberValue2(key.replace(/\D+/g, ""))) != null ? _b : idx + 1;
       zones.push({
         index: Math.round(zoneIndex),
         key,
@@ -10931,7 +11906,7 @@ function parseHeartRateZones(fm) {
   if (Array.isArray(raw)) {
     raw.forEach((value, idx) => {
       var _a2, _b, _c;
-      if (!isRecord(value)) return;
+      if (!isRecord3(value)) return;
       const seconds = (_a2 = recordNum(value, "seconds")) != null ? _a2 : 0;
       zones.push({
         index: (_b = recordNum(value, "index")) != null ? _b : idx + 1,
@@ -10967,16 +11942,16 @@ function parseWorkoutIntervals(body) {
       const duration = timeIndex === -1 ? void 0 : parseWorkoutDurationSeconds((_a = row[timeIndex]) != null ? _a : "");
       const cadenceDisplay = cleanDisplayValue(avgCadenceIndex === -1 ? void 0 : row[avgCadenceIndex]);
       const interval = {
-        index: Math.round((_b = parseNumberValue(indexIndex === -1 ? void 0 : row[indexIndex])) != null ? _b : target.length + 1),
+        index: Math.round((_b = parseNumberValue2(indexIndex === -1 ? void 0 : row[indexIndex])) != null ? _b : target.length + 1),
         duration: duration != null ? duration : 0,
         distance: parseDistanceToMeters(distanceFormatted),
         distanceFormatted,
         paceFormatted: cleanDisplayValue(paceIndex === -1 ? void 0 : row[paceIndex]),
         speedFormatted: cleanDisplayValue(speedIndex === -1 ? void 0 : row[speedIndex]),
-        avgHeartRate: parseNumberValue(avgHrIndex === -1 ? void 0 : row[avgHrIndex]),
-        maxHeartRate: parseNumberValue(maxHrIndex === -1 ? void 0 : row[maxHrIndex]),
-        avgPower: parseNumberValue(avgPowerIndex === -1 ? void 0 : row[avgPowerIndex]),
-        avgCadence: parseNumberValue(cadenceDisplay),
+        avgHeartRate: parseNumberValue2(avgHrIndex === -1 ? void 0 : row[avgHrIndex]),
+        maxHeartRate: parseNumberValue2(maxHrIndex === -1 ? void 0 : row[maxHrIndex]),
+        avgPower: parseNumberValue2(avgPowerIndex === -1 ? void 0 : row[avgPowerIndex]),
+        avgCadence: parseNumberValue2(cadenceDisplay),
         cadenceUnit: (cadenceDisplay == null ? void 0 : cadenceDisplay.toLowerCase().includes("rpm")) ? "rpm" : (cadenceDisplay == null ? void 0 : cadenceDisplay.toLowerCase().includes("spm")) ? "spm" : void 0
       };
       target.push(interval);
@@ -11059,7 +12034,7 @@ function parseWorkoutEntry(fm, body, date) {
   };
   return workout;
 }
-function parseMarkdown(content, cachedFrontmatter, frontmatterAliases) {
+function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
   const parsed = parseFrontmatter(content);
   const fm = applyFrontmatterAliases(
@@ -11075,8 +12050,9 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases) {
   const date = rawDate.slice(0, 10);
   const schemaVersion = schemaVersionOf({ schemaVersion: getFirstNum(fm, "schemaVersion"), schema_version: getFirstNum(fm, "schema_version") });
   const rawUnits = fm.units;
+  const unitsMap = mergeUnitMaps(dictionaryUnits, rawUnits);
   const explicitUnitSystem = getFirstStr(fm, "unit_system", "unitSystem");
-  const unitSystem = explicitUnitSystem != null ? explicitUnitSystem : schemaVersion >= 2 ? "metric" : typeof rawUnits === "string" ? rawUnits : void 0;
+  const unitSystem = explicitUnitSystem != null ? explicitUnitSystem : schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : void 0;
   const granular = parseGranularMarkdownData(parsed.body, date);
   const day = {
     type: "health-data",
@@ -11084,7 +12060,7 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases) {
     schema,
     schemaVersion,
     schema_version: schemaVersion || void 0,
-    units: typeof rawUnits === "string" || isRecord(rawUnits) ? rawUnits : unitSystem,
+    units: unitsMap != null ? unitsMap : typeof rawUnits === "string" ? rawUnits : unitSystem,
     unitSystem,
     unit_system: unitSystem
   };
@@ -11092,6 +12068,7 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases) {
   if (workout) {
     day.workouts = [workout];
   }
+  Object.assign(day, normalizeMedicationFields(fm));
   const steps = getFirstNum(fm, "steps", "activity_steps");
   const walkingRunningDistanceKmRaw = getFirstNum(
     fm,
@@ -11289,12 +12266,242 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases) {
       walkingDoubleSupportPercentage
     };
   }
+  const moodSummary = createMoodSummary(parseMoodEntriesFromFrontmatter(fm, date));
+  if (moodSummary) {
+    day.mood = moodSummary;
+  }
   const headphone = getFirstNum(fm, "headphone_audio_level", "headphone_audio_db", "hearing_headphone_audio_level");
   if (headphone !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone };
   }
-  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.hearing;
+  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing;
   return hasData ? day : null;
+}
+
+// src/parsers/rollup-parser.ts
+var SUPPORTED_ROLLUP_PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
+function isRecord4(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function stringValue3(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return void 0;
+}
+function numberValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/,/g, ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return void 0;
+}
+function normalizePeriod(value) {
+  var _a;
+  const period = (_a = stringValue3(value)) == null ? void 0 : _a.trim().toLowerCase();
+  return period && SUPPORTED_ROLLUP_PERIODS.has(period) ? period : void 0;
+}
+function firstString3(record, ...keys) {
+  for (const key of keys) {
+    const value = stringValue3(record[key]);
+    if (value !== void 0 && value !== "") return value;
+  }
+  return void 0;
+}
+function firstNumber3(record, ...keys) {
+  for (const key of keys) {
+    const value = numberValue(record[key]);
+    if (value !== void 0) return value;
+  }
+  return void 0;
+}
+function buildRollupSummary(record) {
+  var _a, _b, _c;
+  const schema = firstString3(record, "schema", "Schema");
+  const type = firstString3(record, "type", "Type");
+  if (schema !== HEALTHMD_ROLLUP_SCHEMA && type !== "health_rollup") return null;
+  const rollupPeriod = normalizePeriod((_c = (_b = (_a = record.rollup_period) != null ? _a : record.rollupPeriod) != null ? _b : record.period) != null ? _c : record.Period);
+  const periodId = firstString3(record, "period_id", "periodId", "Period ID", "periodID");
+  if (!rollupPeriod || !periodId) return null;
+  const schemaVersion = schemaVersionOf({
+    schemaVersion: record.schemaVersion,
+    schema_version: record.schema_version
+  });
+  const sourceSchemaVersion = firstNumber3(record, "source_schema_version", "sourceSchemaVersion");
+  const metrics = isRecord4(record.rollup_metrics) ? record.rollup_metrics : isRecord4(record.metrics) ? record.metrics : void 0;
+  return {
+    type: "health_rollup",
+    schema: HEALTHMD_ROLLUP_SCHEMA,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
+    rollupPeriod,
+    rollup_period: rollupPeriod,
+    periodId,
+    period_id: periodId,
+    startDate: firstString3(record, "start_date", "startDate", "Start Date"),
+    start_date: firstString3(record, "start_date", "startDate", "Start Date"),
+    endDate: firstString3(record, "end_date", "endDate", "End Date"),
+    end_date: firstString3(record, "end_date", "endDate", "End Date"),
+    daysExpected: firstNumber3(record, "days_expected", "daysExpected", "Days Expected"),
+    days_expected: firstNumber3(record, "days_expected", "daysExpected", "Days Expected"),
+    daysCounted: firstNumber3(record, "days_counted", "daysCounted", "Days Counted"),
+    days_counted: firstNumber3(record, "days_counted", "daysCounted", "Days Counted"),
+    coveragePercent: firstNumber3(record, "coverage_percent", "coveragePercent", "Coverage Percent"),
+    coverage_percent: firstNumber3(record, "coverage_percent", "coveragePercent", "Coverage Percent"),
+    sourceSchema: firstString3(record, "source_schema", "sourceSchema"),
+    source_schema: firstString3(record, "source_schema", "sourceSchema"),
+    sourceSchemaVersion,
+    source_schema_version: sourceSchemaVersion,
+    metrics
+  };
+}
+function parseRollupJSON(content) {
+  try {
+    const parsed = JSON.parse(content);
+    return isRecord4(parsed) ? buildRollupSummary(parsed) : null;
+  } catch (e) {
+    return null;
+  }
+}
+function parseRollupMarkdown(content, cachedFrontmatter) {
+  var _a;
+  const parsed = parseFrontmatter(content);
+  const frontmatter = (_a = parsed.frontmatter) != null ? _a : {};
+  const record = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
+  return buildRollupSummary(record);
+}
+function parseCsvLine3(line) {
+  const fields = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  fields.push(current);
+  return fields;
+}
+function normalizeCsvLabel2(value) {
+  return value.trim().replace(/[_\s]+/g, " ").toLowerCase();
+}
+function indexOfHeader(header, ...names) {
+  const normalizedNames = names.map(normalizeCsvLabel2);
+  return header.findIndex((item) => normalizedNames.includes(item));
+}
+function csvValue(row, index) {
+  var _a;
+  if (index < 0) return void 0;
+  const value = (_a = row[index]) == null ? void 0 : _a.trim();
+  return value ? value : void 0;
+}
+function parseCsvNumber(value) {
+  return value === void 0 ? void 0 : numberValue(value);
+}
+function parseMetricValue(value) {
+  const parsed = parseCsvNumber(value);
+  return parsed != null ? parsed : value;
+}
+function parseRollupCSV(content) {
+  var _a, _b, _c;
+  const lines = content.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return null;
+  const header = parseCsvLine3(lines[0]).map(normalizeCsvLabel2);
+  const periodIndex = indexOfHeader(header, "Period");
+  const periodIdIndex = indexOfHeader(header, "Period ID", "period_id");
+  if (periodIndex < 0 || periodIdIndex < 0) return null;
+  const startDateIndex = indexOfHeader(header, "Start Date", "start_date");
+  const endDateIndex = indexOfHeader(header, "End Date", "end_date");
+  const daysExpectedIndex = indexOfHeader(header, "Days Expected", "days_expected");
+  const daysCountedIndex = indexOfHeader(header, "Days Counted", "days_counted");
+  const coveragePercentIndex = indexOfHeader(header, "Coverage Percent", "coverage_percent");
+  const categoryIndex = indexOfHeader(header, "Category");
+  const metricIndex = indexOfHeader(header, "Metric");
+  const keyIndex = indexOfHeader(header, "Key");
+  const canonicalKeyIndex = indexOfHeader(header, "Canonical Key", "canonicalKey");
+  const primaryValueIndex = indexOfHeader(header, "Primary Value", "primary_value", "Value");
+  const unitIndex = indexOfHeader(header, "Unit");
+  const ruleIndex = indexOfHeader(header, "Rule");
+  const statisticIndex = indexOfHeader(header, "Statistic");
+  const statisticValueIndex = indexOfHeader(header, "Statistic Value", "statistic_value");
+  const sourceSchemaIndex = indexOfHeader(header, "Source Schema", "source_schema");
+  const sourceSchemaVersionIndex = indexOfHeader(header, "Source Schema Version", "source_schema_version");
+  const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version");
+  const firstRow = parseCsvLine3(lines[1]);
+  const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
+  const periodId = csvValue(firstRow, periodIdIndex);
+  if (!rollupPeriod || !periodId) return null;
+  const metrics = {};
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine3(lines[i]);
+    const metricKey = (_b = (_a = csvValue(row, canonicalKeyIndex)) != null ? _a : csvValue(row, keyIndex)) != null ? _b : csvValue(row, metricIndex);
+    if (!metricKey) continue;
+    metrics[metricKey] = {
+      category: csvValue(row, categoryIndex),
+      metric: csvValue(row, metricIndex),
+      key: csvValue(row, keyIndex),
+      canonicalKey: csvValue(row, canonicalKeyIndex),
+      value: parseMetricValue(csvValue(row, primaryValueIndex)),
+      unit: csvValue(row, unitIndex),
+      rule: csvValue(row, ruleIndex),
+      statistic: csvValue(row, statisticIndex),
+      statisticValue: parseMetricValue(csvValue(row, statisticValueIndex))
+    };
+  }
+  const schemaVersion = (_c = parseCsvNumber(csvValue(firstRow, schemaVersionIndex))) != null ? _c : SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION;
+  const sourceSchemaVersion = parseCsvNumber(csvValue(firstRow, sourceSchemaVersionIndex));
+  return {
+    type: "health_rollup",
+    schema: HEALTHMD_ROLLUP_SCHEMA,
+    schemaVersion,
+    schema_version: schemaVersion,
+    rollupPeriod,
+    rollup_period: rollupPeriod,
+    periodId,
+    period_id: periodId,
+    startDate: csvValue(firstRow, startDateIndex),
+    start_date: csvValue(firstRow, startDateIndex),
+    endDate: csvValue(firstRow, endDateIndex),
+    end_date: csvValue(firstRow, endDateIndex),
+    daysExpected: parseCsvNumber(csvValue(firstRow, daysExpectedIndex)),
+    days_expected: parseCsvNumber(csvValue(firstRow, daysExpectedIndex)),
+    daysCounted: parseCsvNumber(csvValue(firstRow, daysCountedIndex)),
+    days_counted: parseCsvNumber(csvValue(firstRow, daysCountedIndex)),
+    coveragePercent: parseCsvNumber(csvValue(firstRow, coveragePercentIndex)),
+    coverage_percent: parseCsvNumber(csvValue(firstRow, coveragePercentIndex)),
+    sourceSchema: csvValue(firstRow, sourceSchemaIndex),
+    source_schema: csvValue(firstRow, sourceSchemaIndex),
+    sourceSchemaVersion,
+    source_schema_version: sourceSchemaVersion,
+    metrics: Object.keys(metrics).length ? metrics : void 0
+  };
+}
+function parseRollupByFormat(content, format, cachedFrontmatter) {
+  switch (format) {
+    case "json":
+      return parseRollupJSON(content);
+    case "csv":
+      return parseRollupCSV(content);
+    case "markdown":
+    case "bases":
+      return parseRollupMarkdown(content, cachedFrontmatter);
+    case "auto":
+      return null;
+  }
 }
 
 // src/data-loader.ts
@@ -11302,10 +12509,13 @@ var HEALTHMD_FORMAT_FOLDERS = /* @__PURE__ */ new Set(["Markdown", "Bases", "JSO
 function emptyLoadReport() {
   return {
     loadedDays: 0,
+    loadedRollups: 0,
+    rollupPeriods: [],
     schemaVersions: [],
     skippedFiles: [],
     warnings: [],
-    dictionaryLoaded: false
+    dictionaryLoaded: false,
+    dictionaryEntries: 0
   };
 }
 function detectFormat(extension, configFormat) {
@@ -11328,23 +12538,30 @@ var DataLoader = class {
     this.settings = settings;
     this.metadataCache = metadataCache;
     this.cache = null;
+    this.rollupCache = [];
+    this.dataDictionary = null;
     this.lastLoad = 0;
     this.TTL = 3e4;
     this.lastReport = emptyLoadReport();
   }
   async load() {
-    var _a, _b;
+    var _a, _b, _c, _d;
     if (this.cache && Date.now() - this.lastLoad < this.TTL) {
       return this.cache;
     }
     const pattern = this.settings.filePattern || "*";
     const files = this.getDataFiles(pattern);
-    const dictionaryLoad = await this.loadDataDictionaryAliases(files);
-    const frontmatterAliases = dictionaryLoad.aliases;
+    const rollupFiles = this.getRollupFiles(pattern);
+    const dictionaryLoad = await this.loadDataDictionaryAliases([...files, ...rollupFiles]);
+    const frontmatterAliases = dictionaryLoad.dictionary.aliases;
+    const dictionaryUnits = dictionaryLoad.dictionary.unitsByCanonicalKey;
+    this.dataDictionary = dictionaryLoad.loaded ? dictionaryLoad.dictionary : null;
     const report = emptyLoadReport();
     report.dictionaryLoaded = dictionaryLoad.loaded;
+    report.dictionaryEntries = dictionaryLoad.dictionary.entries.length;
     report.warnings.push(...dictionaryLoad.warnings);
     const days = [];
+    const rollups = [];
     const schemaVersions = /* @__PURE__ */ new Set();
     for (const file of files) {
       if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) {
@@ -11372,7 +12589,7 @@ var DataLoader = class {
           }
           case "markdown":
           case "bases": {
-            const day = parseMarkdown(content, cachedFrontmatter, frontmatterAliases);
+            const day = parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits);
             if (day) parsedDays.push(day);
             break;
           }
@@ -11396,6 +12613,29 @@ var DataLoader = class {
         });
       }
     }
+    for (const file of rollupFiles) {
+      const content = await this.vault.cachedRead(file);
+      const format = detectFormat(file.extension, this.settings.dataFormat);
+      const cachedFrontmatter = format === "markdown" || format === "bases" ? (_d = (_c = this.metadataCache) == null ? void 0 : _c.getFileCache(file)) == null ? void 0 : _d.frontmatter : void 0;
+      try {
+        const rollup = parseRollupByFormat(content, format, cachedFrontmatter);
+        if (rollup) {
+          const version = schemaVersionOf(rollup);
+          schemaVersions.add(version);
+          if (version > SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION) {
+            report.warnings.push(`${file.path} uses Health.md roll-up schema v${version}; parsing best-effort with v${SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION} support.`);
+          }
+          rollups.push(withRollupSourcePath(rollup, file.path));
+        } else {
+          this.recordSkippedFile(report, file.path, format, content, cachedFrontmatter);
+        }
+      } catch (e) {
+        report.skippedFiles.push({
+          path: file.path,
+          reason: "malformed-rollup-file"
+        });
+      }
+    }
     const byDate = /* @__PURE__ */ new Map();
     for (const day of days) {
       const existing = byDate.get(day.date);
@@ -11408,11 +12648,24 @@ var DataLoader = class {
     this.cache = Array.from(byDate.values()).sort(
       (a, b) => a.date.localeCompare(b.date)
     );
+    this.rollupCache = dedupeRollups(rollups);
     report.loadedDays = this.cache.length;
+    report.loadedRollups = this.rollupCache.length;
+    report.rollupPeriods = Array.from(new Set(this.rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
     report.schemaVersions = Array.from(schemaVersions).sort((a, b) => a - b);
     this.lastReport = report;
     this.lastLoad = Date.now();
     return this.cache;
+  }
+  async loadRollups() {
+    await this.load();
+    return this.rollupCache;
+  }
+  getLastRollups() {
+    return this.rollupCache;
+  }
+  getDataDictionary() {
+    return this.dataDictionary;
   }
   getLastLoadReport() {
     return this.lastReport;
@@ -11421,9 +12674,10 @@ var DataLoader = class {
     const report = this.lastReport;
     const versions = report.schemaVersions.length ? report.schemaVersions.map((version) => `v${version}`).join(", ") : "none detected";
     const skipped = report.skippedFiles.length ? `; skipped ${report.skippedFiles.length} non-daily/unsupported file${report.skippedFiles.length === 1 ? "" : "s"}` : "";
-    const dictionary = report.dictionaryLoaded ? "; data dictionary loaded" : "";
+    const dictionary = report.dictionaryLoaded ? `; data dictionary loaded (${report.dictionaryEntries} entries)` : "";
+    const rollups = report.loadedRollups ? `; indexed ${report.loadedRollups} roll-up${report.loadedRollups === 1 ? "" : "s"}${report.rollupPeriods.length ? ` (${report.rollupPeriods.join(", ")})` : ""}` : "";
     const warnings = report.warnings.length ? `; ${report.warnings.length} warning${report.warnings.length === 1 ? "" : "s"}` : "";
-    return `Loaded ${report.loadedDays} health day${report.loadedDays === 1 ? "" : "s"} from Health.md schemas ${versions}${skipped}${dictionary}${warnings}.`;
+    return `Loaded ${report.loadedDays} health day${report.loadedDays === 1 ? "" : "s"} from Health.md schemas ${versions}${skipped}${dictionary}${rollups}${warnings}.`;
   }
   async loadDataDictionaryAliases(files) {
     const dictionaryFiles = /* @__PURE__ */ new Map();
@@ -11438,13 +12692,27 @@ var DataLoader = class {
     if (rootDictionary instanceof import_obsidian.TFile) {
       dictionaryFiles.set(rootDictionary.path, rootDictionary);
     }
-    const aliases = {};
+    const mergedDictionary = {
+      entries: [],
+      aliases: {},
+      unitsByCanonicalKey: {},
+      dailyAggregationByCanonicalKey: {},
+      healthKitAggregationByCanonicalKey: {},
+      rollupByCanonicalKey: {},
+      schemaVersion: 0
+    };
     const warnings = [];
     let loaded = false;
     for (const file of dictionaryFiles.values()) {
       try {
         const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.cachedRead(file));
-        Object.assign(aliases, dictionary.aliases);
+        mergedDictionary.entries.push(...dictionary.entries);
+        Object.assign(mergedDictionary.aliases, dictionary.aliases);
+        Object.assign(mergedDictionary.unitsByCanonicalKey, dictionary.unitsByCanonicalKey);
+        Object.assign(mergedDictionary.dailyAggregationByCanonicalKey, dictionary.dailyAggregationByCanonicalKey);
+        Object.assign(mergedDictionary.healthKitAggregationByCanonicalKey, dictionary.healthKitAggregationByCanonicalKey);
+        Object.assign(mergedDictionary.rollupByCanonicalKey, dictionary.rollupByCanonicalKey);
+        mergedDictionary.schemaVersion = Math.max(mergedDictionary.schemaVersion, dictionary.schemaVersion);
         if (dictionary.schemaVersion > SUPPORTED_HEALTHMD_SCHEMA_VERSION) {
           warnings.push(`${file.path} data dictionary uses Health.md schema v${dictionary.schemaVersion}; alias mapping is best-effort.`);
         }
@@ -11452,7 +12720,7 @@ var DataLoader = class {
       } catch (e) {
       }
     }
-    return { aliases, loaded, warnings };
+    return { dictionary: mergedDictionary, loaded, warnings };
   }
   recordSkippedFile(report, path, format, content, frontmatter) {
     var _a;
@@ -11481,6 +12749,8 @@ var DataLoader = class {
   }
   invalidate() {
     this.cache = null;
+    this.rollupCache = [];
+    this.dataDictionary = null;
   }
   getDataFiles(pattern) {
     var _a;
@@ -11502,6 +12772,27 @@ var DataLoader = class {
       }
     }
     return [];
+  }
+  getRollupFiles(pattern) {
+    const roots = [];
+    const configuredFolder = this.vault.getAbstractFileByPath(this.settings.dataFolder);
+    if (configuredFolder instanceof import_obsidian.TFolder) roots.push(configuredFolder);
+    if (this.settings.dataFolder === "Health" && roots.length === 0) {
+      for (const fallbackPath of ["examples/Health", "exports/Health"]) {
+        const bundledFolder = this.vault.getAbstractFileByPath(fallbackPath);
+        if (bundledFolder instanceof import_obsidian.TFolder) roots.push(bundledFolder);
+      }
+    }
+    const files = [];
+    for (const root of roots) {
+      const rollupsFolder = this.vault.getAbstractFileByPath(`${root.path}/Rollups`);
+      if (rollupsFolder instanceof import_obsidian.TFolder) {
+        this.collectRollupFiles(rollupsFolder, rollupsFolder.path, pattern, files);
+      }
+    }
+    const byPath = /* @__PURE__ */ new Map();
+    for (const file of files) byPath.set(file.path, file);
+    return Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
   }
   getMatchingFiles(folder, pattern, granularity) {
     const files = [];
@@ -11541,6 +12832,18 @@ var DataLoader = class {
     for (const file of files) byPath.set(file.path, file);
     return Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
   }
+  collectRollupFiles(folder, rootPath, pattern, files, depth = 0) {
+    if (depth > 5) return;
+    for (const child of folder.children) {
+      if (child instanceof import_obsidian.TFile) {
+        if (this.matchesRollupFile(child, rootPath, pattern)) files.push(child);
+        continue;
+      }
+      if (child instanceof import_obsidian.TFolder) {
+        this.collectRollupFiles(child, rootPath, pattern, files, depth + 1);
+      }
+    }
+  }
   collectMatchingFiles(folder, rootPath, pattern, maxDepth, depth, files, extension) {
     for (const child of folder.children) {
       if (child instanceof import_obsidian.TFile) {
@@ -11577,6 +12880,17 @@ var DataLoader = class {
       pattern
     });
   }
+  matchesRollupFile(file, rootPath, pattern) {
+    if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) return false;
+    if (!["json", "csv", "md"].includes(file.extension)) return false;
+    return matchesDataFilePath({
+      name: file.name,
+      extension: file.extension,
+      path: file.path,
+      rootPath,
+      pattern
+    });
+  }
 };
 function mergeSourcePaths(...pathLists) {
   const paths = /* @__PURE__ */ new Set();
@@ -11590,6 +12904,52 @@ function withSourcePath(day, path) {
     ...day,
     sourcePaths: mergeSourcePaths(day.sourcePaths, [path])
   };
+}
+function withRollupSourcePath(rollup, path) {
+  return {
+    ...rollup,
+    sourcePaths: mergeSourcePaths(rollup.sourcePaths, [path])
+  };
+}
+function rollupKey(rollup) {
+  return `${rollup.rollupPeriod}|${rollup.periodId}`;
+}
+function rollupDetailScore(rollup) {
+  return schemaVersionOf(rollup) * 1e3 + Object.values(rollup).filter((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === "object") return Object.keys(value).length > 0;
+    return value !== void 0 && value !== null && value !== "";
+  }).length;
+}
+function mergeRollups(a, b) {
+  var _a, _b;
+  const preferred = rollupDetailScore(b) >= rollupDetailScore(a) ? b : a;
+  const fallback = preferred === b ? a : b;
+  const schemaVersion = Math.max(schemaVersionOf(a), schemaVersionOf(b));
+  return {
+    ...fallback,
+    ...preferred,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
+    metrics: {
+      ...(_a = fallback.metrics) != null ? _a : {},
+      ...(_b = preferred.metrics) != null ? _b : {}
+    },
+    sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths)
+  };
+}
+function dedupeRollups(rollups) {
+  const byPeriod = /* @__PURE__ */ new Map();
+  for (const rollup of rollups) {
+    const key = rollupKey(rollup);
+    const existing = byPeriod.get(key);
+    byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
+  }
+  return Array.from(byPeriod.values()).sort((a, b) => {
+    var _a, _b;
+    const startCompare = ((_a = a.startDate) != null ? _a : "").localeCompare((_b = b.startDate) != null ? _b : "");
+    return startCompare || a.rollupPeriod.localeCompare(b.rollupPeriod) || a.periodId.localeCompare(b.periodId);
+  });
 }
 function workoutDetailScore(workout) {
   let score = 0;
@@ -11650,6 +13010,61 @@ function mergeWorkouts(a, b) {
     return aStart.localeCompare(bStart);
   });
 }
+function medicationDetailKey(item) {
+  var _a, _b, _c, _d, _e;
+  return ((_e = (_d = (_c = (_b = (_a = item.conceptIdentifier) != null ? _a : item.concept_identifier) != null ? _b : item.name) != null ? _c : item.displayName) != null ? _d : item.display_name) != null ? _e : "").toLowerCase().trim();
+}
+function mergeMedicationDetails(a, b) {
+  const all = [...a != null ? a : [], ...b != null ? b : []];
+  if (!all.length) return void 0;
+  const byKey = /* @__PURE__ */ new Map();
+  const unkeyed = [];
+  for (const item of all) {
+    const key = medicationDetailKey(item);
+    if (!key) {
+      unkeyed.push(item);
+      continue;
+    }
+    const existing = byKey.get(key);
+    byKey.set(key, existing ? { ...existing, ...item } : item);
+  }
+  return [...Array.from(byKey.values()), ...unkeyed].sort(
+    (left, right) => {
+      var _a, _b, _c, _d, _e, _f;
+      return ((_c = (_b = (_a = left.displayName) != null ? _a : left.display_name) != null ? _b : left.name) != null ? _c : "").localeCompare((_f = (_e = (_d = right.displayName) != null ? _d : right.display_name) != null ? _e : right.name) != null ? _f : "");
+    }
+  );
+}
+function medicationDoseEventKey(event) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  return ((_g = event.id) != null ? _g : `${(_d = (_c = (_b = (_a = event.scheduledDate) != null ? _a : event.scheduled_date) != null ? _b : event.startDate) != null ? _c : event.start_date) != null ? _d : ""}|${(_e = event.name) != null ? _e : ""}|${(_f = event.status) != null ? _f : ""}`).toLowerCase().trim();
+}
+function mergeMedicationDoseEvents(a, b) {
+  const all = [...a != null ? a : [], ...b != null ? b : []];
+  if (!all.length) return void 0;
+  const byKey = /* @__PURE__ */ new Map();
+  const unkeyed = [];
+  for (const event of all) {
+    const key = medicationDoseEventKey(event);
+    if (!key || key.startsWith("||")) {
+      unkeyed.push(event);
+      continue;
+    }
+    const existing = byKey.get(key);
+    byKey.set(key, existing ? { ...existing, ...event } : event);
+  }
+  return [...Array.from(byKey.values()), ...unkeyed].sort((left, right) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const leftDate = (_d = (_c = (_b = (_a = left.scheduledDate) != null ? _a : left.scheduled_date) != null ? _b : left.startDate) != null ? _c : left.start_date) != null ? _d : "";
+    const rightDate = (_h = (_g = (_f = (_e = right.scheduledDate) != null ? _e : right.scheduled_date) != null ? _f : right.startDate) != null ? _g : right.start_date) != null ? _h : "";
+    return leftDate.localeCompare(rightDate);
+  });
+}
+function mergeStringLists(a, b) {
+  const merged = [...a != null ? a : [], ...b != null ? b : []].filter(Boolean);
+  if (!merged.length) return void 0;
+  return Array.from(new Set(merged)).sort((left, right) => left.localeCompare(right));
+}
 function objectDetailScore(value) {
   if (!value || typeof value !== "object") return 0;
   let score = 0;
@@ -11661,8 +13076,18 @@ function objectDetailScore(value) {
   return score;
 }
 function dayDetailScore(day) {
-  var _a;
-  return schemaVersionOf(day) * 1e3 + objectDetailScore(day.activity) + objectDetailScore(day.heart) + objectDetailScore(day.vitals) + objectDetailScore(day.sleep) + objectDetailScore(day.mobility) + objectDetailScore(day.hearing) + ((_a = day.workouts) != null ? _a : []).reduce((sum, workout) => sum + workoutDetailScore(workout), 0);
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+  return schemaVersionOf(day) * 1e3 + objectDetailScore(day.activity) + objectDetailScore(day.heart) + objectDetailScore(day.vitals) + objectDetailScore(day.sleep) + objectDetailScore(day.mobility) + objectDetailScore(day.mood) + objectDetailScore(day.mindfulness) + objectDetailScore(day.hearing) + objectDetailScore({
+    medicationCount: (_a = day.medicationCount) != null ? _a : day.medication_count,
+    activeMedicationCount: (_b = day.activeMedicationCount) != null ? _b : day.active_medication_count,
+    archivedMedicationCount: (_c = day.archivedMedicationCount) != null ? _c : day.archived_medication_count,
+    medicationDoseCount: (_d = day.medicationDoseCount) != null ? _d : day.medication_dose_count,
+    medicationTakenCount: (_e = day.medicationTakenCount) != null ? _e : day.medication_taken_count,
+    medicationSkippedCount: (_f = day.medicationSkippedCount) != null ? _f : day.medication_skipped_count,
+    medications: day.medications,
+    medicationDetails: (_g = day.medicationDetails) != null ? _g : day.medication_details,
+    medicationDoseEvents: (_h = day.medicationDoseEvents) != null ? _h : day.medication_dose_events
+  }) + ((_i = day.workouts) != null ? _i : []).reduce((sum, workout) => sum + workoutDetailScore(workout), 0);
 }
 function preferMeaningfulValue(fallback, preferred) {
   if (preferred === void 0 || preferred === null || preferred === "") return fallback;
@@ -11681,7 +13106,7 @@ function mergeSection(fallback, preferred) {
   return merged;
 }
 function mergeDays(a, b) {
-  var _a, _b, _c, _d, _e;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K;
   const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
   const fallback = preferred === b ? a : b;
   const schemaVersion = Math.max(schemaVersionOf(a), schemaVersionOf(b));
@@ -11702,6 +13127,25 @@ function mergeDays(a, b) {
     sleep: mergeSection(fallback.sleep, preferred.sleep),
     mobility: mergeSection(fallback.mobility, preferred.mobility),
     workouts: mergeWorkouts(a.workouts, b.workouts),
+    mood: mergeSection(fallback.mood, preferred.mood),
+    mindfulness: mergeSection(fallback.mindfulness, preferred.mindfulness),
+    medicationCount: preferMeaningfulValue((_f = fallback.medicationCount) != null ? _f : fallback.medication_count, (_g = preferred.medicationCount) != null ? _g : preferred.medication_count),
+    medication_count: preferMeaningfulValue((_h = fallback.medication_count) != null ? _h : fallback.medicationCount, (_i = preferred.medication_count) != null ? _i : preferred.medicationCount),
+    activeMedicationCount: preferMeaningfulValue((_j = fallback.activeMedicationCount) != null ? _j : fallback.active_medication_count, (_k = preferred.activeMedicationCount) != null ? _k : preferred.active_medication_count),
+    active_medication_count: preferMeaningfulValue((_l = fallback.active_medication_count) != null ? _l : fallback.activeMedicationCount, (_m = preferred.active_medication_count) != null ? _m : preferred.activeMedicationCount),
+    archivedMedicationCount: preferMeaningfulValue((_n = fallback.archivedMedicationCount) != null ? _n : fallback.archived_medication_count, (_o = preferred.archivedMedicationCount) != null ? _o : preferred.archived_medication_count),
+    archived_medication_count: preferMeaningfulValue((_p = fallback.archived_medication_count) != null ? _p : fallback.archivedMedicationCount, (_q = preferred.archived_medication_count) != null ? _q : preferred.archivedMedicationCount),
+    medicationDoseCount: preferMeaningfulValue((_r = fallback.medicationDoseCount) != null ? _r : fallback.medication_dose_count, (_s = preferred.medicationDoseCount) != null ? _s : preferred.medication_dose_count),
+    medication_dose_count: preferMeaningfulValue((_t = fallback.medication_dose_count) != null ? _t : fallback.medicationDoseCount, (_u = preferred.medication_dose_count) != null ? _u : preferred.medicationDoseCount),
+    medicationTakenCount: preferMeaningfulValue((_v = fallback.medicationTakenCount) != null ? _v : fallback.medication_taken_count, (_w = preferred.medicationTakenCount) != null ? _w : preferred.medication_taken_count),
+    medication_taken_count: preferMeaningfulValue((_x = fallback.medication_taken_count) != null ? _x : fallback.medicationTakenCount, (_y = preferred.medication_taken_count) != null ? _y : preferred.medicationTakenCount),
+    medicationSkippedCount: preferMeaningfulValue((_z = fallback.medicationSkippedCount) != null ? _z : fallback.medication_skipped_count, (_A = preferred.medicationSkippedCount) != null ? _A : preferred.medication_skipped_count),
+    medication_skipped_count: preferMeaningfulValue((_B = fallback.medication_skipped_count) != null ? _B : fallback.medicationSkippedCount, (_C = preferred.medication_skipped_count) != null ? _C : preferred.medicationSkippedCount),
+    medications: mergeStringLists(fallback.medications, preferred.medications),
+    medicationDetails: mergeMedicationDetails((_D = fallback.medicationDetails) != null ? _D : fallback.medication_details, (_E = preferred.medicationDetails) != null ? _E : preferred.medication_details),
+    medication_details: mergeMedicationDetails((_F = fallback.medication_details) != null ? _F : fallback.medicationDetails, (_G = preferred.medication_details) != null ? _G : preferred.medicationDetails),
+    medicationDoseEvents: mergeMedicationDoseEvents((_H = fallback.medicationDoseEvents) != null ? _H : fallback.medication_dose_events, (_I = preferred.medicationDoseEvents) != null ? _I : preferred.medication_dose_events),
+    medication_dose_events: mergeMedicationDoseEvents((_J = fallback.medication_dose_events) != null ? _J : fallback.medicationDoseEvents, (_K = preferred.medication_dose_events) != null ? _K : preferred.medicationDoseEvents),
     hearing: mergeSection(fallback.hearing, preferred.hearing)
   };
 }
@@ -12018,9 +13462,13 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
   const rows = Math.ceil(nights.length / cols);
   const cellW = Math.floor((W - (cols - 1) * 6) / cols);
   const cellH = Math.floor((H - (rows - 1) * 6) / rows);
-  const cellSize = Math.min(cellW, cellH);
+  const minCellSize = Math.min(42, cellW);
+  const cellSize = Math.max(minCellSize, Math.min(cellW, cellH));
+  const showDateLabels = cellSize >= 42;
+  const labelH = showDateLabels ? 16 : 0;
+  const ringSize = cellSize - labelH;
   const actualH = rows * (cellSize + 6) - 6;
-  if (actualH < H) {
+  if (actualH !== H) {
     const dpr = activeWindow.devicePixelRatio || 1;
     canvas.width = W * dpr;
     canvas.height = actualH * dpr;
@@ -12037,8 +13485,8 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
     const offsetX = col * (cellSize + 6);
     const offsetY = row * (cellSize + 6);
     const cx = offsetX + cellSize / 2;
-    const cy = offsetY + cellSize / 2;
-    const r = cellSize / 2 - 10;
+    const cy = offsetY + ringSize / 2;
+    const r = Math.max(4, ringSize / 2 - 8);
     ctx.fillStyle = theme.isDark ? "#0d0d18" : "#f0f0f5";
     ctx.beginPath();
     ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
@@ -12067,14 +13515,17 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
     ctx.arc(cx, cy, 5, 0, Math.PI * 2);
     ctx.fill();
     const d = /* @__PURE__ */ new Date(night.date + "T00:00:00");
-    ctx.fillStyle = theme.muted;
-    ctx.font = `${Math.max(7, cellSize * 0.09)}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(
-      d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      cx,
-      offsetY + cellSize - 1
-    );
+    if (showDateLabels) {
+      ctx.fillStyle = theme.muted;
+      ctx.font = `${Math.max(7, Math.min(10, cellSize * 0.09))}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(
+        d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        cx,
+        offsetY + ringSize + labelH / 2
+      );
+    }
     const sleep = night.sleep;
     hits.add({
       shape: "circle",
@@ -12723,7 +14174,7 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   );
   if (!days.length) return;
   const padL = 36, padR = 16, padT = 16, padB = 28;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
   const values = days.map((d) => {
     var _a;
@@ -12736,7 +14187,7 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const minVal = Math.min(...values);
   const maxVal = Math.max(...values);
   const range = maxVal - minVal || 1;
-  const xFor = (i) => padL + i / (days.length - 1 || 1) * plotW;
+  const xFor = (i) => padL + i / (days.length - 1 || 1) * plotW2;
   const yFor = (v) => padT + plotH - (v - minVal) / range * plotH;
   const gridCount = 4;
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -12874,15 +14325,18 @@ var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.fillText(DOW[dow], padL - 3, y);
   }
   let lastMonth = -1;
+  let lastMonthLabelX = -Infinity;
   ctx.textAlign = "center";
   for (let w = 0; w < totalWeeks; w++) {
     const weekStart = new Date(startDay);
     weekStart.setDate(weekStart.getDate() + w * 7);
     const mo = weekStart.getMonth();
-    if (mo !== lastMonth) {
+    const x = padL + w * cellW + cellW / 2;
+    if (mo !== lastMonth && x - lastMonthLabelX >= 28) {
       lastMonth = mo;
+      lastMonthLabelX = x;
       const label = weekStart.toLocaleDateString("en-US", { month: "short" });
-      ctx.fillText(label, padL + w * cellW + cellW / 2, padT - 5);
+      ctx.fillText(label, x, padT - 5);
     }
   }
   for (let w = 0; w < totalWeeks; w++) {
@@ -12950,10 +14404,10 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   const days = data.filter((d) => d.sleep && d.sleep.totalDuration > 0);
   if (!days.length) return;
   const padL = 40, padR = 16, padT = 20, padB = 28;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
   const maxTotal = Math.max(...days.map((d) => d.sleep.totalDuration));
-  const barW = plotW / days.length;
+  const barW = plotW2 / days.length;
   const gap = Math.max(1, barW * 0.15);
   const maxHours = Math.ceil(maxTotal / 3600);
   const gridStep = maxHours <= 8 ? 2 : 4;
@@ -12986,6 +14440,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
     ctx.fillText(item.label, lx + 10, padT - 7);
     lx += 44;
   }
+  const dateLabelStep = days.length <= 14 ? 1 : Math.max(1, Math.ceil(days.length / 6));
   days.forEach((day, i) => {
     const sl = day.sleep;
     const x = padL + i * barW + gap / 2;
@@ -13010,19 +14465,21 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
         ctx.rect(x, stackY, bw, segH);
       }
       ctx.fill();
-      if (segH > 14) {
+      if (segH > 14 && bw > 28) {
         ctx.fillStyle = hexToRgba(theme.bg, 0.7);
         ctx.font = "7px sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(label, x + bw / 2, stackY + segH / 2 + 2.5);
       }
     });
-    const d = /* @__PURE__ */ new Date(day.date + "T00:00:00");
-    const lbl = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    ctx.fillStyle = theme.muted;
-    ctx.font = "8px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(lbl, x + bw / 2, H - 6);
+    if (i % dateLabelStep === 0 || i === days.length - 1) {
+      const d = /* @__PURE__ */ new Date(day.date + "T00:00:00");
+      const lbl = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      ctx.fillStyle = theme.muted;
+      ctx.font = "8px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(lbl, x + bw / 2, H - 6);
+    }
     const barTop = padT + plotH - sl.totalDuration / maxTotal * plotH;
     hits.add({
       shape: "rect",
@@ -13236,14 +14693,19 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     return;
   }
   const padL = 40, padR = 16, padT = 12, padB = 8;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const maxDuration = Math.max(...entries.map((e) => e.duration));
-  const rowH = Math.min(28, (H - padT - padB) / entries.length);
+  const rowH = 28;
+  const hasOverflow = entries.length * rowH > H - padT - padB;
+  const footerH = hasOverflow ? 14 : 0;
+  const visibleCount = Math.max(
+    1,
+    Math.min(entries.length, Math.floor((H - padT - padB - footerH) / rowH))
+  );
+  const visible = entries.slice(0, visibleCount);
   const barH = rowH * 0.55;
   const gap = (rowH - barH) / 2;
   const radius = barH / 3;
-  const visibleCount = Math.floor((H - padT - padB) / rowH);
-  const visible = entries.slice(0, visibleCount);
   const maxMin = Math.ceil(maxDuration / 60);
   const tickStep = maxMin <= 60 ? 15 : maxMin <= 120 ? 30 : 60;
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -13252,7 +14714,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   ctx.font = "8px sans-serif";
   ctx.textAlign = "center";
   for (let t = 0; t <= maxMin; t += tickStep) {
-    const x = padL + t / maxMin * plotW;
+    const x = padL + t / maxMin * plotW2;
     ctx.beginPath();
     ctx.moveTo(x, padT);
     ctx.lineTo(x, padT + visible.length * rowH);
@@ -13262,7 +14724,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   visible.forEach((entry, i) => {
     var _a, _b;
     const y = padT + i * rowH + gap;
-    const barW = entry.duration / (maxMin * 60) * plotW;
+    const barW = entry.duration / (maxMin * 60) * plotW2;
     const ci = typeColorIndex(entry.type);
     const hue = HUE_OFFSETS[ci];
     const barColor = `hsl(${hue},60%,${theme.isDark ? 55 : 42}%)`;
@@ -14079,24 +15541,24 @@ function renderRangeChart(ctx, data, W, H, theme, statsEl, hits, spec) {
   }
   const padL = (_a = spec.padL) != null ? _a : 36;
   const padR = 16, padT = 14, padB = 24;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
   const observedMin = Math.min(...present.map((p) => p.min));
   const observedMax = Math.max(...present.map((p) => p.max));
   const { yMin, yMax, gridStep } = spec.yAxis({ min: observedMin, max: observedMax });
   const yRange = yMax - yMin || 1;
   const n = points.length;
-  const xFor = (i) => padL + (n === 1 ? plotW / 2 : i / (n - 1) * plotW);
+  const xFor = (i) => padL + (n === 1 ? plotW2 / 2 : i / (n - 1) * plotW2);
   const yFor = (v) => padT + plotH - (v - yMin) / yRange * plotH;
   if (spec.warn) {
     ctx.fillStyle = hexToRgba(spec.warn.color, theme.isDark ? 0.12 : 0.08);
     if (spec.warn.lo != null) {
       const yThreshold = yFor(spec.warn.lo);
-      ctx.fillRect(padL, yThreshold, plotW, padT + plotH - yThreshold);
+      ctx.fillRect(padL, yThreshold, plotW2, padT + plotH - yThreshold);
     }
     if (spec.warn.hi != null) {
       const yThreshold = yFor(spec.warn.hi);
-      ctx.fillRect(padL, padT, plotW, yThreshold - padT);
+      ctx.fillRect(padL, padT, plotW2, yThreshold - padT);
     }
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -14126,16 +15588,17 @@ function renderRangeChart(ctx, data, W, H, theme, statsEl, hits, spec) {
     ctx.lineTo(W - padR, y);
     ctx.stroke();
     ctx.restore();
+    const labelY = Math.max(padT + 10, Math.min(padT + plotH - 6, y));
     ctx.fillStyle = spec.warn.color;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "left";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(spec.warn.note, padL + 4, y - 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(spec.warn.note, padL + 4, labelY);
   }
   if (spec.overlays) {
     spec.overlays({ ctx, data, yFor, yMin, yMax, padL, padR, W });
   }
-  const capW = Math.max(4, Math.min(10, plotW / Math.max(1, n) * 0.45));
+  const capW = Math.max(4, Math.min(10, plotW2 / Math.max(1, n) * 0.45));
   const capRadius = capW / 2;
   const avgDotInnerLight = (_c = spec.avgDotInnerLightFill) != null ? _c : "#000";
   points.forEach((p, i) => {
@@ -14255,11 +15718,12 @@ function restingOverlay({ ctx, data, yFor, yMin, yMax, padL, padR, W }) {
   ctx.lineTo(W - padR, y);
   ctx.stroke();
   ctx.restore();
+  const labelY = Math.max(yFor(yMax) + 10, Math.min(yFor(yMin) - 6, y));
   ctx.fillStyle = RESTING_COLOR;
   ctx.font = "9px sans-serif";
   ctx.textAlign = "left";
-  ctx.textBaseline = "bottom";
-  ctx.fillText(`resting ~${Math.round(rest)}`, padL + 4, y - 2);
+  ctx.textBaseline = "middle";
+  ctx.fillText(`resting ~${Math.round(rest)}`, padL + 4, labelY);
 }
 var renderHeartRange = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const metric = config.metric || "heart-rate";
@@ -14433,11 +15897,12 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.lineTo(W - padR, y);
     ctx.stroke();
     ctx.restore();
+    const labelY = Math.max(plotTop + 10, Math.min(plotTop + plotH - 6, y));
     ctx.fillStyle = theme.muted;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`avg ${meta.formatValue(average3)}`, W - padR - 4, y - 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(`avg ${meta.formatValue(average3)}`, W - padR - 4, labelY);
   }
   if (goal && chartEffectiveMax > 0) {
     const y = plotTop + plotH - goal / denom * plotH;
@@ -14450,11 +15915,12 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.lineTo(W - padR, y);
     ctx.stroke();
     ctx.restore();
+    const labelY = Math.max(plotTop + 10, Math.min(plotTop + plotH - 6, y));
     ctx.fillStyle = accent;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "left";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`goal ${meta.formatValue(goal)}`, padL + 2, y - 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(`goal ${meta.formatValue(goal)}`, padL + 2, labelY);
   }
   const chartW = W - padL - padR;
   const slot = chartW / n;
@@ -14504,7 +15970,8 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
       ctx.fillText(ch, cx, plotTop + plotH + 4);
     }
   } else {
-    const labelStep = Math.max(1, Math.ceil(n / 6));
+    const maxLabels = Math.max(2, Math.floor(plotW / 72));
+    const labelStep = Math.max(1, Math.ceil(n / maxLabels));
     for (let i = 0; i < n; i++) {
       if (i % labelStep !== 0 && i !== n - 1) continue;
       const d = /* @__PURE__ */ new Date(days[i].date + "T00:00:00");
@@ -14666,7 +16133,7 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const rowH = 26;
   const rowGap = 6;
   const padT = 10;
-  const axisH = 20;
+  const axisH = 34;
   const gutterW = 104;
   const rightPad = 16;
   const barAreaX = gutterW;
@@ -14772,15 +16239,15 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(gx0, plotTop + plotH + 10);
-    ctx.lineTo(gx1, plotTop + plotH + 10);
+    ctx.moveTo(gx0, plotTop + plotH + 18);
+    ctx.lineTo(gx1, plotTop + plotH + 18);
     ctx.stroke();
     ctx.restore();
     ctx.fillStyle = theme.colors.sleep.rem;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 14);
+    ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 22);
   }
   nights.forEach((n, i) => {
     const wb = nightBounds[i];
@@ -15022,11 +16489,12 @@ var renderWeekdayAverage = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.lineTo(W - padR, y);
     ctx.stroke();
     ctx.restore();
+    const labelY = Math.max(plotTop + valueLabelH + 10, Math.min(plotBottom - 8, y));
     ctx.fillStyle = theme.muted;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`mean ${meta.format(overallMean)}`, W - padR - 2, y - 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(`mean ${meta.format(overallMean)}`, W - padR - 2, labelY);
   }
   let maxIdx = 0;
   for (let i = 1; i < 7; i++) {
@@ -15052,11 +16520,13 @@ var renderWeekdayAverage = (ctx, data, W, H, config, theme, statsEl, hits) => {
       ctx.beginPath();
       ctx.roundRect(x, y, barW, h, [cornerR, cornerR, 0, 0]);
       ctx.fill();
-      ctx.fillStyle = isMax ? theme.fg : theme.muted;
-      ctx.font = isMax ? "600 10px sans-serif" : "10px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(meta.format(v), x + barW / 2, y - 3);
+      if (slot >= 42) {
+        ctx.fillStyle = isMax ? theme.fg : theme.muted;
+        ctx.font = isMax ? "600 10px sans-serif" : "10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(meta.format(v), x + barW / 2, y - 3);
+      }
     } else {
       ctx.fillStyle = hexToRgba(color, 0.1);
       ctx.beginPath();
@@ -15223,6 +16693,17 @@ var renderWorkoutZones = (ctx, data, W, H, config, theme, statsEl, hits) => {
     drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No heart-rate zones for this workout");
     statsEl.empty();
     return;
+  }
+  const minH = 132;
+  if (H < minH) {
+    const dpr = activeWindow.devicePixelRatio || 1;
+    ctx.canvas.width = W * dpr;
+    ctx.canvas.height = minH * dpr;
+    ctx.canvas.style.width = W + "px";
+    ctx.canvas.style.height = minH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    H = minH;
   }
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
@@ -15404,7 +16885,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   const padR = 18;
   const padT = 46;
   const padB = 34;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = Math.max(24, H - padT - padB);
   const axisY = padT + plotH * 0.58;
   let xMin = Math.max(0, Math.floor(Math.min(...values) - 8));
@@ -15414,7 +16895,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
     xMax = Math.max(xMax, Math.ceil(maxHr));
   }
   if (xMax - xMin < 20) xMax = xMin + 20;
-  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW;
+  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW2;
   ctx.fillStyle = theme.fg;
   ctx.font = "600 13px sans-serif";
   ctx.textAlign = "left";
@@ -15460,7 +16941,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(padL, axisY);
-  ctx.lineTo(padL + plotW, axisY);
+  ctx.lineTo(padL + plotW2, axisY);
   ctx.stroke();
   if (stats.lo != null && stats.hi != null) {
     ctx.strokeStyle = hexToRgba(theme.colors.heart, 0.72);
@@ -15567,9 +17048,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   const padR = 14;
   const padT = 14;
   const padB = 22;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
-  const xFor = (t) => padL + (t - tMin) / (tMax - tMin || 1) * plotW;
+  const xFor = (t) => padL + (t - tMin) / (tMax - tMin || 1) * plotW2;
   const yFor = (v) => padT + (1 - (v - yMin) / (yMax - yMin || 1)) * plotH;
   if (maxHr) {
     for (const z of ZONES) {
@@ -15579,12 +17060,12 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       const yTop = yFor(Math.min(hi2, yMax));
       const yBot = yFor(Math.max(lo2, yMin));
       ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 40 : 70}%,0.13)`;
-      ctx.fillRect(padL, yTop, plotW, yBot - yTop);
+      ctx.fillRect(padL, yTop, plotW2, yBot - yTop);
       ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 70 : 40}%,0.6)`;
       ctx.font = "9px sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
-      ctx.fillText(z.label, padL + plotW - 3, (yTop + yBot) / 2);
+      ctx.fillText(z.label, padL + plotW2 - 3, (yTop + yBot) / 2);
     }
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -15600,7 +17081,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     const y = yFor(v);
     ctx.beginPath();
     ctx.moveTo(padL, y);
-    ctx.lineTo(padL + plotW, y);
+    ctx.lineTo(padL + plotW2, y);
     ctx.stroke();
     ctx.fillText(String(v), padL - 4, y);
   }
@@ -15646,8 +17127,8 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     }
   }
   const STRIDE = 4;
-  for (let x = padL; x < padL + plotW; x += STRIDE) {
-    const tCenter = tMin + (x + STRIDE / 2 - padL) / plotW * (tMax - tMin);
+  for (let x = padL; x < padL + plotW2; x += STRIDE) {
+    const tCenter = tMin + (x + STRIDE / 2 - padL) / plotW2 * (tMax - tMin);
     let bestIdx = 0;
     let bestDist = Infinity;
     for (let i = 0; i < pts.length; i++) {
@@ -15902,10 +17383,24 @@ var renderWorkoutTrends = (ctx, data, W, H, config, theme, statsEl, hits) => {
   }
   const padL = 34;
   const padR = 18;
-  const padT = 34;
+  const padT = 52;
   const padB = 22;
   const gap = metrics.length > 1 ? 34 : 18;
-  const panelH = (H - padT - padB - gap * (metrics.length - 1)) / metrics.length;
+  const minPanelH = metrics.length > 1 ? 32 : 90;
+  const neededH = padT + padB + gap * (metrics.length - 1) + minPanelH * metrics.length;
+  if (H < neededH) {
+    const dpr = activeWindow.devicePixelRatio || 1;
+    ctx.canvas.width = W * dpr;
+    ctx.canvas.height = neededH * dpr;
+    ctx.canvas.style.width = W + "px";
+    ctx.canvas.style.height = neededH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    H = neededH;
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, H);
+  }
+  const panelH = Math.max(minPanelH, (H - padT - padB - gap * (metrics.length - 1)) / metrics.length);
   const panelW = W - padL - padR;
   ctx.fillStyle = theme.fg;
   ctx.font = "700 13px sans-serif";
@@ -16013,7 +17508,7 @@ function renderHeader(host, day, workout) {
   const title = header.createDiv({ cls: "health-md-workout-title" });
   title.textContent = workout.type ? workout.type.charAt(0).toUpperCase() + workout.type.slice(1) : "Workout";
   const stats = header.createDiv({ cls: "health-md-workout-stats" });
-  const addStat = (label, value) => {
+  const addStat2 = (label, value) => {
     const cell = stats.createDiv({ cls: "health-md-workout-stat" });
     cell.createDiv({ cls: "health-md-workout-stat-label", text: label });
     cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
@@ -16021,23 +17516,23 @@ function renderHeader(host, day, workout) {
   const distanceMeters = workoutDistanceMeters(workout);
   const distanceDisplay = formatWorkoutDistance(workout, day);
   if (distanceDisplay) {
-    addStat("Distance", distanceDisplay);
+    addStat2("Distance", distanceDisplay);
   }
-  addStat("Duration", (_a = workout.durationFormatted) != null ? _a : formatDuration(workout.duration));
+  addStat2("Duration", (_a = workout.durationFormatted) != null ? _a : formatDuration(workout.duration));
   if (distanceMeters != null && workout.duration > 0) {
-    addStat(
+    addStat2(
       workout.avgSpeedFormatted ? "Avg speed" : "Avg pace",
       (_b = workout.avgSpeedFormatted) != null ? _b : formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted)
     );
   }
   if (workout.elevationGainMeters != null) {
-    addStat("Elev gain", formatElevation(workout.elevationGainMeters, day));
+    addStat2("Elev gain", formatElevation(workout.elevationGainMeters, day));
   }
   if (workout.elevationLossMeters != null) {
-    addStat("Elev loss", formatElevation(workout.elevationLossMeters, day));
+    addStat2("Elev loss", formatElevation(workout.elevationLossMeters, day));
   }
   if (workout.avgHeartRate != null) {
-    addStat("Avg HR", `${Math.round(workout.avgHeartRate)} BPM`);
+    addStat2("Avg HR", `${Math.round(workout.avgHeartRate)} BPM`);
   }
 }
 function renderEmptyMessage(host, message) {
@@ -16128,12 +17623,12 @@ function renderCanvasPolyline(host, route, colorBy, hrSamples, theme, width, hei
   const midLat = (minLat + maxLat) / 2;
   const lonScale = Math.cos(midLat * Math.PI / 180);
   const padding = 14;
-  const plotW = width - padding * 2;
+  const plotW2 = width - padding * 2;
   const plotH = height - padding * 2;
   const lonSpan = (maxLon - minLon) * lonScale || 1e-6;
   const latSpan = maxLat - minLat || 1e-6;
-  const scale = Math.min(plotW / lonSpan, plotH / latSpan);
-  const offX = padding + (plotW - lonSpan * scale) / 2;
+  const scale = Math.min(plotW2 / lonSpan, plotH / latSpan);
+  const offX = padding + (plotW2 - lonSpan * scale) / 2;
   const offY = padding + (plotH - latSpan * scale) / 2;
   const project = (p) => [
     offX + (p.longitude - minLon) * lonScale * scale,
@@ -16217,16 +17712,16 @@ function renderHeader2(host, day, workout) {
   const title = header.createDiv({ cls: "health-md-workout-title" });
   title.textContent = `${titleCase((_a = workout.activityType) != null ? _a : workout.type)} \u2014 ${day.date}`;
   const stats = header.createDiv({ cls: "health-md-workout-stats" });
-  const addStat = (label, value) => {
+  const addStat2 = (label, value) => {
     if (!value) return;
     const cell = stats.createDiv({ cls: "health-md-workout-stat" });
     cell.createDiv({ cls: "health-md-workout-stat-label", text: label });
     cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
   };
-  addStat("Duration", (_b = workout.durationFormatted) != null ? _b : formatDuration(workout.duration));
-  addStat("Distance", formatWorkoutDistance(workout, day));
-  addStat("Avg HR", workout.avgHeartRate != null ? `${Math.round(workout.avgHeartRate)} BPM` : void 0);
-  addStat("Avg Power", workout.avgPower != null ? `${Math.round(workout.avgPower)} W` : void 0);
+  addStat2("Duration", (_b = workout.durationFormatted) != null ? _b : formatDuration(workout.duration));
+  addStat2("Distance", formatWorkoutDistance(workout, day));
+  addStat2("Avg HR", workout.avgHeartRate != null ? `${Math.round(workout.avgHeartRate)} BPM` : void 0);
+  addStat2("Avg Power", workout.avgPower != null ? `${Math.round(workout.avgPower)} W` : void 0);
 }
 function formatMaybeNumber(value, suffix) {
   return value == null ? "\u2014" : `${Math.round(value)} ${suffix}`;
@@ -16281,6 +17776,566 @@ var renderWorkoutIntervals = (data, el, config, _theme) => {
   }
 };
 
+// src/visualizations/mood-trend.ts
+function configFlag(value, defaultValue) {
+  if (value === void 0) return defaultValue;
+  if (typeof value === "number") return value !== 0;
+  const normalized = value.trim().toLowerCase();
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  return defaultValue;
+}
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+function moodColor(valence, theme) {
+  if (valence === void 0) return theme.muted;
+  if (valence < -0.16) return theme.colors.heart;
+  if (valence > 0.16) return theme.colors.accent;
+  return theme.colors.secondary;
+}
+function yForValence(valence, top, height) {
+  return top + (1 - (clamp(valence, -1, 1) + 1) / 2) * height;
+}
+function dayExerciseMinutes(day) {
+  var _a, _b, _c;
+  const activityMinutes = (_b = (_a = day.activity) == null ? void 0 : _a.exerciseMinutes) != null ? _b : 0;
+  const workoutMinutes = ((_c = day.workouts) != null ? _c : []).reduce((sum, workout) => sum + (workout.duration || 0) / 60, 0);
+  return Math.max(activityMinutes, workoutMinutes);
+}
+function shortDate(iso) {
+  const d = /* @__PURE__ */ new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const points = data.map((day) => {
+    const mood = getMoodDaySummary(day);
+    return {
+      day,
+      date: day.date,
+      valence: mood.averageValence,
+      label: mood.primaryLabel,
+      entries: mood.entries.length
+    };
+  });
+  const moodPoints = points.filter((point) => point.valence !== void 0);
+  if (!points.length || !moodPoints.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("No mood data in range", W / 2, H / 2);
+    statsEl.empty();
+    return;
+  }
+  const showContext = configFlag(config.showContext, true);
+  const padL = 54;
+  const padR = 16;
+  const padT = showContext ? 72 : 56;
+  const padB = 34;
+  const plotW2 = W - padL - padR;
+  const plotH = H - padT - padB;
+  const slot = plotW2 / Math.max(points.length, 1);
+  const values = moodPoints.map((point) => point.valence).filter(Number.isFinite);
+  const avg4 = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const firstDate = points[0].date;
+  const lastDate = points[points.length - 1].date;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = theme.fg;
+  ctx.font = "600 22px sans-serif";
+  ctx.fillText(moodLabelForValence(avg4), padL, 24);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "11px sans-serif";
+  ctx.fillText(`${formatMoodValence(avg4)} avg \u2022 ${formatDate(firstDate)} \u2013 ${formatDate(lastDate)}`, padL, 41);
+  const ticks = [
+    { value: 1, label: "pleasant" },
+    { value: 0, label: "neutral" },
+    { value: -1, label: "unpleasant" }
+  ];
+  ctx.lineWidth = 1;
+  for (const tick of ticks) {
+    const y = yForValence(tick.value, padT, plotH);
+    ctx.strokeStyle = tick.value === 0 ? hexToRgba(theme.fg, 0.18) : hexToRgba(theme.fg, 0.08);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W - padR, y);
+    ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(tick.label, padL - 6, y);
+  }
+  if (showContext) {
+    const maxExercise = Math.max(30, ...points.map((point) => dayExerciseMinutes(point.day)));
+    points.forEach((point, i) => {
+      var _a, _b;
+      const cx = padL + i * slot + slot / 2;
+      const colW = Math.max(2, Math.min(18, slot * 0.42));
+      const sleepHours = ((_b = (_a = point.day.sleep) == null ? void 0 : _a.totalDuration) != null ? _b : 0) / 3600;
+      if (sleepHours > 0) {
+        const sleepH = clamp(sleepHours / 10, 0, 1) * plotH;
+        ctx.fillStyle = hexToRgba(theme.colors.sleep.core, 0.16);
+        ctx.beginPath();
+        ctx.roundRect(cx - colW / 2, padT + plotH - sleepH, colW, sleepH, [3, 3, 0, 0]);
+        ctx.fill();
+      }
+      const exercise = dayExerciseMinutes(point.day);
+      if (exercise > 0) {
+        const exerciseH = clamp(exercise / maxExercise, 0, 1) * plotH;
+        ctx.fillStyle = hexToRgba(theme.colors.secondary, 0.14);
+        ctx.beginPath();
+        ctx.roundRect(cx - colW / 4, padT + plotH - exerciseH, colW / 2, exerciseH, [2, 2, 0, 0]);
+        ctx.fill();
+      }
+    });
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    let lx = padL;
+    for (const item of [
+      { label: "sleep", color: theme.colors.sleep.core },
+      { label: "exercise", color: theme.colors.secondary }
+    ]) {
+      ctx.fillStyle = hexToRgba(item.color, 0.45);
+      ctx.fillRect(lx, padT - 16, 9, 6);
+      ctx.fillStyle = theme.muted;
+      ctx.fillText(item.label, lx + 12, padT - 12);
+      lx += 62;
+    }
+  }
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = hexToRgba(theme.colors.accent, 0.7);
+  ctx.beginPath();
+  let activeSegment = false;
+  points.forEach((point, i) => {
+    if (point.valence === void 0) {
+      activeSegment = false;
+      return;
+    }
+    const x = padL + i * slot + slot / 2;
+    const y = yForValence(point.valence, padT, plotH);
+    if (!activeSegment) {
+      ctx.moveTo(x, y);
+      activeSegment = true;
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+  ctx.restore();
+  points.forEach((point, i) => {
+    var _a, _b;
+    const cx = padL + i * slot + slot / 2;
+    const hitX = padL + i * slot;
+    const moodY = point.valence !== void 0 ? yForValence(point.valence, padT, plotH) : yForValence(0, padT, plotH);
+    const color = moodColor(point.valence, theme);
+    if (point.valence === void 0) {
+      ctx.fillStyle = hexToRgba(theme.fg, 0.16);
+      ctx.beginPath();
+      ctx.arc(cx, moodY, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const r = point.entries > 1 ? 6 : 5;
+      ctx.fillStyle = hexToRgba(color, 0.18);
+      ctx.beginPath();
+      ctx.arc(cx, moodY, r + 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(cx, moodY, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = theme.bg;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    if (points.length <= 14 || i % Math.ceil(points.length / 6) === 0 || i === points.length - 1) {
+      ctx.fillStyle = point.valence !== void 0 ? theme.fg : theme.muted;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(shortDate(point.date), cx, padT + plotH + 8);
+    }
+    const sleepSeconds = (_a = point.day.sleep) == null ? void 0 : _a.totalDuration;
+    const exerciseMinutes = dayExerciseMinutes(point.day);
+    const details = [
+      ...point.valence !== void 0 ? [{ label: "Mood", value: `${moodLabelForValence(point.valence)} (${formatMoodValence(point.valence)})` }] : [],
+      ...point.label ? [{ label: "Label", value: point.label }] : [],
+      ...point.entries ? [{ label: "Entries", value: String(point.entries) }] : [],
+      ...sleepSeconds ? [{ label: "Sleep", value: formatDuration(sleepSeconds) }] : [],
+      ...exerciseMinutes ? [{ label: "Exercise", value: `${Math.round(exerciseMinutes)} min` }] : [],
+      ...((_b = point.day.workouts) == null ? void 0 : _b.length) ? [{ label: "Workouts", value: String(point.day.workouts.length) }] : []
+    ];
+    hits.add({
+      shape: "rect",
+      x: hitX,
+      y: padT,
+      w: slot,
+      h: plotH + padB,
+      title: formatDate(point.date),
+      details,
+      payload: point.day
+    });
+  });
+  const totalEntries = moodPoints.reduce((sum, point) => sum + point.entries, 0);
+  const avgSleepSeconds = moodPoints.reduce((sum, point) => {
+    var _a, _b;
+    return sum + ((_b = (_a = point.day.sleep) == null ? void 0 : _a.totalDuration) != null ? _b : 0);
+  }, 0) / moodPoints.length;
+  const avgExercise = moodPoints.reduce((sum, point) => sum + dayExerciseMinutes(point.day), 0) / moodPoints.length;
+  renderInlineStats(statsEl, [
+    [
+      { text: "Avg mood " },
+      { text: `${moodLabelForValence(avg4)} ${formatMoodValence(avg4)}`, strong: true }
+    ],
+    [
+      { text: "Mood entries " },
+      { text: String(totalEntries), strong: true }
+    ],
+    ...avgSleepSeconds > 0 ? [[
+      { text: "Avg sleep " },
+      { text: formatDuration(avgSleepSeconds), strong: true }
+    ]] : [],
+    ...avgExercise > 0 ? [[
+      { text: "Avg exercise " },
+      { text: `${Math.round(avgExercise)}m`, strong: true }
+    ]] : []
+  ]);
+};
+
+// src/visualizations/medication-overview.ts
+function parsePositiveInt(value, defaultValue) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.floor(value);
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  }
+  return defaultValue;
+}
+function pct(value, total) {
+  return total > 0 ? `${Math.max(0, Math.min(100, value / total * 100)).toFixed(2)}%` : "0%";
+}
+function adherenceRate(taken, skipped) {
+  const denominator = taken + skipped;
+  return denominator > 0 ? taken / denominator : null;
+}
+function formatPercent(value) {
+  return value == null ? "\u2014" : `${Math.round(value * 100)}%`;
+}
+function shortDate2(iso) {
+  const d = /* @__PURE__ */ new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+function formatDateTime(value) {
+  if (!value) return "\u2014";
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return value;
+  return new Date(ms).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+function weekKey(dateIso) {
+  const d = /* @__PURE__ */ new Date(`${dateIso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dateIso;
+  const day = d.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + mondayOffset);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, "0");
+  const dayOfMonth = String(monday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dayOfMonth}`;
+}
+function monthKey(dateIso) {
+  return dateIso.slice(0, 7);
+}
+function trendMode(dataDays, config) {
+  var _a;
+  const requested = String((_a = config.trend) != null ? _a : "auto").trim().toLowerCase();
+  if (requested === "daily" || requested === "weekly" || requested === "monthly") return requested;
+  if (dataDays > 120) return "monthly";
+  if (dataDays > 31) return "weekly";
+  return "daily";
+}
+function addStat(host, label, value, sublabel) {
+  const card = host.createDiv({ cls: "health-md-med-stat" });
+  card.createDiv({ cls: "health-md-med-stat-value", text: value });
+  card.createDiv({ cls: "health-md-med-stat-label", text: label });
+  if (sublabel) card.createDiv({ cls: "health-md-med-stat-sub", text: sublabel });
+}
+function statusClass(kind) {
+  if (kind === "taken") return "is-taken";
+  if (kind === "skipped") return "is-skipped";
+  return "is-other";
+}
+function statusPrefix(kind) {
+  if (kind === "taken") return "\u2713";
+  if (kind === "skipped") return "\u21B7";
+  return "?";
+}
+function addStatusBadge(host, rawStatus) {
+  const kind = doseStatusKind(rawStatus);
+  const badge = host.createSpan({ cls: `health-md-med-status ${statusClass(kind)}` });
+  badge.createSpan({ cls: "health-md-med-status-symbol", text: statusPrefix(kind) });
+  badge.appendChild(activeDocument.createTextNode(` ${statusLabel(rawStatus)}`));
+}
+function renderEmpty(host, message) {
+  host.createDiv({ cls: "health-md-workout-empty", text: message });
+}
+function renderInventory(host, latest) {
+  const section = host.createDiv({ cls: "health-md-med-section" });
+  section.createEl("h4", { cls: "health-md-med-section-title", text: "Medication inventory" });
+  const stats = section.createDiv({ cls: "health-md-med-stat-grid" });
+  addStat(stats, "Total", String(latest.medicationCount));
+  addStat(stats, "Active", String(latest.activeMedicationCount));
+  addStat(stats, "Archived", String(latest.archivedMedicationCount));
+  if (!latest.details.length) return;
+  const list = section.createDiv({ cls: "health-md-med-inventory" });
+  latest.details.forEach((item) => {
+    var _a, _b, _c, _d;
+    const row = list.createDiv({ cls: "health-md-med-inventory-row" });
+    const name = row.createDiv({ cls: "health-md-med-inventory-name" });
+    name.textContent = medicationDisplayName(item);
+    const meta = row.createDiv({ cls: "health-md-med-inventory-meta" });
+    const pieces = [
+      (_a = item.generalForm) != null ? _a : item.general_form,
+      ((_b = item.hasSchedule) != null ? _b : item.has_schedule) === true ? "Scheduled" : ((_c = item.hasSchedule) != null ? _c : item.has_schedule) === false ? "No schedule" : void 0,
+      ((_d = item.isArchived) != null ? _d : item.is_archived) ? "Archived" : "Active"
+    ].filter(Boolean);
+    meta.textContent = pieces.join(" \u2022 ");
+  });
+}
+function buildMedicationBreakdown(days, latestDetails) {
+  const byName = /* @__PURE__ */ new Map();
+  const ensure = (name, detail) => {
+    const key = name.toLowerCase();
+    let row = byName.get(key);
+    if (!row) {
+      row = { name, total: 0, taken: 0, skipped: 0, other: 0, detail };
+      byName.set(key, row);
+    } else if (!row.detail && detail) {
+      row.detail = detail;
+    }
+    return row;
+  };
+  latestDetails.forEach((detail) => ensure(medicationDisplayName(detail), detail));
+  for (const day of days) {
+    const summary = getMedicationDaySummary(day);
+    for (const event of summary.doseEvents) {
+      const name = doseEventMedicationName(event, summary.details.length ? summary.details : latestDetails);
+      const row = ensure(name);
+      const kind = doseStatusKind(event.status);
+      row[kind] += 1;
+      row.total += 1;
+    }
+  }
+  return Array.from(byName.values()).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+}
+function renderAdherence(host, taken, skipped, other) {
+  const section = host.createDiv({ cls: "health-md-med-section" });
+  section.createEl("h4", { cls: "health-md-med-section-title", text: "Adherence summary" });
+  const total = taken + skipped + other;
+  const stats = section.createDiv({ cls: "health-md-med-stat-grid" });
+  addStat(stats, "Taken", String(taken));
+  addStat(stats, "Skipped", String(skipped));
+  if (other > 0) addStat(stats, "Other status", String(other));
+  addStat(stats, "Adherence", formatPercent(adherenceRate(taken, skipped)), "taken \xF7 taken+skipped");
+  if (total <= 0) {
+    renderEmpty(section, "No medication dose counts were included for this date range.");
+    return;
+  }
+  const bar = section.createDiv({ cls: "health-md-med-stack", attr: { "aria-label": `${taken} taken, ${skipped} skipped, ${other} other medication doses` } });
+  bar.createDiv({ cls: "health-md-med-stack-segment is-taken", attr: { style: `width:${pct(taken, total)}` } });
+  bar.createDiv({ cls: "health-md-med-stack-segment is-skipped", attr: { style: `width:${pct(skipped, total)}` } });
+  bar.createDiv({ cls: "health-md-med-stack-segment is-other", attr: { style: `width:${pct(other, total)}` } });
+  const legend = section.createDiv({ cls: "health-md-med-legend" });
+  [
+    { label: "Taken", value: taken, kind: "taken" },
+    { label: "Skipped", value: skipped, kind: "skipped" },
+    ...other > 0 ? [{ label: "Other", value: other, kind: "other" }] : []
+  ].forEach((item) => {
+    const el = legend.createSpan({ cls: `health-md-med-legend-item ${statusClass(item.kind)}` });
+    el.createSpan({ cls: "health-md-med-legend-swatch" });
+    el.appendChild(activeDocument.createTextNode(`${item.label}: ${item.value}`));
+  });
+}
+function renderBreakdown(host, rows) {
+  const section = host.createDiv({ cls: "health-md-med-section" });
+  section.createEl("h4", { cls: "health-md-med-section-title", text: "Per-medication dose status" });
+  if (!rows.length) {
+    renderEmpty(section, "No medication inventory or dose events were included.");
+    return;
+  }
+  const list = section.createDiv({ cls: "health-md-med-breakdown" });
+  rows.forEach((row) => {
+    const item = list.createDiv({ cls: "health-md-med-breakdown-row" });
+    const header = item.createDiv({ cls: "health-md-med-breakdown-header" });
+    header.createDiv({ cls: "health-md-med-breakdown-name", text: row.name });
+    const rate = adherenceRate(row.taken, row.skipped);
+    header.createDiv({ cls: "health-md-med-breakdown-rate", text: row.total > 0 ? `${formatPercent(rate)} adherence` : "No doses" });
+    const total = Math.max(row.total, 1);
+    const bar = item.createDiv({ cls: "health-md-med-stack is-small", attr: { "aria-label": `${row.name}: ${row.taken} taken, ${row.skipped} skipped, ${row.other} other` } });
+    bar.createDiv({ cls: "health-md-med-stack-segment is-taken", attr: { style: `width:${pct(row.taken, total)}` } });
+    bar.createDiv({ cls: "health-md-med-stack-segment is-skipped", attr: { style: `width:${pct(row.skipped, total)}` } });
+    bar.createDiv({ cls: "health-md-med-stack-segment is-other", attr: { style: `width:${pct(row.other, total)}` } });
+    const counts = item.createDiv({ cls: "health-md-med-breakdown-counts" });
+    counts.textContent = `${row.taken} taken \u2022 ${row.skipped} skipped${row.other ? ` \u2022 ${row.other} other` : ""}`;
+  });
+}
+function buildTrend(days, mode) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const day of days) {
+    const summary = getMedicationDaySummary(day);
+    if (!summary.hasMedicationData) continue;
+    const key = mode === "monthly" ? monthKey(day.date) : mode === "weekly" ? weekKey(day.date) : day.date;
+    const label = mode === "monthly" ? key : mode === "weekly" ? `Week of ${shortDate2(key)}` : shortDate2(day.date);
+    let bucket = byKey.get(key);
+    if (!bucket) {
+      bucket = { key, label, total: 0, taken: 0, skipped: 0, other: 0 };
+      byKey.set(key, bucket);
+    }
+    bucket.taken += summary.medicationTakenCount;
+    bucket.skipped += summary.medicationSkippedCount;
+    bucket.other += summary.medicationOtherDoseCount;
+    bucket.total += summary.medicationDoseCount;
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.key.localeCompare(b.key));
+}
+function renderTrend(host, days, config) {
+  const mode = trendMode(days.length, config);
+  const buckets = buildTrend(days, mode);
+  const section = host.createDiv({ cls: "health-md-med-section" });
+  section.createEl("h4", { cls: "health-md-med-section-title", text: `${mode.charAt(0).toUpperCase()}${mode.slice(1)} adherence trend` });
+  const withDoses = buckets.filter((bucket) => bucket.total > 0 || bucket.taken > 0 || bucket.skipped > 0);
+  if (withDoses.length < 2) {
+    renderEmpty(section, "Add multiple days with medication dose counts to see a trend.");
+    return;
+  }
+  const max = Math.max(...withDoses.map((bucket) => bucket.total), 1);
+  const chart = section.createDiv({ cls: "health-md-med-trend" });
+  withDoses.forEach((bucket) => {
+    const col = chart.createDiv({ cls: "health-md-med-trend-col" });
+    const bar = col.createDiv({ cls: "health-md-med-trend-bar", attr: { "aria-label": `${bucket.label}: ${bucket.taken} taken, ${bucket.skipped} skipped, ${bucket.other} other` } });
+    bar.style.height = `${Math.max(8, bucket.total / max * 100)}%`;
+    bar.createDiv({ cls: "health-md-med-trend-segment is-other", attr: { style: `height:${pct(bucket.other, bucket.total)}` } });
+    bar.createDiv({ cls: "health-md-med-trend-segment is-skipped", attr: { style: `height:${pct(bucket.skipped, bucket.total)}` } });
+    bar.createDiv({ cls: "health-md-med-trend-segment is-taken", attr: { style: `height:${pct(bucket.taken, bucket.total)}` } });
+    col.createDiv({ cls: "health-md-med-trend-label", text: bucket.label });
+  });
+}
+function renderRecentEvents(host, days, latestDetails, config) {
+  var _a;
+  const limit = parsePositiveInt((_a = config.limit) != null ? _a : config.recent, 12);
+  const events = days.flatMap((day) => {
+    const summary = getMedicationDaySummary(day);
+    const details = summary.details.length ? summary.details : latestDetails;
+    return summary.doseEvents.map((event) => ({ day, event, details }));
+  }).sort((a, b) => medicationEventTimestamp(b.event).localeCompare(medicationEventTimestamp(a.event))).slice(0, limit);
+  const section = host.createDiv({ cls: "health-md-med-section" });
+  section.createEl("h4", { cls: "health-md-med-section-title", text: "Recent dose events" });
+  if (!events.length) {
+    renderEmpty(section, "No medication dose events were included for this date range.");
+    return;
+  }
+  const wrapper = section.createDiv({ cls: "health-md-workout-table-wrap" });
+  const table = wrapper.createEl("table", { cls: "health-md-workout-table health-md-med-event-table" });
+  const thead = table.createEl("thead");
+  const headerRow = thead.createEl("tr");
+  ["Medication", "Status", "Time", "Dose", "Schedule"].forEach((heading) => headerRow.createEl("th", { text: heading }));
+  const tbody = table.createEl("tbody");
+  events.forEach(({ event, details }) => {
+    var _a2, _b;
+    const tr = tbody.createEl("tr");
+    tr.createEl("td", { text: doseEventMedicationName(event, details) });
+    const statusCell = tr.createEl("td");
+    addStatusBadge(statusCell, event.status);
+    tr.createEl("td", { text: formatDateTime(medicationEventTimestamp(event)) });
+    tr.createEl("td", { text: medicationDoseQuantityLabel(event) });
+    tr.createEl("td", { text: (_b = (_a2 = event.scheduleType) != null ? _a2 : event.schedule_type) != null ? _b : "\u2014" });
+  });
+}
+var MEDICATION_EMPTY_MESSAGE = "No medication data in range. Health.md schema v2 exports medication_count, medication_details, and medication_dose_events.";
+function hasMedicationInventoryValues(summary) {
+  return summary.medicationCount > 0 || summary.activeMedicationCount > 0 || summary.archivedMedicationCount > 0 || summary.details.length > 0 || summary.medications.length > 0;
+}
+function getMedicationRenderContext(data) {
+  var _a, _b;
+  const summaries = data.map(getMedicationDaySummary).filter((summary) => summary.hasMedicationData);
+  if (!summaries.length) return null;
+  const latestMedicationSummary = (_a = [...summaries].reverse().find((summary) => summary.hasInventory || summary.hasDoseEvents || summary.hasDoseCounts)) != null ? _a : summaries[summaries.length - 1];
+  const latest = (_b = [...summaries].reverse().find(hasMedicationInventoryValues)) != null ? _b : latestMedicationSummary;
+  const taken = summaries.reduce((sum, summary) => sum + summary.medicationTakenCount, 0);
+  const skipped = summaries.reduce((sum, summary) => sum + summary.medicationSkippedCount, 0);
+  const doseCount = summaries.reduce((sum, summary) => sum + summary.medicationDoseCount, 0);
+  const other = Math.max(0, doseCount - taken - skipped);
+  return { latest, taken, skipped, other };
+}
+function renderMedicationComponent(data, el, render) {
+  el.addClass("health-md-med-container");
+  const context = getMedicationRenderContext(data);
+  if (!context) {
+    renderEmpty(el, MEDICATION_EMPTY_MESSAGE);
+    return;
+  }
+  render(context);
+}
+var renderMedicationInventory = (data, el) => {
+  renderMedicationComponent(data, el, ({ latest }) => renderInventory(el, latest));
+};
+var renderMedicationAdherenceSummary = (data, el) => {
+  renderMedicationComponent(
+    data,
+    el,
+    ({ taken, skipped, other }) => renderAdherence(el, taken, skipped, other)
+  );
+};
+var renderMedicationDoseStatus = (data, el) => {
+  renderMedicationComponent(
+    data,
+    el,
+    ({ latest }) => renderBreakdown(el, buildMedicationBreakdown(data, latest.details))
+  );
+};
+var renderMedicationAdherenceTrend = (data, el, config) => {
+  renderMedicationComponent(
+    data,
+    el,
+    () => {
+      var _a;
+      return renderTrend(el, data, { ...config, trend: (_a = config.trend) != null ? _a : "daily" });
+    }
+  );
+};
+var renderMedicationRecentDoseEvents = (data, el, config) => {
+  renderMedicationComponent(
+    data,
+    el,
+    ({ latest }) => renderRecentEvents(el, data, latest.details, config)
+  );
+};
+var renderMedicationOverview = (data, el, config, _theme) => {
+  renderMedicationComponent(data, el, ({ latest, taken, skipped, other }) => {
+    const header = el.createDiv({ cls: "health-md-med-header" });
+    const title = header.createDiv({ cls: "health-md-med-title" });
+    title.textContent = data.length > 1 ? "Medication overview" : `Medication overview \u2014 ${data[0].date}`;
+    const subtitle = header.createDiv({ cls: "health-md-med-subtitle" });
+    subtitle.textContent = data.length > 1 ? `${data[0].date} \u2013 ${data[data.length - 1].date}` : "Health.md schema v2 medication export";
+    renderInventory(el, latest);
+    renderAdherence(el, taken, skipped, other);
+    renderBreakdown(el, buildMedicationBreakdown(data, latest.details));
+    renderTrend(el, data, config);
+    renderRecentEvents(el, data, latest.details, config);
+  });
+};
+
 // src/visualizations/index.ts
 var VISUALIZATIONS = {
   "heart-terrain": renderHeartTerrain,
@@ -16301,6 +18356,8 @@ var VISUALIZATIONS = {
   "sleep-schedule": renderSleepSchedule,
   "weekday-average": renderWeekdayAverage,
   "oxygen-range": renderOxygenRange,
+  "mood-trend": renderMoodTrend,
+  "state-of-mind": renderMoodTrend,
   "workout-heart-rate": renderWorkoutHeartRate,
   "workout-zones": renderWorkoutZones,
   "workout-heart-rate-zones": renderWorkoutZones,
@@ -16312,7 +18369,18 @@ var HTML_VISUALIZATIONS = {
   "trend-tile": renderTrendTile,
   "workout-map": renderWorkoutMap,
   "workout-intervals": renderWorkoutIntervals,
-  "workout-laps": renderWorkoutIntervals
+  "workout-laps": renderWorkoutIntervals,
+  "medication-overview": renderMedicationOverview,
+  "medications": renderMedicationOverview,
+  "medication-adherence": renderMedicationOverview,
+  "medication-inventory": renderMedicationInventory,
+  "medication-adherence-summary": renderMedicationAdherenceSummary,
+  "medication-dose-status": renderMedicationDoseStatus,
+  "per-medication-dose-status": renderMedicationDoseStatus,
+  "medication-adherence-trend": renderMedicationAdherenceTrend,
+  "medication-daily-adherence-trend": renderMedicationAdherenceTrend,
+  "medication-recent-dose-events": renderMedicationRecentDoseEvents,
+  "medication-dose-events": renderMedicationRecentDoseEvents
 };
 
 // src/renderer.ts
@@ -16388,7 +18456,7 @@ async function getFrontmatterForContext(plugin, ctx) {
       }
     }
   }
-  if (parsed && isRecord2(cached)) return { ...parsed, ...cached };
+  if (parsed && isRecord5(cached)) return { ...parsed, ...cached };
   return cached != null ? cached : parsed;
 }
 function resolveFrontmatterDateVariables(config, frontmatter) {
@@ -16402,7 +18470,7 @@ function resolveFrontmatterDateVariables(config, frontmatter) {
     if (!variable) {
       return { error: `Invalid frontmatter variable in "${key}".` };
     }
-    if (!isRecord2(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
+    if (!isRecord5(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
       return {
         error: `Missing frontmatter variable "${variable}" for "${key}". Add "${variable}" to this note's frontmatter or use a literal date.`
       };
@@ -16628,7 +18696,7 @@ function recomputeSleep(original, sliced) {
   return next;
 }
 function sliceBoundaryDay(d, fromMs, toMs) {
-  var _a;
+  var _a, _b;
   const next = { ...d };
   if (d.heart) {
     const sliced = {
@@ -16676,6 +18744,27 @@ function sliceBoundaryDay(d, fromMs, toMs) {
       if (toMs !== void 0 && ms > toMs) return false;
       return true;
     });
+  }
+  const medicationEvents = (_b = d.medicationDoseEvents) != null ? _b : d.medication_dose_events;
+  if (medicationEvents) {
+    const slicedEvents = medicationEvents.filter((event) => {
+      var _a2, _b2, _c, _d, _e;
+      const timestamp = (_e = (_d = (_c = (_b2 = (_a2 = event.scheduledDate) != null ? _a2 : event.scheduled_date) != null ? _b2 : event.startDate) != null ? _c : event.start_date) != null ? _d : event.endDate) != null ? _e : event.end_date;
+      if (!timestamp) return true;
+      const ms = Date.parse(timestamp);
+      if (Number.isNaN(ms)) return true;
+      if (fromMs !== void 0 && ms < fromMs) return false;
+      if (toMs !== void 0 && ms > toMs) return false;
+      return true;
+    });
+    next.medicationDoseEvents = slicedEvents;
+    next.medication_dose_events = slicedEvents;
+    next.medicationDoseCount = slicedEvents.length;
+    next.medication_dose_count = slicedEvents.length;
+    next.medicationTakenCount = slicedEvents.filter((event) => doseStatusKind(event.status) === "taken").length;
+    next.medication_taken_count = next.medicationTakenCount;
+    next.medicationSkippedCount = slicedEvents.filter((event) => doseStatusKind(event.status) === "skipped").length;
+    next.medication_skipped_count = next.medicationSkippedCount;
   }
   return next;
 }
@@ -16743,7 +18832,7 @@ function renderTooltipContent(tooltipEl, region) {
   });
 }
 var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-function isRecord2(value) {
+function isRecord5(value) {
   return typeof value === "object" && value !== null;
 }
 function normalizeDataPointClickAction(value) {
@@ -16777,7 +18866,7 @@ function collectPayloadNavigation(payload, dates, sourcePaths) {
     payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
     return;
   }
-  if (!isRecord2(payload)) return;
+  if (!isRecord5(payload)) return;
   const date = payload.date;
   if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
   const paths = payload.sourcePaths;
@@ -17112,6 +19201,16 @@ var CATEGORIES = [
     id: "sleep",
     label: "Sleep",
     description: "Schedules, sleep stages, quality bars, and polar clocks."
+  },
+  {
+    id: "mental",
+    label: "Mood & mind",
+    description: "State of Mind mood valence with sleep and workout context."
+  },
+  {
+    id: "medications",
+    label: "Medications",
+    description: "Medication inventory, dose events, and adherence trends."
   },
   {
     id: "mobility",
@@ -17518,6 +19617,116 @@ var VISUALIZATIONS2 = [
     params: []
   },
   {
+    type: "mood-trend",
+    label: "Mood trend",
+    category: "mental",
+    description: "State of Mind mood valence over time with optional sleep and exercise context.",
+    defaultLast: 30,
+    defaultHeight: 260,
+    params: [
+      {
+        kind: "toggle",
+        key: "showContext",
+        label: "Show sleep/exercise context",
+        desc: "Draw faint sleep duration and exercise/workout bars behind the mood trend.",
+        defaultValue: true
+      }
+    ]
+  },
+  {
+    type: "medication-overview",
+    label: "Medication overview",
+    category: "medications",
+    description: "Medication inventory, taken/skipped dose summary, per-medication breakdown, adherence trend, and recent events.",
+    defaultLast: 30,
+    params: [
+      {
+        kind: "select",
+        key: "trend",
+        label: "Trend grouping",
+        desc: "Group adherence trend bars by day, week, month, or choose automatically from the date range.",
+        options: [
+          { value: "auto", label: "Auto" },
+          { value: "daily", label: "Daily" },
+          { value: "weekly", label: "Weekly" },
+          { value: "monthly", label: "Monthly" }
+        ],
+        defaultValue: "auto"
+      },
+      {
+        kind: "text",
+        key: "limit",
+        label: "Recent events",
+        desc: "Maximum number of recent medication dose events to list.",
+        defaultValue: "12",
+        validation: "positive-integer"
+      }
+    ]
+  },
+  {
+    type: "medication-inventory",
+    label: "Medication inventory",
+    category: "medications",
+    description: "Standalone inventory totals with active, archived, scheduled, and unscheduled medication rows.",
+    defaultLast: 30,
+    params: []
+  },
+  {
+    type: "medication-adherence-summary",
+    label: "Adherence summary",
+    category: "medications",
+    description: "Standalone taken/skipped/other counts and adherence percentage for the selected range.",
+    defaultLast: 30,
+    params: []
+  },
+  {
+    type: "medication-dose-status",
+    label: "Per-medication dose status",
+    category: "medications",
+    description: "Standalone dose-status breakdown and adherence rate for each medication.",
+    defaultLast: 30,
+    params: []
+  },
+  {
+    type: "medication-adherence-trend",
+    label: "Daily adherence trend",
+    category: "medications",
+    description: "Standalone adherence trend bars. Defaults to daily grouping; weekly and monthly grouping are available.",
+    defaultLast: 30,
+    params: [
+      {
+        kind: "select",
+        key: "trend",
+        label: "Trend grouping",
+        desc: "Group adherence trend bars by day, week, month, or choose automatically from the date range.",
+        options: [
+          { value: "daily", label: "Daily" },
+          { value: "weekly", label: "Weekly" },
+          { value: "monthly", label: "Monthly" },
+          { value: "auto", label: "Auto" }
+        ],
+        defaultValue: "daily"
+      }
+    ]
+  },
+  {
+    type: "medication-recent-dose-events",
+    label: "Recent dose events",
+    category: "medications",
+    description: "Standalone table of the most recent medication dose events in the selected range.",
+    defaultLast: 30,
+    params: [
+      {
+        kind: "text",
+        key: "limit",
+        label: "Recent events",
+        desc: "Maximum number of recent medication dose events to list.",
+        defaultValue: "12",
+        validation: "positive-integer"
+      }
+    ]
+  },
+  {
     type: "walking-symmetry",
     label: "Walking symmetry",
     category: "mobility",
@@ -17717,8 +19926,8 @@ function normalizeLineValue(value) {
   return value.replace(/[\r\n]/g, " ").trim();
 }
 function isPositiveNumber(value) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0;
+  const numberValue2 = Number(value);
+  return Number.isFinite(numberValue2) && numberValue2 > 0;
 }
 function isInteger(value) {
   return /^\d+$/.test(value.trim());
@@ -18085,7 +20294,7 @@ function formatBytes(bytes) {
   if (kb < 1024) return `${kb.toFixed(1)} KB`;
   return `${(kb / 1024).toFixed(1)} MB`;
 }
-function parseCsvLine3(line) {
+function parseCsvLine4(line) {
   const cells = [];
   let cell = "";
   let inQuotes = false;
@@ -18114,7 +20323,7 @@ function parseCsvPreview(content) {
   const rows = [];
   let truncatedColumns = false;
   for (const line of lines.slice(0, CSV_PREVIEW_MAX_ROWS)) {
-    const cells = parseCsvLine3(line);
+    const cells = parseCsvLine4(line);
     if (cells.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
     rows.push(cells.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }

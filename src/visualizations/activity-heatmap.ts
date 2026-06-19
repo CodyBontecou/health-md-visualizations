@@ -69,15 +69,18 @@ export const renderActivityHeatmap: RenderFn = (
 
 	// Month labels
 	let lastMonth = -1;
+	let lastMonthLabelX = -Infinity;
 	ctx.textAlign = "center";
 	for (let w = 0; w < totalWeeks; w++) {
 		const weekStart = new Date(startDay);
 		weekStart.setDate(weekStart.getDate() + w * 7);
 		const mo = weekStart.getMonth();
-		if (mo !== lastMonth) {
+		const x = padL + w * cellW + cellW / 2;
+		if (mo !== lastMonth && x - lastMonthLabelX >= 28) {
 			lastMonth = mo;
+			lastMonthLabelX = x;
 			const label = weekStart.toLocaleDateString("en-US", { month: "short" });
-			ctx.fillText(label, padL + w * cellW + cellW / 2, padT - 5);
+			ctx.fillText(label, x, padT - 5);
 		}
 	}
 

@@ -72,6 +72,18 @@ export const renderWorkoutZones: RenderFn = (
 		return;
 	}
 
+	const minH = 132;
+	if (H < minH) {
+		const dpr = activeWindow.devicePixelRatio || 1;
+		ctx.canvas.width = W * dpr;
+		ctx.canvas.height = minH * dpr;
+		ctx.canvas.style.width = W + "px";
+		ctx.canvas.style.height = minH + "px";
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.scale(dpr, dpr);
+		H = minH;
+	}
+
 	ctx.fillStyle = theme.bg;
 	ctx.fillRect(0, 0, W, H);
 

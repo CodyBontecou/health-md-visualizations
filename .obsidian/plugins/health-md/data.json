@@ -1,5 +1,5 @@
 {
-  "dataFolder": "examples/AndroidHealthExport",
+  "dataFolder": "examples/Health",
   "filePattern": "*",
   "dataFormat": "auto",
   "dataFolderGranularity": "flat",

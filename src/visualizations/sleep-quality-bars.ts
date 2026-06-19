@@ -62,6 +62,8 @@ export const renderSleepQualityBars: RenderFn = (
 		lx += 44;
 	}
 
+	const dateLabelStep = days.length <= 14 ? 1 : Math.max(1, Math.ceil(days.length / 6));
+
 	// Stacked bars
 	days.forEach((day, i) => {
 		const sl = day.sleep!;
@@ -92,8 +94,8 @@ export const renderSleepQualityBars: RenderFn = (
 			}
 			ctx.fill();
 
-			// Segment label if tall enough
-			if (segH > 14) {
+			// Segment label if tall/wide enough to avoid spilling into neighbors.
+			if (segH > 14 && bw > 28) {
 				ctx.fillStyle = hexToRgba(theme.bg, 0.7);
 				ctx.font = "7px sans-serif";
 				ctx.textAlign = "center";
@@ -102,12 +104,14 @@ export const renderSleepQualityBars: RenderFn = (
 		});
 
 		// Date label
-		const d = new Date(day.date + "T00:00:00");
-		const lbl = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-		ctx.fillStyle = theme.muted;
-		ctx.font = "8px sans-serif";
-		ctx.textAlign = "center";
-		ctx.fillText(lbl, x + bw / 2, H - 6);
+		if (i % dateLabelStep === 0 || i === days.length - 1) {
+			const d = new Date(day.date + "T00:00:00");
+			const lbl = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+			ctx.fillStyle = theme.muted;
+			ctx.font = "8px sans-serif";
+			ctx.textAlign = "center";
+			ctx.fillText(lbl, x + bw / 2, H - 6);
+		}
 
 		// Hit region
 		const barTop = padT + plotH - (sl.totalDuration / maxTotal) * plotH;

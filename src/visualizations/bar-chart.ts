@@ -177,11 +177,12 @@ export const renderBarChart: RenderFn = (
 		ctx.lineTo(W - padR, y);
 		ctx.stroke();
 		ctx.restore();
+		const labelY = Math.max(plotTop + 10, Math.min(plotTop + plotH - 6, y));
 		ctx.fillStyle = theme.muted;
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "right";
-		ctx.textBaseline = "bottom";
-		ctx.fillText(`avg ${meta.formatValue(average)}`, W - padR - 4, y - 2);
+		ctx.textBaseline = "middle";
+		ctx.fillText(`avg ${meta.formatValue(average)}`, W - padR - 4, labelY);
 	}
 
 	// Goal dashed line — always drawn when goal participates in the y-axis scale.
@@ -196,11 +197,12 @@ export const renderBarChart: RenderFn = (
 		ctx.lineTo(W - padR, y);
 		ctx.stroke();
 		ctx.restore();
+		const labelY = Math.max(plotTop + 10, Math.min(plotTop + plotH - 6, y));
 		ctx.fillStyle = accent;
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "left";
-		ctx.textBaseline = "bottom";
-		ctx.fillText(`goal ${meta.formatValue(goal)}`, padL + 2, y - 2);
+		ctx.textBaseline = "middle";
+		ctx.fillText(`goal ${meta.formatValue(goal)}`, padL + 2, labelY);
 	}
 
 	const chartW = W - padL - padR;
@@ -257,7 +259,8 @@ export const renderBarChart: RenderFn = (
 			ctx.fillText(ch, cx, plotTop + plotH + 4);
 		}
 	} else {
-		const labelStep = Math.max(1, Math.ceil(n / 6));
+		const maxLabels = Math.max(2, Math.floor(plotW / 72));
+		const labelStep = Math.max(1, Math.ceil(n / maxLabels));
 		for (let i = 0; i < n; i++) {
 			if (i % labelStep !== 0 && i !== n - 1) continue;
 			const d = new Date(days[i].date + "T00:00:00");

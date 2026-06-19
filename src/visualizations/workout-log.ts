@@ -96,14 +96,17 @@ export const renderWorkoutLog: RenderFn = (
 	const plotW = W - padL - padR;
 
 	const maxDuration = Math.max(...entries.map((e) => e.duration));
-	const rowH = Math.min(28, (H - padT - padB) / entries.length);
+	const rowH = 28;
+	const hasOverflow = entries.length * rowH > H - padT - padB;
+	const footerH = hasOverflow ? 14 : 0;
+	const visibleCount = Math.max(
+		1,
+		Math.min(entries.length, Math.floor((H - padT - padB - footerH) / rowH))
+	);
+	const visible = entries.slice(0, visibleCount);
 	const barH = rowH * 0.55;
 	const gap = (rowH - barH) / 2;
 	const radius = barH / 3;
-
-	// If entries overflow height, cap and show count
-	const visibleCount = Math.floor((H - padT - padB) / rowH);
-	const visible = entries.slice(0, visibleCount);
 
 	// X-axis tick: max duration in minutes
 	const maxMin = Math.ceil(maxDuration / 60);

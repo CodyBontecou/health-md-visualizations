@@ -32,6 +32,20 @@ showContext: true
 
 ---
 
+## Medications
+
+Medication inventory and recent dose adherence around this day.
+
+```health-viz
+type: medication-overview
+to: 2026-04-14
+last: 14
+trend: daily
+limit: 10
+```
+
+---
+
 ## Heart Rate — Full Day
 
 Heart rate terrain for today. Each column is a 15-minute bucket; intensity

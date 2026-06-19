@@ -124,11 +124,12 @@ export function renderRangeChart(
 		ctx.lineTo(W - padR, y);
 		ctx.stroke();
 		ctx.restore();
+		const labelY = Math.max(padT + 10, Math.min(padT + plotH - 6, y));
 		ctx.fillStyle = spec.warn.color;
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "left";
-		ctx.textBaseline = "bottom";
-		ctx.fillText(spec.warn.note, padL + 4, y - 2);
+		ctx.textBaseline = "middle";
+		ctx.fillText(spec.warn.note, padL + 4, labelY);
 	}
 
 	// Optional custom overlays (e.g. resting-HR reference line)

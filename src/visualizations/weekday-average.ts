@@ -187,11 +187,12 @@ export const renderWeekdayAverage: RenderFn = (
 		ctx.lineTo(W - padR, y);
 		ctx.stroke();
 		ctx.restore();
+		const labelY = Math.max(plotTop + valueLabelH + 10, Math.min(plotBottom - 8, y));
 		ctx.fillStyle = theme.muted;
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "right";
-		ctx.textBaseline = "bottom";
-		ctx.fillText(`mean ${meta.format(overallMean)}`, W - padR - 2, y - 2);
+		ctx.textBaseline = "middle";
+		ctx.fillText(`mean ${meta.format(overallMean)}`, W - padR - 2, labelY);
 	}
 
 	// Find max bar index for highlight
@@ -224,12 +225,14 @@ export const renderWeekdayAverage: RenderFn = (
 			ctx.roundRect(x, y, barW, h, [cornerR, cornerR, 0, 0]);
 			ctx.fill();
 
-			// Label above bar
-			ctx.fillStyle = isMax ? theme.fg : theme.muted;
-			ctx.font = isMax ? "600 10px sans-serif" : "10px sans-serif";
-			ctx.textAlign = "center";
-			ctx.textBaseline = "bottom";
-			ctx.fillText(meta.format(v), x + barW / 2, y - 3);
+			// Label above bar; skip on very narrow panes where labels would collide.
+			if (slot >= 42) {
+				ctx.fillStyle = isMax ? theme.fg : theme.muted;
+				ctx.font = isMax ? "600 10px sans-serif" : "10px sans-serif";
+				ctx.textAlign = "center";
+				ctx.textBaseline = "bottom";
+				ctx.fillText(meta.format(v), x + barW / 2, y - 3);
+			}
 		} else {
 			// Empty weekday track
 			ctx.fillStyle = hexToRgba(color, 0.1);

@@ -79,11 +79,15 @@ export const renderSleepPolar: RenderFn = (
 	const rows = Math.ceil(nights.length / cols);
 	const cellW = Math.floor((W - (cols - 1) * 6) / cols);
 	const cellH = Math.floor((H - (rows - 1) * 6) / rows);
-	const cellSize = Math.min(cellW, cellH);
+	const minCellSize = Math.min(42, cellW);
+	const cellSize = Math.max(minCellSize, Math.min(cellW, cellH));
+	const showDateLabels = cellSize >= 42;
+	const labelH = showDateLabels ? 16 : 0;
+	const ringSize = cellSize - labelH;
 
 	// Resize the canvas to actual content height BEFORE drawing (resizing clears the canvas)
 	const actualH = rows * (cellSize + 6) - 6;
-	if (actualH < H) {
+	if (actualH !== H) {
 		const dpr = activeWindow.devicePixelRatio || 1;
 		canvas.width = W * dpr;
 		canvas.height = actualH * dpr;
@@ -103,8 +107,8 @@ export const renderSleepPolar: RenderFn = (
 		const offsetX = col * (cellSize + 6);
 		const offsetY = row * (cellSize + 6);
 		const cx = offsetX + cellSize / 2;
-		const cy = offsetY + cellSize / 2;
-		const r = cellSize / 2 - 10;
+		const cy = offsetY + ringSize / 2;
+		const r = Math.max(4, ringSize / 2 - 8);
 
 		// Background circle
 		ctx.fillStyle = theme.isDark ? "#0d0d18" : "#f0f0f5";
@@ -143,14 +147,17 @@ export const renderSleepPolar: RenderFn = (
 
 		// Date label
 		const d = new Date(night.date + "T00:00:00");
-		ctx.fillStyle = theme.muted;
-		ctx.font = `${Math.max(7, cellSize * 0.09)}px sans-serif`;
-		ctx.textAlign = "center";
-		ctx.fillText(
-			d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-			cx,
-			offsetY + cellSize - 1
-		);
+		if (showDateLabels) {
+			ctx.fillStyle = theme.muted;
+			ctx.font = `${Math.max(7, Math.min(10, cellSize * 0.09))}px sans-serif`;
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillText(
+				d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+				cx,
+				offsetY + ringSize + labelH / 2
+			);
+		}
 
 		const sleep = night.sleep!;
 		hits.add({

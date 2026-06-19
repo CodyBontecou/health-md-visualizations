@@ -49,11 +49,12 @@ function restingOverlay(this: void, { ctx, data, yFor, yMin, yMax, padL, padR, W
 	ctx.lineTo(W - padR, y);
 	ctx.stroke();
 	ctx.restore();
+	const labelY = Math.max(yFor(yMax) + 10, Math.min(yFor(yMin) - 6, y));
 	ctx.fillStyle = RESTING_COLOR;
 	ctx.font = "9px sans-serif";
 	ctx.textAlign = "left";
-	ctx.textBaseline = "bottom";
-	ctx.fillText(`resting ~${Math.round(rest)}`, padL + 4, y - 2);
+	ctx.textBaseline = "middle";
+	ctx.fillText(`resting ~${Math.round(rest)}`, padL + 4, labelY);
 }
 
 export const renderHeartRange: RenderFn = (ctx, data, W, H, config, theme, statsEl, hits): void => {

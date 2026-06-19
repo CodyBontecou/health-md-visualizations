@@ -14,6 +14,45 @@ const SEED = 0x5eed5eed;
 const DAY_MS = 86_400_000;
 const SAMPLE_TIMEZONE_NOTE = "Floating local timestamps (no timezone) keep the sample vault portable.";
 
+const MEDICATION_CATALOG = [
+	{
+		conceptIdentifier: "rxnorm:617314",
+		displayName: "Vitamin D3",
+		generalForm: "Tablet",
+		rxnormCodes: ["617314"],
+		startDay: 0,
+		schedules: [{ minute: 8 * 60, doseQuantity: 1, unit: "tablet", scheduleType: "daily" }],
+	},
+	{
+		conceptIdentifier: "rxnorm:860975",
+		displayName: "Metformin",
+		generalForm: "Tablet",
+		rxnormCodes: ["860975"],
+		startDay: 42,
+		schedules: [
+			{ minute: 7 * 60 + 45, doseQuantity: 500, unit: "mg", scheduleType: "breakfast" },
+			{ minute: 19 * 60 + 15, doseQuantity: 500, unit: "mg", scheduleType: "dinner" },
+		],
+	},
+	{
+		conceptIdentifier: "rxnorm:991063",
+		displayName: "Omega-3",
+		generalForm: "Capsule",
+		rxnormCodes: ["991063"],
+		startDay: 98,
+		schedules: [{ minute: 12 * 60 + 30, doseQuantity: 1, unit: "capsule", scheduleType: "lunch" }],
+	},
+	{
+		conceptIdentifier: "rxnorm:1014678",
+		displayName: "Seasonal Allergy Relief",
+		generalForm: "Tablet",
+		rxnormCodes: ["1014678"],
+		startDay: 128,
+		endDay: 192,
+		schedules: [{ minute: 21 * 60, doseQuantity: 10, unit: "mg", scheduleType: "bedtime" }],
+	},
+];
+
 function mulberry32(seed) {
 	return function rand() {
 		let t = (seed += 0x6d2b79f5);
@@ -553,6 +592,80 @@ function buildMood(dateIso, rng, dayIndex, sleep, activity, workouts, recoveryFl
 	};
 }
 
+function isMedicationInInventory(medication, dayIndex) {
+	return dayIndex >= medication.startDay;
+}
+
+function isMedicationScheduled(medication, dayIndex) {
+	return dayIndex >= medication.startDay && (medication.endDay === undefined || dayIndex <= medication.endDay);
+}
+
+function medicationStatusForDose(rng, medication, recoveryFlag, scheduleIndex) {
+	const skipChance = recoveryFlag ? 0.12 : 0.045 + scheduleIndex * 0.012;
+	const lateOnlyChance = medication.displayName === "Omega-3" ? 0.04 : 0.018;
+	const roll = rng();
+	if (roll < skipChance) return "skipped";
+	if (roll < skipChance + lateOnlyChance) return "taken_late";
+	return "taken";
+}
+
+function buildMedication(dateIso, rng, dayIndex, recoveryFlag) {
+	const inventory = MEDICATION_CATALOG
+		.filter((medication) => isMedicationInInventory(medication, dayIndex))
+		.map((medication) => {
+			const isArchived = medication.endDay !== undefined && dayIndex > medication.endDay;
+			return {
+				name: medication.displayName,
+				display_name: medication.displayName,
+				concept_identifier: medication.conceptIdentifier,
+				general_form: medication.generalForm,
+				is_archived: isArchived,
+				has_schedule: !isArchived,
+				rxnorm_codes: medication.rxnormCodes,
+				related_codings: medication.rxnormCodes.map((code) => ({ system: "RxNorm", code })),
+			};
+		});
+	const events = [];
+	for (const medication of MEDICATION_CATALOG) {
+		if (!isMedicationScheduled(medication, dayIndex)) continue;
+		medication.schedules.forEach((schedule, scheduleIndex) => {
+			const status = medicationStatusForDose(rng, medication, recoveryFlag, scheduleIndex);
+			const scheduledDate = localTimestamp(dateIso, schedule.minute);
+			const delayMinutes = status === "taken_late"
+				? Math.round(randBetween(rng, 38, 115))
+				: Math.round(randBetween(rng, -4, 12));
+			const startDate = status === "skipped" ? undefined : localTimestamp(dateIso, schedule.minute + delayMinutes);
+			events.push({
+				id: `${dateIso}-${medication.conceptIdentifier}-${scheduleIndex}`.replace(/[^a-zA-Z0-9-]/g, "-"),
+				name: medication.displayName,
+				medication_concept_identifier: medication.conceptIdentifier,
+				status: status === "taken_late" ? "taken" : status,
+				status_display: status === "taken_late" ? "Taken late" : status === "skipped" ? "Skipped" : "Taken",
+				scheduled_date: scheduledDate,
+				start_date: startDate,
+				end_date: startDate ? localTimestamp(dateIso, schedule.minute + delayMinutes + 1) : undefined,
+				dose_quantity: schedule.doseQuantity,
+				unit: schedule.unit,
+				schedule_type: schedule.scheduleType,
+				metadata: status === "skipped" ? { reason: choose(rng, ["travel", "ran out", "forgot", "felt unwell"]) } : undefined,
+			});
+		});
+	}
+	const taken = events.filter((event) => event.status === "taken").length;
+	const skipped = events.filter((event) => event.status === "skipped").length;
+	return {
+		medication_count: inventory.length,
+		active_medication_count: inventory.filter((item) => !item.is_archived).length,
+		archived_medication_count: inventory.filter((item) => item.is_archived).length,
+		medication_details: inventory,
+		medications: inventory.map((item) => item.display_name),
+		medication_dose_count: events.length,
+		medication_taken_count: taken,
+		medication_skipped_count: skipped,
+		medication_dose_events: events,
+	};
+}
+
 function buildDay(dateIso, dayIndex, totalDays) {
 	const rng = rngFor(dateIso, "day");
 	const recoveryFlag = dayIndex % 37 === 11 || dayIndex % 53 === 29;
@@ -568,16 +681,31 @@ function buildDay(dateIso, dayIndex, totalDays) {
 	const vitals = buildVitals(dateIso, rngFor(dateIso, "vitals"), dayIndex, sleep, recoveryFlag);
 	const mobility = buildMobility(rngFor(dateIso, "mobility"), dayIndex, totalDays, recoveryFlag);
 	const mood = buildMood(dateIso, rngFor(dateIso, "mood"), dayIndex, sleep, finalActivity, refreshedWorkouts, recoveryFlag);
+	const stateOfMind = {
+		entries: mood.entries,
+		samples: mood.entries,
+		averageValence: mood.averageValence,
+		minValence: mood.minValence,
+		maxValence: mood.maxValence,
+		primaryLabel: mood.primaryLabel,
+	};
+	const medication = buildMedication(dateIso, rngFor(dateIso, "medication"), dayIndex, recoveryFlag);
 	const day = {
 		type: "health-data",
+		schema: "healthmd.health_data",
+		schema_version: 2,
 		date: dateIso,
 		units: "metric",
+		unit_system: "metric",
 		activity: finalActivity,
 		heart,
 		vitals,
 		sleep,
 		mobility,
 		mood,
+		stateOfMind,
+		state_of_mind: stateOfMind,
+		...medication,
 		hearing: {
 			headphoneAudioLevel: round(clamp(64 + Math.sin(dayIndex / 11) * 3 + randBetween(rng, -4, 5), 48, 82), 1),
 		},
@@ -605,7 +733,7 @@ async function main() {
 		await writeFile(path.join(OUT_DIR, `${dates[i]}.json`), `${JSON.stringify(day)}\n`);
 	}
 
-	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, respiratory rate, mobility, mood / State of Mind entries, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
+	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, respiratory rate, mobility, mood / State of Mind entries (\`mood.entries\`, \`stateOfMind\`, and \`state_of_mind\`), schema v2 medication inventory/dose events, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
 	await writeFile(path.join(OUT_DIR, "README.md"), readme);
 
 	console.log(`Wrote ${dates.length} mock Health.md JSON files to ${path.relative(REPO_ROOT, OUT_DIR)}`);

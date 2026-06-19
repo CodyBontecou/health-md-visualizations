@@ -76,12 +76,14 @@
 /* Stats row */
 .health-md-stats {
 	display: flex;
-	gap: 16px;
+	flex-wrap: wrap;
+	gap: 6px 16px;
 	justify-content: center;
 	padding: 8px 0 4px;
 }
 
 .health-md-stat-box {
+	min-width: 72px;
 	text-align: center;
 }
 
@@ -118,6 +120,7 @@
 
 .health-md-summary-kpi {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: baseline;
 	gap: 6px;
 	line-height: 1;
@@ -179,8 +182,9 @@
 
 .health-md-trend-header {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: baseline;
-	gap: 10px;
+	gap: 4px 10px;
 }
 
 .health-md-trend-name {
@@ -190,8 +194,9 @@
 
 .health-md-trend-delta-row {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: baseline;
-	gap: 8px;
+	gap: 4px 8px;
 	line-height: 1.1;
 }
 
@@ -778,8 +783,9 @@
 
 .health-md-med-breakdown-header {
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: space-between;
-	gap: 8px;
+	gap: 4px 8px;
 	align-items: baseline;
 }
 

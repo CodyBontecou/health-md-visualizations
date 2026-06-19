@@ -250,10 +250,24 @@ export const renderWorkoutTrends: RenderFn = (
 
 	const padL = 34;
 	const padR = 18;
-	const padT = 34;
+	const padT = 52;
 	const padB = 22;
 	const gap = metrics.length > 1 ? 34 : 18;
-	const panelH = (H - padT - padB - gap * (metrics.length - 1)) / metrics.length;
+	const minPanelH = metrics.length > 1 ? 32 : 90;
+	const neededH = padT + padB + gap * (metrics.length - 1) + minPanelH * metrics.length;
+	if (H < neededH) {
+		const dpr = activeWindow.devicePixelRatio || 1;
+		ctx.canvas.width = W * dpr;
+		ctx.canvas.height = neededH * dpr;
+		ctx.canvas.style.width = W + "px";
+		ctx.canvas.style.height = neededH + "px";
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.scale(dpr, dpr);
+		H = neededH;
+		ctx.fillStyle = theme.bg;
+		ctx.fillRect(0, 0, W, H);
+	}
+	const panelH = Math.max(minPanelH, (H - padT - padB - gap * (metrics.length - 1)) / metrics.length);
 	const panelW = W - padL - padR;
 
 	ctx.fillStyle = theme.fg;

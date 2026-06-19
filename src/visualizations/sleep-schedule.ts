@@ -184,7 +184,7 @@ export const renderSleepSchedule: RenderFn = (
 	const rowH = 26;
 	const rowGap = 6;
 	const padT = 10;
-	const axisH = 20;
+	const axisH = 34;
 	const gutterW = 104;
 	const rightPad = 16;
 	const barAreaX = gutterW;
@@ -313,15 +313,15 @@ export const renderSleepSchedule: RenderFn = (
 		ctx.lineWidth = 1;
 		ctx.setLineDash([3, 3]);
 		ctx.beginPath();
-		ctx.moveTo(gx0, plotTop + plotH + 10);
-		ctx.lineTo(gx1, plotTop + plotH + 10);
+		ctx.moveTo(gx0, plotTop + plotH + 18);
+		ctx.lineTo(gx1, plotTop + plotH + 18);
 		ctx.stroke();
 		ctx.restore();
 		ctx.fillStyle = theme.colors.sleep.rem;
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "center";
 		ctx.textBaseline = "top";
-		ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 14);
+		ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 22);
 	}
 
 	// Bars per night

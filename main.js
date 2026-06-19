@@ -13462,9 +13462,13 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
   const rows = Math.ceil(nights.length / cols);
   const cellW = Math.floor((W - (cols - 1) * 6) / cols);
   const cellH = Math.floor((H - (rows - 1) * 6) / rows);
-  const cellSize = Math.min(cellW, cellH);
+  const minCellSize = Math.min(42, cellW);
+  const cellSize = Math.max(minCellSize, Math.min(cellW, cellH));
+  const showDateLabels = cellSize >= 42;
+  const labelH = showDateLabels ? 16 : 0;
+  const ringSize = cellSize - labelH;
   const actualH = rows * (cellSize + 6) - 6;
-  if (actualH < H) {
+  if (actualH !== H) {
     const dpr = activeWindow.devicePixelRatio || 1;
     canvas.width = W * dpr;
     canvas.height = actualH * dpr;
@@ -13481,8 +13485,8 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
     const offsetX = col * (cellSize + 6);
     const offsetY = row * (cellSize + 6);
     const cx = offsetX + cellSize / 2;
-    const cy = offsetY + cellSize / 2;
-    const r = cellSize / 2 - 10;
+    const cy = offsetY + ringSize / 2;
+    const r = Math.max(4, ringSize / 2 - 8);
     ctx.fillStyle = theme.isDark ? "#0d0d18" : "#f0f0f5";
     ctx.beginPath();
     ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
@@ -13511,14 +13515,17 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
     ctx.arc(cx, cy, 5, 0, Math.PI * 2);
     ctx.fill();
     const d = /* @__PURE__ */ new Date(night.date + "T00:00:00");
-    ctx.fillStyle = theme.muted;
-    ctx.font = `${Math.max(7, cellSize * 0.09)}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(
-      d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      cx,
-      offsetY + cellSize - 1
-    );
+    if (showDateLabels) {
+      ctx.fillStyle = theme.muted;
+      ctx.font = `${Math.max(7, Math.min(10, cellSize * 0.09))}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(
+        d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        cx,
+        offsetY + ringSize + labelH / 2
+      );
+    }
     const sleep = night.sleep;
     hits.add({
       shape: "circle",
@@ -14167,7 +14174,7 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   );
   if (!days.length) return;
   const padL = 36, padR = 16, padT = 16, padB = 28;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
   const values = days.map((d) => {
     var _a;
@@ -14180,7 +14187,7 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const minVal = Math.min(...values);
   const maxVal = Math.max(...values);
   const range = maxVal - minVal || 1;
-  const xFor = (i) => padL + i / (days.length - 1 || 1) * plotW;
+  const xFor = (i) => padL + i / (days.length - 1 || 1) * plotW2;
   const yFor = (v) => padT + plotH - (v - minVal) / range * plotH;
   const gridCount = 4;
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -14318,15 +14325,18 @@ var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.fillText(DOW[dow], padL - 3, y);
   }
   let lastMonth = -1;
+  let lastMonthLabelX = -Infinity;
   ctx.textAlign = "center";
   for (let w = 0; w < totalWeeks; w++) {
     const weekStart = new Date(startDay);
     weekStart.setDate(weekStart.getDate() + w * 7);
     const mo = weekStart.getMonth();
-    if (mo !== lastMonth) {
+    const x = padL + w * cellW + cellW / 2;
+    if (mo !== lastMonth && x - lastMonthLabelX >= 28) {
       lastMonth = mo;
+      lastMonthLabelX = x;
       const label = weekStart.toLocaleDateString("en-US", { month: "short" });
-      ctx.fillText(label, padL + w * cellW + cellW / 2, padT - 5);
+      ctx.fillText(label, x, padT - 5);
     }
   }
   for (let w = 0; w < totalWeeks; w++) {
@@ -14394,10 +14404,10 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   const days = data.filter((d) => d.sleep && d.sleep.totalDuration > 0);
   if (!days.length) return;
   const padL = 40, padR = 16, padT = 20, padB = 28;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
   const maxTotal = Math.max(...days.map((d) => d.sleep.totalDuration));
-  const barW = plotW / days.length;
+  const barW = plotW2 / days.length;
   const gap = Math.max(1, barW * 0.15);
   const maxHours = Math.ceil(maxTotal / 3600);
   const gridStep = maxHours <= 8 ? 2 : 4;
@@ -14430,6 +14440,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
     ctx.fillText(item.label, lx + 10, padT - 7);
     lx += 44;
   }
+  const dateLabelStep = days.length <= 14 ? 1 : Math.max(1, Math.ceil(days.length / 6));
   days.forEach((day, i) => {
     const sl = day.sleep;
     const x = padL + i * barW + gap / 2;
@@ -14454,19 +14465,21 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
         ctx.rect(x, stackY, bw, segH);
       }
       ctx.fill();
-      if (segH > 14) {
+      if (segH > 14 && bw > 28) {
         ctx.fillStyle = hexToRgba(theme.bg, 0.7);
         ctx.font = "7px sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(label, x + bw / 2, stackY + segH / 2 + 2.5);
       }
     });
-    const d = /* @__PURE__ */ new Date(day.date + "T00:00:00");
-    const lbl = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    ctx.fillStyle = theme.muted;
-    ctx.font = "8px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(lbl, x + bw / 2, H - 6);
+    if (i % dateLabelStep === 0 || i === days.length - 1) {
+      const d = /* @__PURE__ */ new Date(day.date + "T00:00:00");
+      const lbl = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      ctx.fillStyle = theme.muted;
+      ctx.font = "8px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(lbl, x + bw / 2, H - 6);
+    }
     const barTop = padT + plotH - sl.totalDuration / maxTotal * plotH;
     hits.add({
       shape: "rect",
@@ -14680,14 +14693,19 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     return;
   }
   const padL = 40, padR = 16, padT = 12, padB = 8;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const maxDuration = Math.max(...entries.map((e) => e.duration));
-  const rowH = Math.min(28, (H - padT - padB) / entries.length);
+  const rowH = 28;
+  const hasOverflow = entries.length * rowH > H - padT - padB;
+  const footerH = hasOverflow ? 14 : 0;
+  const visibleCount = Math.max(
+    1,
+    Math.min(entries.length, Math.floor((H - padT - padB - footerH) / rowH))
+  );
+  const visible = entries.slice(0, visibleCount);
   const barH = rowH * 0.55;
   const gap = (rowH - barH) / 2;
   const radius = barH / 3;
-  const visibleCount = Math.floor((H - padT - padB) / rowH);
-  const visible = entries.slice(0, visibleCount);
   const maxMin = Math.ceil(maxDuration / 60);
   const tickStep = maxMin <= 60 ? 15 : maxMin <= 120 ? 30 : 60;
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -14696,7 +14714,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   ctx.font = "8px sans-serif";
   ctx.textAlign = "center";
   for (let t = 0; t <= maxMin; t += tickStep) {
-    const x = padL + t / maxMin * plotW;
+    const x = padL + t / maxMin * plotW2;
     ctx.beginPath();
     ctx.moveTo(x, padT);
     ctx.lineTo(x, padT + visible.length * rowH);
@@ -14706,7 +14724,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   visible.forEach((entry, i) => {
     var _a, _b;
     const y = padT + i * rowH + gap;
-    const barW = entry.duration / (maxMin * 60) * plotW;
+    const barW = entry.duration / (maxMin * 60) * plotW2;
     const ci = typeColorIndex(entry.type);
     const hue = HUE_OFFSETS[ci];
     const barColor = `hsl(${hue},60%,${theme.isDark ? 55 : 42}%)`;
@@ -15523,24 +15541,24 @@ function renderRangeChart(ctx, data, W, H, theme, statsEl, hits, spec) {
   }
   const padL = (_a = spec.padL) != null ? _a : 36;
   const padR = 16, padT = 14, padB = 24;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
   const observedMin = Math.min(...present.map((p) => p.min));
   const observedMax = Math.max(...present.map((p) => p.max));
   const { yMin, yMax, gridStep } = spec.yAxis({ min: observedMin, max: observedMax });
   const yRange = yMax - yMin || 1;
   const n = points.length;
-  const xFor = (i) => padL + (n === 1 ? plotW / 2 : i / (n - 1) * plotW);
+  const xFor = (i) => padL + (n === 1 ? plotW2 / 2 : i / (n - 1) * plotW2);
   const yFor = (v) => padT + plotH - (v - yMin) / yRange * plotH;
   if (spec.warn) {
     ctx.fillStyle = hexToRgba(spec.warn.color, theme.isDark ? 0.12 : 0.08);
     if (spec.warn.lo != null) {
       const yThreshold = yFor(spec.warn.lo);
-      ctx.fillRect(padL, yThreshold, plotW, padT + plotH - yThreshold);
+      ctx.fillRect(padL, yThreshold, plotW2, padT + plotH - yThreshold);
     }
     if (spec.warn.hi != null) {
       const yThreshold = yFor(spec.warn.hi);
-      ctx.fillRect(padL, padT, plotW, yThreshold - padT);
+      ctx.fillRect(padL, padT, plotW2, yThreshold - padT);
     }
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -15570,16 +15588,17 @@ function renderRangeChart(ctx, data, W, H, theme, statsEl, hits, spec) {
     ctx.lineTo(W - padR, y);
     ctx.stroke();
     ctx.restore();
+    const labelY = Math.max(padT + 10, Math.min(padT + plotH - 6, y));
     ctx.fillStyle = spec.warn.color;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "left";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(spec.warn.note, padL + 4, y - 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(spec.warn.note, padL + 4, labelY);
   }
   if (spec.overlays) {
     spec.overlays({ ctx, data, yFor, yMin, yMax, padL, padR, W });
   }
-  const capW = Math.max(4, Math.min(10, plotW / Math.max(1, n) * 0.45));
+  const capW = Math.max(4, Math.min(10, plotW2 / Math.max(1, n) * 0.45));
   const capRadius = capW / 2;
   const avgDotInnerLight = (_c = spec.avgDotInnerLightFill) != null ? _c : "#000";
   points.forEach((p, i) => {
@@ -15699,11 +15718,12 @@ function restingOverlay({ ctx, data, yFor, yMin, yMax, padL, padR, W }) {
   ctx.lineTo(W - padR, y);
   ctx.stroke();
   ctx.restore();
+  const labelY = Math.max(yFor(yMax) + 10, Math.min(yFor(yMin) - 6, y));
   ctx.fillStyle = RESTING_COLOR;
   ctx.font = "9px sans-serif";
   ctx.textAlign = "left";
-  ctx.textBaseline = "bottom";
-  ctx.fillText(`resting ~${Math.round(rest)}`, padL + 4, y - 2);
+  ctx.textBaseline = "middle";
+  ctx.fillText(`resting ~${Math.round(rest)}`, padL + 4, labelY);
 }
 var renderHeartRange = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const metric = config.metric || "heart-rate";
@@ -15877,11 +15897,12 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.lineTo(W - padR, y);
     ctx.stroke();
     ctx.restore();
+    const labelY = Math.max(plotTop + 10, Math.min(plotTop + plotH - 6, y));
     ctx.fillStyle = theme.muted;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`avg ${meta.formatValue(average3)}`, W - padR - 4, y - 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(`avg ${meta.formatValue(average3)}`, W - padR - 4, labelY);
   }
   if (goal && chartEffectiveMax > 0) {
     const y = plotTop + plotH - goal / denom * plotH;
@@ -15894,11 +15915,12 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.lineTo(W - padR, y);
     ctx.stroke();
     ctx.restore();
+    const labelY = Math.max(plotTop + 10, Math.min(plotTop + plotH - 6, y));
     ctx.fillStyle = accent;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "left";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`goal ${meta.formatValue(goal)}`, padL + 2, y - 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(`goal ${meta.formatValue(goal)}`, padL + 2, labelY);
   }
   const chartW = W - padL - padR;
   const slot = chartW / n;
@@ -15948,7 +15970,8 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
       ctx.fillText(ch, cx, plotTop + plotH + 4);
     }
   } else {
-    const labelStep = Math.max(1, Math.ceil(n / 6));
+    const maxLabels = Math.max(2, Math.floor(plotW / 72));
+    const labelStep = Math.max(1, Math.ceil(n / maxLabels));
     for (let i = 0; i < n; i++) {
       if (i % labelStep !== 0 && i !== n - 1) continue;
       const d = /* @__PURE__ */ new Date(days[i].date + "T00:00:00");
@@ -16110,7 +16133,7 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const rowH = 26;
   const rowGap = 6;
   const padT = 10;
-  const axisH = 20;
+  const axisH = 34;
   const gutterW = 104;
   const rightPad = 16;
   const barAreaX = gutterW;
@@ -16216,15 +16239,15 @@ var renderSleepSchedule = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(gx0, plotTop + plotH + 10);
-    ctx.lineTo(gx1, plotTop + plotH + 10);
+    ctx.moveTo(gx0, plotTop + plotH + 18);
+    ctx.lineTo(gx1, plotTop + plotH + 18);
     ctx.stroke();
     ctx.restore();
     ctx.fillStyle = theme.colors.sleep.rem;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 14);
+    ctx.fillText(`goal ${sleepGoalHours}h`, (gx0 + gx1) / 2, plotTop + plotH + 22);
   }
   nights.forEach((n, i) => {
     const wb = nightBounds[i];
@@ -16466,11 +16489,12 @@ var renderWeekdayAverage = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.lineTo(W - padR, y);
     ctx.stroke();
     ctx.restore();
+    const labelY = Math.max(plotTop + valueLabelH + 10, Math.min(plotBottom - 8, y));
     ctx.fillStyle = theme.muted;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`mean ${meta.format(overallMean)}`, W - padR - 2, y - 2);
+    ctx.textBaseline = "middle";
+    ctx.fillText(`mean ${meta.format(overallMean)}`, W - padR - 2, labelY);
   }
   let maxIdx = 0;
   for (let i = 1; i < 7; i++) {
@@ -16496,11 +16520,13 @@ var renderWeekdayAverage = (ctx, data, W, H, config, theme, statsEl, hits) => {
       ctx.beginPath();
       ctx.roundRect(x, y, barW, h, [cornerR, cornerR, 0, 0]);
       ctx.fill();
-      ctx.fillStyle = isMax ? theme.fg : theme.muted;
-      ctx.font = isMax ? "600 10px sans-serif" : "10px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(meta.format(v), x + barW / 2, y - 3);
+      if (slot >= 42) {
+        ctx.fillStyle = isMax ? theme.fg : theme.muted;
+        ctx.font = isMax ? "600 10px sans-serif" : "10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(meta.format(v), x + barW / 2, y - 3);
+      }
     } else {
       ctx.fillStyle = hexToRgba(color, 0.1);
       ctx.beginPath();
@@ -16667,6 +16693,17 @@ var renderWorkoutZones = (ctx, data, W, H, config, theme, statsEl, hits) => {
     drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No heart-rate zones for this workout");
     statsEl.empty();
     return;
+  }
+  const minH = 132;
+  if (H < minH) {
+    const dpr = activeWindow.devicePixelRatio || 1;
+    ctx.canvas.width = W * dpr;
+    ctx.canvas.height = minH * dpr;
+    ctx.canvas.style.width = W + "px";
+    ctx.canvas.style.height = minH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    H = minH;
   }
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
@@ -16848,7 +16885,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   const padR = 18;
   const padT = 46;
   const padB = 34;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = Math.max(24, H - padT - padB);
   const axisY = padT + plotH * 0.58;
   let xMin = Math.max(0, Math.floor(Math.min(...values) - 8));
@@ -16858,7 +16895,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
     xMax = Math.max(xMax, Math.ceil(maxHr));
   }
   if (xMax - xMin < 20) xMax = xMin + 20;
-  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW;
+  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW2;
   ctx.fillStyle = theme.fg;
   ctx.font = "600 13px sans-serif";
   ctx.textAlign = "left";
@@ -16904,7 +16941,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(padL, axisY);
-  ctx.lineTo(padL + plotW, axisY);
+  ctx.lineTo(padL + plotW2, axisY);
   ctx.stroke();
   if (stats.lo != null && stats.hi != null) {
     ctx.strokeStyle = hexToRgba(theme.colors.heart, 0.72);
@@ -17011,9 +17048,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   const padR = 14;
   const padT = 14;
   const padB = 22;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
-  const xFor = (t) => padL + (t - tMin) / (tMax - tMin || 1) * plotW;
+  const xFor = (t) => padL + (t - tMin) / (tMax - tMin || 1) * plotW2;
   const yFor = (v) => padT + (1 - (v - yMin) / (yMax - yMin || 1)) * plotH;
   if (maxHr) {
     for (const z of ZONES) {
@@ -17023,12 +17060,12 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       const yTop = yFor(Math.min(hi2, yMax));
       const yBot = yFor(Math.max(lo2, yMin));
       ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 40 : 70}%,0.13)`;
-      ctx.fillRect(padL, yTop, plotW, yBot - yTop);
+      ctx.fillRect(padL, yTop, plotW2, yBot - yTop);
       ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 70 : 40}%,0.6)`;
       ctx.font = "9px sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
-      ctx.fillText(z.label, padL + plotW - 3, (yTop + yBot) / 2);
+      ctx.fillText(z.label, padL + plotW2 - 3, (yTop + yBot) / 2);
     }
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -17044,7 +17081,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     const y = yFor(v);
     ctx.beginPath();
     ctx.moveTo(padL, y);
-    ctx.lineTo(padL + plotW, y);
+    ctx.lineTo(padL + plotW2, y);
     ctx.stroke();
     ctx.fillText(String(v), padL - 4, y);
   }
@@ -17090,8 +17127,8 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     }
   }
   const STRIDE = 4;
-  for (let x = padL; x < padL + plotW; x += STRIDE) {
-    const tCenter = tMin + (x + STRIDE / 2 - padL) / plotW * (tMax - tMin);
+  for (let x = padL; x < padL + plotW2; x += STRIDE) {
+    const tCenter = tMin + (x + STRIDE / 2 - padL) / plotW2 * (tMax - tMin);
     let bestIdx = 0;
     let bestDist = Infinity;
     for (let i = 0; i < pts.length; i++) {
@@ -17346,10 +17383,24 @@ var renderWorkoutTrends = (ctx, data, W, H, config, theme, statsEl, hits) => {
   }
   const padL = 34;
   const padR = 18;
-  const padT = 34;
+  const padT = 52;
   const padB = 22;
   const gap = metrics.length > 1 ? 34 : 18;
-  const panelH = (H - padT - padB - gap * (metrics.length - 1)) / metrics.length;
+  const minPanelH = metrics.length > 1 ? 32 : 90;
+  const neededH = padT + padB + gap * (metrics.length - 1) + minPanelH * metrics.length;
+  if (H < neededH) {
+    const dpr = activeWindow.devicePixelRatio || 1;
+    ctx.canvas.width = W * dpr;
+    ctx.canvas.height = neededH * dpr;
+    ctx.canvas.style.width = W + "px";
+    ctx.canvas.style.height = neededH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    H = neededH;
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, H);
+  }
+  const panelH = Math.max(minPanelH, (H - padT - padB - gap * (metrics.length - 1)) / metrics.length);
   const panelW = W - padL - padR;
   ctx.fillStyle = theme.fg;
   ctx.font = "700 13px sans-serif";
@@ -17572,12 +17623,12 @@ function renderCanvasPolyline(host, route, colorBy, hrSamples, theme, width, hei
   const midLat = (minLat + maxLat) / 2;
   const lonScale = Math.cos(midLat * Math.PI / 180);
   const padding = 14;
-  const plotW = width - padding * 2;
+  const plotW2 = width - padding * 2;
   const plotH = height - padding * 2;
   const lonSpan = (maxLon - minLon) * lonScale || 1e-6;
   const latSpan = maxLat - minLat || 1e-6;
-  const scale = Math.min(plotW / lonSpan, plotH / latSpan);
-  const offX = padding + (plotW - lonSpan * scale) / 2;
+  const scale = Math.min(plotW2 / lonSpan, plotH / latSpan);
+  const offX = padding + (plotW2 - lonSpan * scale) / 2;
   const offY = padding + (plotH - latSpan * scale) / 2;
   const project = (p) => [
     offX + (p.longitude - minLon) * lonScale * scale,
@@ -17782,11 +17833,11 @@ var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const showContext = configFlag(config.showContext, true);
   const padL = 54;
   const padR = 16;
-  const padT = 48;
+  const padT = showContext ? 72 : 56;
   const padB = 34;
-  const plotW = W - padL - padR;
+  const plotW2 = W - padL - padR;
   const plotH = H - padT - padB;
-  const slot = plotW / Math.max(points.length, 1);
+  const slot = plotW2 / Math.max(points.length, 1);
   const values = moodPoints.map((point) => point.valence).filter(Number.isFinite);
   const avg4 = values.reduce((sum, value) => sum + value, 0) / values.length;
   const firstDate = points[0].date;

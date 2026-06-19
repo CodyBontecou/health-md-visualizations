@@ -99,6 +99,13 @@ height: 260
 showContext: true
 ```
 
+```health-viz
+type: medication-overview
+last: 30
+trend: auto
+limit: 12
+```
+
 ---
 
 ## Patterns
