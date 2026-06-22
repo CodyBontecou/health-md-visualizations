@@ -27,6 +27,18 @@ import { renderWorkoutMap } from "./workout-map";
 import { renderWorkoutIntervals } from "./workout-intervals";
 import { renderMoodTrend } from "./mood-trend";
 import {
+	renderMoodAssociationBreakdown,
+	renderMoodAssociationMatrix,
+	renderMoodCalendarHeatmap,
+	renderMoodCircadianClock,
+	renderMoodDayTimeline,
+	renderMoodKindSplit,
+	renderMoodLabelCloud,
+	renderMoodRecoveryTile,
+	renderMoodSleepScatter,
+	renderMoodVolatility,
+} from "./mood-insights";
+import {
 	renderMedicationAdherenceSummary,
 	renderMedicationAdherenceTrend,
 	renderMedicationDoseStatus,
@@ -56,6 +68,16 @@ export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"oxygen-range": renderOxygenRange,
 	"mood-trend": renderMoodTrend,
 	"state-of-mind": renderMoodTrend,
+	"mood-calendar-heatmap": renderMoodCalendarHeatmap,
+	"mood-sleep-scatter": renderMoodSleepScatter,
+	"mood-day-timeline": renderMoodDayTimeline,
+	"mood-association-breakdown": renderMoodAssociationBreakdown,
+	"mood-label-cloud": renderMoodLabelCloud,
+	"mood-volatility": renderMoodVolatility,
+	"mood-kind-split": renderMoodKindSplit,
+	"mood-circadian-clock": renderMoodCircadianClock,
+	"mood-recovery-tile": renderMoodRecoveryTile,
+	"mood-association-matrix": renderMoodAssociationMatrix,
 	"workout-heart-rate": renderWorkoutHeartRate,
 	"workout-zones": renderWorkoutZones,
 	"workout-heart-rate-zones": renderWorkoutZones,

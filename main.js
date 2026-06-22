@@ -15920,7 +15920,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const max = Math.max(...values, 0);
   const nonZero = values.filter((v) => v > 0);
   const total = values.reduce((s, v) => s + v, 0);
-  const average3 = nonZero.length ? total / nonZero.length : 0;
+  const average4 = nonZero.length ? total / nonZero.length : 0;
   const goal = config.goal != null ? Number(config.goal) : void 0;
   const showAverage = config.showAverage === void 0 || config.showAverage === "true" || config.showAverage === 1 || config.showAverage === "1";
   const chartEffectiveMax = goal && goal > max ? goal : max;
@@ -15933,7 +15933,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const padR = 36;
   const plotTop = padT + kpiH;
   const plotH = H - plotTop - padB;
-  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average3);
+  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average4);
   const subtitle = `${formatDate(days[0].date)} \u2013 ${formatDate(days[n - 1].date)}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -15953,8 +15953,8 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.textBaseline = "top";
     ctx.fillText(meta.formatValue(chartEffectiveMax), W - 4, plotTop);
   }
-  if (showAverage && average3 > 0 && chartEffectiveMax > 0) {
-    const y = plotTop + plotH - average3 / denom * plotH;
+  if (showAverage && average4 > 0 && chartEffectiveMax > 0) {
+    const y = plotTop + plotH - average4 / denom * plotH;
     ctx.save();
     ctx.strokeStyle = hexToRgba(theme.fg, 0.4);
     ctx.lineWidth = 1;
@@ -15969,7 +15969,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(`avg ${meta.formatValue(average3)}`, W - padR - 4, labelY);
+    ctx.fillText(`avg ${meta.formatValue(average4)}`, W - padR - 4, labelY);
   }
   if (goal && chartEffectiveMax > 0) {
     const y = plotTop + plotH - goal / denom * plotH;
@@ -16062,7 +16062,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
       value: meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(total),
       label: `Total ${meta.unit}`
     },
-    { value: meta.formatValue(average3), label: "Daily avg" },
+    { value: meta.formatValue(average4), label: "Daily avg" },
     { value: meta.formatValue(best), label: `Best (${bestLabel})` }
   ]);
 };
@@ -17843,7 +17843,10 @@ var renderWorkoutIntervals = (data, el, config, _theme) => {
   }
 };
 
-// src/visualizations/mood-trend.ts
+// src/mood-viz-utils.ts
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
 function configFlag(value, defaultValue) {
   if (value === void 0) return defaultValue;
   if (typeof value === "number") return value !== 0;
@@ -17852,17 +17855,36 @@ function configFlag(value, defaultValue) {
   if (["true", "1", "yes", "on"].includes(normalized)) return true;
   return defaultValue;
 }
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function configNumber(value, fallback) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
 }
-function moodColor(valence, theme) {
-  if (valence === void 0) return theme.muted;
+function configString(value, fallback) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+function average3(values) {
+  const finite = values.filter(Number.isFinite);
+  return finite.length ? finite.reduce((sum, value) => sum + value, 0) / finite.length : void 0;
+}
+function moodHex(valence, theme) {
+  if (valence === void 0 || !Number.isFinite(valence)) return theme.muted;
   if (valence < -0.16) return theme.colors.heart;
   if (valence > 0.16) return theme.colors.accent;
   return theme.colors.secondary;
 }
+function moodRgba(valence, theme, alpha = 0.75) {
+  return hexToRgba(moodHex(valence, theme), alpha);
+}
 function yForValence(valence, top, height) {
   return top + (1 - (clamp(valence, -1, 1) + 1) / 2) * height;
+}
+function valencePercent(valence) {
+  if (valence === void 0 || !Number.isFinite(valence)) return "\u2014";
+  return `${Math.round((clamp(valence, -1, 1) + 1) / 2 * 100)}%`;
 }
 function dayExerciseMinutes(day) {
   var _a, _b, _c;
@@ -17874,19 +17896,175 @@ function shortDate(iso) {
   const d = /* @__PURE__ */ new Date(iso + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
-var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, W, H);
-  const points = data.map((day) => {
+function parseHour(timestamp, fallbackDate) {
+  var _a;
+  if (!timestamp) return void 0;
+  const trimmed = timestamp.trim();
+  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
+  const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
+  const match = dateTime != null ? dateTime : timeOnly;
+  if (!match) {
+    if (fallbackDate && trimmed === fallbackDate) return 12;
+    return void 0;
+  }
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  const s = Number((_a = match[3]) != null ? _a : 0);
+  if (h > 23 || m > 59 || s > 59) return void 0;
+  return h + m / 60 + s / 3600;
+}
+function normalizeKind(kind) {
+  const normalized = (kind != null ? kind : "").replace(/[_-]+/g, " ").toLowerCase();
+  if (normalized.includes("daily")) return "daily";
+  if (normalized.includes("momentary") || normalized.includes("emotion")) return "momentary";
+  return "other";
+}
+function kindLabel(kind) {
+  switch (normalizeKind(kind)) {
+    case "daily":
+      return "Daily Mood";
+    case "momentary":
+      return "Momentary Emotion";
+    default:
+      return kind || "Mood";
+  }
+}
+function entryLabels(entry) {
+  var _a;
+  const labels = ((_a = entry.labels) == null ? void 0 : _a.length) ? entry.labels : entry.label ? [entry.label] : [];
+  return labels.filter((item, index, all) => Boolean(item) && all.indexOf(item) === index);
+}
+function collectMoodDays(data) {
+  return data.map((day) => {
+    var _a, _b;
     const mood = getMoodDaySummary(day);
     return {
       day,
       date: day.date,
-      valence: mood.averageValence,
-      label: mood.primaryLabel,
-      entries: mood.entries.length
+      entries: mood.entries,
+      averageValence: mood.averageValence,
+      minValence: mood.minValence,
+      maxValence: mood.maxValence,
+      primaryLabel: mood.primaryLabel,
+      sleepSeconds: (_a = day.sleep) == null ? void 0 : _a.totalDuration,
+      exerciseMinutes: dayExerciseMinutes(day),
+      hrv: (_b = day.heart) == null ? void 0 : _b.hrv
     };
+  }).sort((a, b) => a.date.localeCompare(b.date));
+}
+function collectMoodEntries2(data) {
+  return collectMoodDays(data).flatMap((moodDay) => moodDay.entries.map((entry) => {
+    var _a, _b, _c, _d;
+    return {
+      day: moodDay.day,
+      date: moodDay.date,
+      entry,
+      timestamp: (_a = entry.timestamp) != null ? _a : entry.startDate,
+      hour: parseHour((_b = entry.timestamp) != null ? _b : entry.startDate, moodDay.date),
+      valence: entry.valence,
+      label: (_c = entry.label) != null ? _c : entryLabels(entry)[0],
+      labels: entryLabels(entry),
+      associations: (_d = entry.associations) != null ? _d : [],
+      kind: entry.kind
+    };
+  })).sort((a, b) => {
+    var _a, _b;
+    return a.date === b.date ? ((_a = a.hour) != null ? _a : 12) - ((_b = b.hour) != null ? _b : 12) : a.date.localeCompare(b.date);
   });
+}
+function moodDaysWithValues(data) {
+  return collectMoodDays(data).filter((day) => day.averageValence !== void 0);
+}
+function emptyState(ctx, W, H, theme, statsEl, text = "No mood data in range") {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, W / 2, H / 2);
+  statsEl.empty();
+}
+function drawTitle(ctx, theme, title, subtitle, x = 18, y = 24) {
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = theme.fg;
+  ctx.font = "600 20px sans-serif";
+  ctx.fillText(title, x, y);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "11px sans-serif";
+  ctx.fillText(subtitle, x, y + 17);
+}
+function drawValenceGrid(ctx, theme, x, y, w, h) {
+  for (const tick of [
+    { value: 1, label: "+1" },
+    { value: 0, label: "0" },
+    { value: -1, label: "-1" }
+  ]) {
+    const ty = yForValence(tick.value, y, h);
+    ctx.strokeStyle = tick.value === 0 ? hexToRgba(theme.fg, 0.18) : hexToRgba(theme.fg, 0.08);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, ty);
+    ctx.lineTo(x + w, ty);
+    ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(tick.label, x - 6, ty);
+  }
+}
+function dateToUtc(iso) {
+  return /* @__PURE__ */ new Date(iso + "T00:00:00Z");
+}
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+function addDays(iso, days) {
+  const d = dateToUtc(iso);
+  d.setUTCDate(d.getUTCDate() + days);
+  return isoDate(d);
+}
+function aggregate(values) {
+  var _a;
+  const buckets = /* @__PURE__ */ new Map();
+  for (const value of values) {
+    const key = value.key || "Unspecified";
+    const existing = (_a = buckets.get(key)) != null ? _a : { key, count: 0, sum: 0, values: [] };
+    existing.count += 1;
+    if (value.valence !== void 0 && Number.isFinite(value.valence)) {
+      existing.sum += value.valence;
+      existing.values.push(value.valence);
+    }
+    buckets.set(key, existing);
+  }
+  return Array.from(buckets.values());
+}
+function bucketAverage(bucket) {
+  return bucket.values.length ? bucket.sum / bucket.values.length : void 0;
+}
+function detailsForEntry(entry) {
+  var _a;
+  return [
+    { label: "Mood", value: entry.valence !== void 0 ? `${moodLabelForValence(entry.valence)} (${formatMoodValence(entry.valence)})` : (_a = entry.label) != null ? _a : "Mood" },
+    { label: "Kind", value: kindLabel(entry.kind) },
+    ...entry.labels.length ? [{ label: "Labels", value: entry.labels.join(", ") }] : [],
+    ...entry.associations.length ? [{ label: "Associations", value: entry.associations.join(", ") }] : []
+  ];
+}
+
+// src/visualizations/mood-trend.ts
+var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const points = collectMoodDays(data).map((day) => ({
+    day: day.day,
+    date: day.date,
+    valence: day.averageValence,
+    label: day.primaryLabel,
+    entries: day.entries.length
+  }));
   const moodPoints = points.filter((point) => point.valence !== void 0);
   if (!points.length || !moodPoints.length) {
     ctx.fillStyle = theme.muted;
@@ -18000,7 +18178,7 @@ var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
     const cx = padL + i * slot + slot / 2;
     const hitX = padL + i * slot;
     const moodY = point.valence !== void 0 ? yForValence(point.valence, padT, plotH) : yForValence(0, padT, plotH);
-    const color = moodColor(point.valence, theme);
+    const color = moodHex(point.valence, theme);
     if (point.valence === void 0) {
       ctx.fillStyle = hexToRgba(theme.fg, 0.16);
       ctx.beginPath();
@@ -18072,6 +18250,635 @@ var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
       { text: `${Math.round(avgExercise)}m`, strong: true }
     ]] : []
   ]);
+};
+
+// src/visualizations/mood-insights.ts
+var renderMoodCalendarHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a;
+  const days = moodDaysWithValues(data);
+  if (!days.length) return emptyState(ctx, W, H, theme, statsEl);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const first = days[0].date;
+  const last = days[days.length - 1].date;
+  const start = dateToUtc(first);
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+  const end = dateToUtc(last);
+  end.setUTCDate(end.getUTCDate() + (6 - end.getUTCDay()));
+  const totalDays = Math.round((end.getTime() - start.getTime()) / 864e5) + 1;
+  const weeks = Math.ceil(totalDays / 7);
+  const padL = 44;
+  const padR = 18;
+  const padT = 58;
+  const padB = 24;
+  const slotW = (W - padL - padR) / weeks;
+  const slotH = (H - padT - padB) / 7;
+  const cell = Math.max(3, Math.min(slotW, slotH) - 3);
+  const byDate = new Map(days.map((day) => [day.date, day]));
+  const avg4 = (_a = average3(days.map((day) => day.averageValence).filter(Number.isFinite))) != null ? _a : 0;
+  drawTitle(ctx, theme, "Mood calendar", `${formatDate(first)} \u2013 ${formatDate(last)} \u2022 ${days.length} logged days`);
+  ctx.font = "10px sans-serif";
+  ctx.fillStyle = theme.muted;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((label, i) => ctx.fillText(label, padL - 8, padT + i * slotH + slotH / 2));
+  let previousMonth = "";
+  for (let i = 0; i < totalDays; i++) {
+    const date = addDays(isoDate(start), i);
+    const d = dateToUtc(date);
+    const week = Math.floor(i / 7);
+    const dow = d.getUTCDay();
+    const x = padL + week * slotW + (slotW - cell) / 2;
+    const y = padT + dow * slotH + (slotH - cell) / 2;
+    const moodDay = byDate.get(date);
+    ctx.fillStyle = moodDay ? moodRgba(moodDay.averageValence, theme, 0.72) : hexToRgba(theme.fg, 0.05);
+    ctx.beginPath();
+    ctx.roundRect(x, y, cell, cell, 3);
+    ctx.fill();
+    if (!moodDay) {
+      ctx.strokeStyle = hexToRgba(theme.fg, 0.05);
+      ctx.stroke();
+    }
+    if (moodDay) {
+      hits.add({
+        shape: "rect",
+        x,
+        y,
+        w: cell,
+        h: cell,
+        title: formatDate(date),
+        details: [
+          { label: "Mood", value: `${moodLabelForValence(moodDay.averageValence)} (${formatMoodValence(moodDay.averageValence)})` },
+          { label: "Entries", value: String(moodDay.entries.length) },
+          ...moodDay.sleepSeconds ? [{ label: "Sleep", value: formatDuration(moodDay.sleepSeconds) }] : []
+        ],
+        payload: moodDay.day
+      });
+    }
+    const month = d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+    if (dow === 0 && month !== previousMonth) {
+      ctx.fillStyle = theme.muted;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(month, x, padT - 8);
+      previousMonth = month;
+    }
+  }
+  renderInlineStats(statsEl, [[{ text: "Avg mood " }, { text: `${moodLabelForValence(avg4)} ${formatMoodValence(avg4)}`, strong: true }], [{ text: "Mood entries " }, { text: String(days.reduce((sum, day) => sum + day.entries.length, 0)), strong: true }]]);
+};
+var renderMoodSleepScatter = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+  var _a, _b, _c, _d;
+  const days = moodDaysWithValues(data).filter((day) => {
+    var _a2;
+    return ((_a2 = day.sleepSeconds) != null ? _a2 : 0) > 0;
+  });
+  if (!days.length) return emptyState(ctx, W, H, theme, statsEl, "No mood + sleep data in range");
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const padL = 52, padR = 18, padT = 58, padB = 42;
+  const plotW2 = W - padL - padR;
+  const plotH = H - padT - padB;
+  const sleepHours = days.map((day) => {
+    var _a2;
+    return ((_a2 = day.sleepSeconds) != null ? _a2 : 0) / 3600;
+  });
+  const maxSleep = Math.max(9, Math.ceil(Math.max(...sleepHours)));
+  const avgMood = (_a = average3(days.map((day) => day.averageValence))) != null ? _a : 0;
+  drawTitle(ctx, theme, "Mood \xD7 sleep", `${days.length} days \u2022 color = mood, ring = exercise`);
+  drawValenceGrid(ctx, theme, padL, padT, plotW2, plotH);
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.18);
+  ctx.beginPath();
+  ctx.moveTo(padL, padT + plotH);
+  ctx.lineTo(padL + plotW2, padT + plotH);
+  ctx.stroke();
+  for (let h = 0; h <= maxSleep; h += 2) {
+    const x = padL + h / maxSleep * plotW2;
+    ctx.strokeStyle = hexToRgba(theme.fg, 0.06);
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + plotH);
+    ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(`${h}h`, x, padT + plotH + 8);
+  }
+  for (const day of days) {
+    const x = padL + ((_b = day.sleepSeconds) != null ? _b : 0) / 3600 / maxSleep * plotW2;
+    const y = yForValence(day.averageValence, padT, plotH);
+    const r = clamp(4 + day.entries.length * 1.2, 4, 9);
+    if (day.exerciseMinutes > 0) {
+      ctx.strokeStyle = hexToRgba(theme.colors.secondary, clamp(day.exerciseMinutes / 80, 0.25, 0.8));
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = moodRgba(day.averageValence, theme, 0.85);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    hits.add({
+      shape: "circle",
+      cx: x,
+      cy: y,
+      r: r + 6,
+      title: formatDate(day.date),
+      details: [
+        { label: "Mood", value: `${moodLabelForValence(day.averageValence)} (${formatMoodValence(day.averageValence)})` },
+        { label: "Sleep", value: formatDuration((_c = day.sleepSeconds) != null ? _c : 0) },
+        { label: "Exercise", value: `${Math.round(day.exerciseMinutes)} min` },
+        { label: "Entries", value: String(day.entries.length) }
+      ],
+      payload: day.day
+    });
+  }
+  renderInlineStats(statsEl, [[{ text: "Avg mood " }, { text: `${moodLabelForValence(avgMood)} ${formatMoodValence(avgMood)}`, strong: true }], [{ text: "Avg sleep " }, { text: formatDuration((_d = average3(days.map((day) => {
+    var _a2;
+    return (_a2 = day.sleepSeconds) != null ? _a2 : 0;
+  }))) != null ? _d : 0), strong: true }]]);
+};
+var renderMoodDayTimeline = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  const maxDays = Math.max(1, Math.floor(configNumber(config.maxDays, 21)));
+  const days = collectMoodDays(data).filter((day) => day.entries.length).slice(-maxDays);
+  const entries = days.flatMap((day) => day.entries);
+  if (!entries.length) return emptyState(ctx, W, H, theme, statsEl);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const padL = 72, padR = 18, padT = 58, padB = 30;
+  const plotW2 = W - padL - padR;
+  const rowH = (H - padT - padB) / days.length;
+  drawTitle(ctx, theme, "Mood day timeline", `${days.length} days \u2022 entries placed by time of day`);
+  for (const hour of [0, 6, 12, 18, 24]) {
+    const x = padL + hour / 24 * plotW2;
+    ctx.strokeStyle = hexToRgba(theme.fg, hour === 12 ? 0.16 : 0.08);
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, H - padB);
+    ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(hour === 24 ? "24" : `${hour}:00`, x, H - padB + 8);
+  }
+  days.forEach((day, row) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+    const y = padT + row * rowH + rowH / 2;
+    ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + plotW2, y);
+    ctx.stroke();
+    ctx.fillStyle = theme.muted;
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(shortDate(day.date), padL - 8, y);
+    const bedtime = parseHour((_c = (_a = day.day.sleep) == null ? void 0 : _a.bedtime) != null ? _c : (_b = day.day.sleep) == null ? void 0 : _b.bedtimeISO, day.date);
+    const wake = parseHour((_f = (_d = day.day.sleep) == null ? void 0 : _d.wakeTime) != null ? _f : (_e = day.day.sleep) == null ? void 0 : _e.wakeTimeISO, day.date);
+    if (bedtime !== void 0 && wake !== void 0) {
+      const drawSpan = (start, end) => {
+        const x = padL + start / 24 * plotW2;
+        const w = Math.max(1, (end - start) / 24 * plotW2);
+        ctx.fillStyle = hexToRgba(theme.colors.sleep.core, 0.14);
+        ctx.fillRect(x, y - Math.max(2, rowH * 0.18), w, Math.max(4, rowH * 0.36));
+      };
+      if (bedtime <= wake) drawSpan(bedtime, wake);
+      else {
+        drawSpan(bedtime, 24);
+        drawSpan(0, wake);
+      }
+    }
+    for (const entry of day.entries) {
+      const hour = (_h = parseHour((_g = entry.timestamp) != null ? _g : entry.startDate, day.date)) != null ? _h : 12;
+      const x = padL + hour / 24 * plotW2;
+      const valence = entry.valence;
+      const offset = valence !== void 0 ? -valence * Math.min(rowH * 0.28, 8) : 0;
+      ctx.fillStyle = moodRgba(valence, theme, 0.85);
+      ctx.beginPath();
+      ctx.arc(x, y + offset, 5, 0, Math.PI * 2);
+      ctx.fill();
+      hits.add({
+        shape: "circle",
+        cx: x,
+        cy: y + offset,
+        r: 8,
+        title: `${formatDate(day.date)} ${(_i = entry.timestamp) != null ? _i : ""}`,
+        details: detailsForEntry({ day: day.day, date: day.date, entry, timestamp: entry.timestamp, hour, valence, label: entry.label, labels: entryLabels(entry), associations: (_j = entry.associations) != null ? _j : [], kind: entry.kind }),
+        payload: day.day
+      });
+    }
+  });
+  renderInlineStats(statsEl, [[{ text: "Entries " }, { text: String(entries.length), strong: true }], [{ text: "Days " }, { text: String(days.length), strong: true }]]);
+};
+var renderMoodAssociationBreakdown = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a;
+  const entries = collectMoodEntries2(data).filter((entry) => entry.valence !== void 0);
+  if (!entries.length) return emptyState(ctx, W, H, theme, statsEl);
+  const limit = Math.max(3, Math.floor(configNumber(config.limit, 10)));
+  const sort = configString(config.sort, "count");
+  const buckets = aggregate(entries.flatMap((entry) => (entry.associations.length ? entry.associations : ["Unspecified"]).map((key) => ({ key, valence: entry.valence }))));
+  buckets.sort((a, b) => {
+    var _a2, _b;
+    return sort === "valence" ? ((_a2 = bucketAverage(b)) != null ? _a2 : 0) - ((_b = bucketAverage(a)) != null ? _b : 0) : b.count - a.count;
+  });
+  const shown = buckets.slice(0, limit);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const padL = 120, padR = 26, padT = 60, padB = 24;
+  const plotW2 = W - padL - padR;
+  const rowH = (H - padT - padB) / shown.length;
+  const mid = padL + plotW2 / 2;
+  drawTitle(ctx, theme, "Mood by association", `${shown.length} associations \u2022 centered at neutral`);
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.18);
+  ctx.beginPath();
+  ctx.moveTo(mid, padT - 6);
+  ctx.lineTo(mid, H - padB);
+  ctx.stroke();
+  shown.forEach((bucket, i) => {
+    var _a2;
+    const avg4 = (_a2 = bucketAverage(bucket)) != null ? _a2 : 0;
+    const y = padT + i * rowH + rowH / 2;
+    const barW = Math.abs(avg4) * (plotW2 / 2);
+    const x = avg4 >= 0 ? mid : mid - barW;
+    ctx.fillStyle = moodRgba(avg4, theme, 0.75);
+    ctx.beginPath();
+    ctx.roundRect(x, y - rowH * 0.25, barW, Math.max(4, rowH * 0.5), 4);
+    ctx.fill();
+    ctx.fillStyle = theme.fg;
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(bucket.key, padL - 10, y);
+    ctx.textAlign = avg4 >= 0 ? "left" : "right";
+    ctx.fillStyle = theme.muted;
+    ctx.fillText(`${formatMoodValence(avg4)} \u2022 ${bucket.count}`, avg4 >= 0 ? x + barW + 6 : x - 6, y);
+    hits.add({ shape: "rect", x: padL, y: y - rowH / 2, w: plotW2, h: rowH, title: bucket.key, details: [{ label: "Avg mood", value: `${moodLabelForValence(avg4)} (${formatMoodValence(avg4)})` }, { label: "Entries", value: String(bucket.count) }] });
+  });
+  const avgAll = (_a = average3(entries.map((entry) => entry.valence).filter(Number.isFinite))) != null ? _a : 0;
+  renderInlineStats(statsEl, [[{ text: "Avg mood " }, { text: `${moodLabelForValence(avgAll)} ${formatMoodValence(avgAll)}`, strong: true }], [{ text: "Associations " }, { text: String(buckets.length), strong: true }]]);
+};
+var renderMoodLabelCloud = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a;
+  const entries = collectMoodEntries2(data).filter((entry) => entry.valence !== void 0);
+  if (!entries.length) return emptyState(ctx, W, H, theme, statsEl);
+  const limit = Math.max(5, Math.floor(configNumber(config.limit, 28)));
+  const buckets = aggregate(entries.flatMap((entry) => {
+    var _a2;
+    return (entry.labels.length ? entry.labels : [(_a2 = entry.label) != null ? _a2 : moodLabelForValence(entry.valence)]).map((key) => ({ key, valence: entry.valence }));
+  }));
+  buckets.sort((a, b) => b.count - a.count);
+  const shown = buckets.slice(0, limit);
+  const maxCount = Math.max(...shown.map((bucket) => bucket.count));
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  drawTitle(ctx, theme, "Mood label cloud", `${shown.length} labels \u2022 size = frequency, color = average valence`);
+  let x = 22;
+  let y = 76;
+  let lineH = 0;
+  for (const bucket of shown) {
+    const avg4 = (_a = bucketAverage(bucket)) != null ? _a : 0;
+    const size = 11 + Math.sqrt(bucket.count / maxCount) * 24;
+    ctx.font = `700 ${size}px sans-serif`;
+    const label = bucket.key;
+    const w = ctx.measureText(label).width;
+    if (x + w > W - 22) {
+      x = 22;
+      y += lineH + 12;
+      lineH = 0;
+    }
+    if (y > H - 18) break;
+    ctx.fillStyle = moodRgba(avg4, theme, 0.9);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(label, x, y);
+    hits.add({ shape: "rect", x, y: y - size, w, h: size + 4, title: label, details: [{ label: "Avg mood", value: `${moodLabelForValence(avg4)} (${formatMoodValence(avg4)})` }, { label: "Entries", value: String(bucket.count) }] });
+    x += w + 16;
+    lineH = Math.max(lineH, size);
+  }
+  renderInlineStats(statsEl, [[{ text: "Labels " }, { text: String(buckets.length), strong: true }], [{ text: "Entries " }, { text: String(entries.length), strong: true }]]);
+};
+var renderMoodVolatility = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+  var _a, _b;
+  const days = moodDaysWithValues(data);
+  if (!days.length) return emptyState(ctx, W, H, theme, statsEl);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const padL = 48, padR = 16, padT = 58, padB = 34;
+  const plotW2 = W - padL - padR;
+  const plotH = H - padT - padB;
+  const slot = plotW2 / Math.max(days.length, 1);
+  const volatilities = days.map((day) => day.minValence !== void 0 && day.maxValence !== void 0 ? day.maxValence - day.minValence : 0);
+  const maxVol = Math.max(0.25, ...volatilities);
+  const avgMood = (_a = average3(days.map((day) => day.averageValence))) != null ? _a : 0;
+  drawTitle(ctx, theme, "Mood volatility", "Bars = intraday range, line = daily average mood");
+  drawValenceGrid(ctx, theme, padL, padT, plotW2, plotH);
+  days.forEach((day, i) => {
+    const x = padL + i * slot + slot / 2;
+    const vol = volatilities[i];
+    const barH = vol / maxVol * plotH * 0.45;
+    ctx.fillStyle = hexToRgba(theme.colors.secondary, 0.35);
+    ctx.beginPath();
+    ctx.roundRect(x - Math.min(10, slot * 0.3), padT + plotH - barH, Math.max(2, Math.min(20, slot * 0.6)), barH, [3, 3, 0, 0]);
+    ctx.fill();
+  });
+  ctx.strokeStyle = hexToRgba(theme.colors.accent, 0.75);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  days.forEach((day, i) => {
+    const x = padL + i * slot + slot / 2;
+    const y = yForValence(day.averageValence, padT, plotH);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  days.forEach((day, i) => {
+    const x = padL + i * slot + slot / 2;
+    const y = yForValence(day.averageValence, padT, plotH);
+    ctx.fillStyle = moodRgba(day.averageValence, theme, 0.85);
+    ctx.beginPath();
+    ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (days.length <= 14 || i % Math.ceil(days.length / 6) === 0 || i === days.length - 1) {
+      ctx.fillStyle = theme.muted;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(shortDate(day.date), x, padT + plotH + 8);
+    }
+    hits.add({ shape: "rect", x: padL + i * slot, y: padT, w: slot, h: plotH + padB, title: formatDate(day.date), details: [{ label: "Avg mood", value: `${moodLabelForValence(day.averageValence)} (${formatMoodValence(day.averageValence)})` }, { label: "Volatility", value: formatMoodValence(volatilities[i]) }, { label: "Entries", value: String(day.entries.length) }], payload: day.day });
+  });
+  renderInlineStats(statsEl, [[{ text: "Avg mood " }, { text: `${moodLabelForValence(avgMood)} ${formatMoodValence(avgMood)}`, strong: true }], [{ text: "Avg volatility " }, { text: formatMoodValence((_b = average3(volatilities)) != null ? _b : 0), strong: true }]]);
+};
+var renderMoodKindSplit = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+  const days = collectMoodDays(data).map((day) => {
+    const dailyValues = day.entries.filter((entry) => normalizeKind(entry.kind) === "daily").map((entry) => entry.valence).filter((value) => value !== void 0);
+    const momentValues = day.entries.filter((entry) => normalizeKind(entry.kind) === "momentary").map((entry) => entry.valence).filter((value) => value !== void 0);
+    return { ...day, daily: average3(dailyValues), momentary: average3(momentValues), dailyCount: dailyValues.length, momentaryCount: momentValues.length };
+  }).filter((day) => day.daily !== void 0 || day.momentary !== void 0);
+  if (!days.length) return emptyState(ctx, W, H, theme, statsEl);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const padL = 50, padR = 18, padT = 64, padB = 34;
+  const plotW2 = W - padL - padR;
+  const plotH = H - padT - padB;
+  const slot = plotW2 / Math.max(days.length, 1);
+  drawTitle(ctx, theme, "Daily mood vs momentary emotions", `${days.length} days with State of Mind entries`);
+  drawValenceGrid(ctx, theme, padL, padT, plotW2, plotH);
+  const drawSeries = (key, color) => {
+    ctx.strokeStyle = hexToRgba(color, 0.8);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let active = false;
+    days.forEach((day, i) => {
+      const value = day[key];
+      if (value === void 0) {
+        active = false;
+        return;
+      }
+      const x = padL + i * slot + slot / 2;
+      const y = yForValence(value, padT, plotH);
+      if (!active) {
+        ctx.moveTo(x, y);
+        active = true;
+      } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    days.forEach((day, i) => {
+      const value = day[key];
+      if (value === void 0) return;
+      const x = padL + i * slot + slot / 2;
+      const y = yForValence(value, padT, plotH);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, key === "daily" ? 5 : 3.8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  };
+  drawSeries("daily", theme.colors.accent);
+  drawSeries("momentary", theme.colors.secondary);
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  [{ label: "Daily mood", color: theme.colors.accent }, { label: "Momentary", color: theme.colors.secondary }].forEach((item, i) => {
+    const x = padL + i * 96;
+    ctx.fillStyle = item.color;
+    ctx.fillRect(x, padT - 18, 10, 6);
+    ctx.fillStyle = theme.muted;
+    ctx.fillText(item.label, x + 14, padT - 15);
+  });
+  days.forEach((day, i) => {
+    if (days.length <= 14 || i % Math.ceil(days.length / 6) === 0 || i === days.length - 1) {
+      ctx.fillStyle = theme.muted;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(shortDate(day.date), padL + i * slot + slot / 2, padT + plotH + 8);
+    }
+    hits.add({ shape: "rect", x: padL + i * slot, y: padT, w: slot, h: plotH + padB, title: formatDate(day.date), details: [{ label: "Daily", value: day.daily !== void 0 ? `${formatMoodValence(day.daily)} (${day.dailyCount})` : "\u2014" }, { label: "Momentary", value: day.momentary !== void 0 ? `${formatMoodValence(day.momentary)} (${day.momentaryCount})` : "\u2014" }], payload: day.day });
+  });
+  renderInlineStats(statsEl, [[{ text: "Daily avg " }, { text: formatMoodValence(average3(days.map((day) => day.daily).filter((value) => value !== void 0))), strong: true }], [{ text: "Momentary avg " }, { text: formatMoodValence(average3(days.map((day) => day.momentary).filter((value) => value !== void 0))), strong: true }]]);
+};
+var renderMoodCircadianClock = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+  var _a, _b, _c, _d, _e, _f;
+  const entries = collectMoodEntries2(data).filter((entry) => entry.hour !== void 0 && entry.valence !== void 0);
+  if (!entries.length) return emptyState(ctx, W, H, theme, statsEl);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2;
+  const cy = H / 2 + 12;
+  const r = Math.min(W, H - 42) * 0.36;
+  const r0 = r * 0.46;
+  drawTitle(ctx, theme, "Circadian mood clock", `${entries.length} entries by time of day`, 18, 24);
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
+  for (const rr of [r0, (r + r0) / 2, r]) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  const byHour = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    const hour = Math.floor((_a = entry.hour) != null ? _a : 0);
+    byHour.set(hour, [...(_b = byHour.get(hour)) != null ? _b : [], entry.valence]);
+  }
+  for (let hour = 0; hour < 24; hour++) {
+    const values = (_c = byHour.get(hour)) != null ? _c : [];
+    const avg4 = average3(values);
+    const a0 = hour / 24 * Math.PI * 2 - Math.PI / 2;
+    const a1 = (hour + 1) / 24 * Math.PI * 2 - Math.PI / 2;
+    if (avg4 !== void 0) {
+      ctx.fillStyle = moodRgba(avg4, theme, clamp(0.18 + values.length * 0.12, 0.25, 0.85));
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, a0, a1);
+      ctx.arc(cx, cy, r0, a1, a0, true);
+      ctx.closePath();
+      ctx.fill();
+      hits.add({ shape: "sector", cx, cy, r0, r1: r, a0, a1, title: `${hour}:00`, details: [{ label: "Avg mood", value: `${moodLabelForValence(avg4)} (${formatMoodValence(avg4)})` }, { label: "Entries", value: String(values.length) }] });
+    }
+    if (hour % 6 === 0) {
+      const a = a0;
+      ctx.fillStyle = theme.muted;
+      ctx.font = "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(hour), cx + Math.cos(a) * (r + 16), cy + Math.sin(a) * (r + 16));
+    }
+  }
+  for (const entry of entries) {
+    const a = entry.hour / 24 * Math.PI * 2 - Math.PI / 2;
+    const rr = lerp(r0 + 4, r - 5, (entry.valence + 1) / 2);
+    const x = cx + Math.cos(a) * rr;
+    const y = cy + Math.sin(a) * rr;
+    ctx.fillStyle = moodRgba(entry.valence, theme, 0.95);
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const avgAll = (_d = average3(entries.map((entry) => entry.valence))) != null ? _d : 0;
+  renderInlineStats(statsEl, [[{ text: "Avg mood " }, { text: `${moodLabelForValence(avgAll)} ${formatMoodValence(avgAll)}`, strong: true }], [{ text: "Most active hour " }, { text: `${(_f = (_e = Array.from(byHour.entries()).sort((a, b) => b[1].length - a[1].length)[0]) == null ? void 0 : _e[0]) != null ? _f : 0}:00`, strong: true }]]);
+};
+var renderMoodRecoveryTile = (ctx, data, W, H, _config, theme, statsEl, hits) => {
+  const days = moodDaysWithValues(data);
+  if (!days.length) return emptyState(ctx, W, H, theme, statsEl);
+  const latest = days[days.length - 1];
+  const hrvValues = days.map((day) => day.hrv).filter((value) => value !== void 0);
+  const hrvMin = hrvValues.length ? Math.min(...hrvValues) : void 0;
+  const hrvMax = hrvValues.length ? Math.max(...hrvValues) : void 0;
+  const moodScore = (latest.averageValence + 1) / 2 * 100;
+  const sleepScore = latest.sleepSeconds ? clamp(latest.sleepSeconds / 3600 / 7.5 * 100, 0, 110) : 0;
+  const hrvScore = latest.hrv !== void 0 && hrvMin !== void 0 && hrvMax !== void 0 && hrvMax !== hrvMin ? (latest.hrv - hrvMin) / (hrvMax - hrvMin) * 100 : latest.hrv !== void 0 ? 60 : 0;
+  const exerciseScore = clamp(latest.exerciseMinutes / 30 * 100, 0, 100);
+  const score = clamp(moodScore * 0.4 + sleepScore * 0.3 + hrvScore * 0.2 + exerciseScore * 0.1, 0, 100);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = hexToRgba(moodHex(latest.averageValence, theme), theme.isDark ? 0.12 : 0.08);
+  ctx.beginPath();
+  ctx.roundRect(14, 14, W - 28, H - 28, 18);
+  ctx.fill();
+  ctx.strokeStyle = hexToRgba(theme.fg, 0.1);
+  ctx.stroke();
+  ctx.fillStyle = theme.muted;
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(formatDate(latest.date), 30, 40);
+  ctx.fillStyle = theme.fg;
+  ctx.font = "700 40px sans-serif";
+  ctx.fillText(`${Math.round(score)}`, 30, 86);
+  ctx.font = "600 18px sans-serif";
+  ctx.fillStyle = moodHex(latest.averageValence, theme);
+  ctx.fillText(moodLabelForValence(latest.averageValence), 104, 78);
+  ctx.fillStyle = theme.muted;
+  ctx.font = "11px sans-serif";
+  ctx.fillText("recovery + mindset score", 104, 94);
+  const bars = [
+    { label: "Mood", value: moodScore, detail: formatMoodValence(latest.averageValence), color: moodHex(latest.averageValence, theme) },
+    { label: "Sleep", value: sleepScore, detail: latest.sleepSeconds ? formatDuration(latest.sleepSeconds) : "\u2014", color: theme.colors.sleep.core },
+    { label: "HRV", value: hrvScore, detail: latest.hrv !== void 0 ? `${Math.round(latest.hrv)} ms` : "\u2014", color: theme.colors.accent },
+    { label: "Exercise", value: exerciseScore, detail: `${Math.round(latest.exerciseMinutes)} min`, color: theme.colors.secondary }
+  ];
+  const startY = 124;
+  bars.forEach((bar, i) => {
+    const y = startY + i * 32;
+    ctx.fillStyle = theme.fg;
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(bar.label, 30, y);
+    ctx.fillStyle = theme.muted;
+    ctx.textAlign = "right";
+    ctx.fillText(bar.detail, W - 30, y);
+    ctx.fillStyle = hexToRgba(theme.fg, 0.08);
+    ctx.beginPath();
+    ctx.roundRect(30, y + 8, W - 60, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = hexToRgba(bar.color, 0.85);
+    ctx.beginPath();
+    ctx.roundRect(30, y + 8, (W - 60) * clamp(bar.value / 100, 0, 1), 8, 4);
+    ctx.fill();
+  });
+  hits.add({ shape: "rect", x: 14, y: 14, w: W - 28, h: H - 28, title: formatDate(latest.date), details: [{ label: "Score", value: String(Math.round(score)) }, { label: "Mood", value: `${moodLabelForValence(latest.averageValence)} (${formatMoodValence(latest.averageValence)})` }, { label: "Entries", value: String(latest.entries.length) }], payload: latest.day });
+  renderStatBoxes(statsEl, [
+    { value: String(Math.round(score)), label: "score", color: moodHex(latest.averageValence, theme) },
+    { value: valencePercent(latest.averageValence), label: "mood" },
+    { value: latest.sleepSeconds ? formatDuration(latest.sleepSeconds) : "\u2014", label: "sleep" },
+    { value: latest.hrv !== void 0 ? `${Math.round(latest.hrv)}ms` : "\u2014", label: "HRV" }
+  ]);
+};
+var renderMoodAssociationMatrix = (ctx, data, W, H, config, theme, statsEl, hits) => {
+  var _a, _b;
+  const entries = collectMoodEntries2(data).filter((entry) => entry.valence !== void 0);
+  if (!entries.length) return emptyState(ctx, W, H, theme, statsEl);
+  const metric = configString(config.metric, "valence");
+  const rowLimit = Math.max(3, Math.floor(configNumber(config.labels, 6)));
+  const colLimit = Math.max(3, Math.floor(configNumber(config.associations, 6)));
+  const labelBuckets = aggregate(entries.flatMap((entry) => {
+    var _a2;
+    return (entry.labels.length ? entry.labels : [(_a2 = entry.label) != null ? _a2 : moodLabelForValence(entry.valence)]).map((key) => ({ key, valence: entry.valence }));
+  })).sort((a, b) => b.count - a.count).slice(0, rowLimit);
+  const associationBuckets = aggregate(entries.flatMap((entry) => (entry.associations.length ? entry.associations : ["Unspecified"]).map((key) => ({ key, valence: entry.valence })))).sort((a, b) => b.count - a.count).slice(0, colLimit);
+  if (!labelBuckets.length || !associationBuckets.length) return emptyState(ctx, W, H, theme, statsEl, "No mood labels/associations in range");
+  const labels = labelBuckets.map((bucket) => bucket.key);
+  const associations = associationBuckets.map((bucket) => bucket.key);
+  const cells = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    const ls = (entry.labels.length ? entry.labels : [(_a = entry.label) != null ? _a : moodLabelForValence(entry.valence)]).filter((label) => labels.includes(label));
+    const as = (entry.associations.length ? entry.associations : ["Unspecified"]).filter((association) => associations.includes(association));
+    for (const label of ls) for (const association of as) {
+      const key = `${label}\0${association}`;
+      const cell = (_b = cells.get(key)) != null ? _b : { count: 0, values: [] };
+      cell.count += 1;
+      cell.values.push(entry.valence);
+      cells.set(key, cell);
+    }
+  }
+  const maxCount = Math.max(1, ...Array.from(cells.values()).map((cell) => cell.count));
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const padL = 112, padR = 18, padT = 82, padB = 24;
+  const cellW = (W - padL - padR) / associations.length;
+  const cellH = (H - padT - padB) / labels.length;
+  drawTitle(ctx, theme, "Mood association matrix", metric === "count" ? "Cells show entry count" : "Cells show average valence; opacity = count");
+  ctx.fillStyle = theme.muted;
+  ctx.font = "9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  associations.forEach((association, col) => {
+    ctx.save();
+    ctx.translate(padL + col * cellW + cellW / 2, padT - 8);
+    ctx.rotate(-Math.PI / 5);
+    ctx.fillText(association.slice(0, 18), 0, 0);
+    ctx.restore();
+  });
+  labels.forEach((label, row) => {
+    const y = padT + row * cellH;
+    ctx.fillStyle = theme.fg;
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label.slice(0, 20), padL - 8, y + cellH / 2);
+    associations.forEach((association, col) => {
+      var _a2;
+      const x = padL + col * cellW;
+      const cell = cells.get(`${label}\0${association}`);
+      const avg4 = cell ? (_a2 = average3(cell.values)) != null ? _a2 : 0 : void 0;
+      ctx.fillStyle = cell ? metric === "count" ? hexToRgba(theme.colors.secondary, clamp(cell.count / maxCount, 0.18, 0.88)) : moodRgba(avg4, theme, clamp(0.16 + cell.count / maxCount * 0.7, 0.18, 0.86)) : hexToRgba(theme.fg, 0.04);
+      ctx.beginPath();
+      ctx.roundRect(x + 2, y + 2, Math.max(2, cellW - 4), Math.max(2, cellH - 4), 4);
+      ctx.fill();
+      if (cell && cellW > 34 && cellH > 18) {
+        ctx.fillStyle = theme.isDark ? "#fff" : "#111";
+        ctx.globalAlpha = 0.78;
+        ctx.font = "9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(metric === "count" ? String(cell.count) : formatMoodValence(avg4), x + cellW / 2, y + cellH / 2);
+        ctx.globalAlpha = 1;
+      }
+      if (cell) hits.add({ shape: "rect", x, y, w: cellW, h: cellH, title: `${label} \xD7 ${association}`, details: [{ label: "Entries", value: String(cell.count) }, { label: "Avg mood", value: `${moodLabelForValence(avg4)} (${formatMoodValence(avg4)})` }] });
+    });
+  });
+  renderInlineStats(statsEl, [[{ text: "Labels " }, { text: String(labels.length), strong: true }], [{ text: "Associations " }, { text: String(associations.length), strong: true }], [{ text: "Cells " }, { text: String(cells.size), strong: true }]]);
 };
 
 // src/visualizations/medication-overview.ts
@@ -18425,6 +19232,16 @@ var VISUALIZATIONS = {
   "oxygen-range": renderOxygenRange,
   "mood-trend": renderMoodTrend,
   "state-of-mind": renderMoodTrend,
+  "mood-calendar-heatmap": renderMoodCalendarHeatmap,
+  "mood-sleep-scatter": renderMoodSleepScatter,
+  "mood-day-timeline": renderMoodDayTimeline,
+  "mood-association-breakdown": renderMoodAssociationBreakdown,
+  "mood-label-cloud": renderMoodLabelCloud,
+  "mood-volatility": renderMoodVolatility,
+  "mood-kind-split": renderMoodKindSplit,
+  "mood-circadian-clock": renderMoodCircadianClock,
+  "mood-recovery-tile": renderMoodRecoveryTile,
+  "mood-association-matrix": renderMoodAssociationMatrix,
   "workout-heart-rate": renderWorkoutHeartRate,
   "workout-zones": renderWorkoutZones,
   "workout-heart-rate-zones": renderWorkoutZones,
@@ -19697,6 +20514,135 @@ var VISUALIZATIONS2 = [
         label: "Show sleep/exercise context",
         desc: "Draw faint sleep duration and exercise/workout bars behind the mood trend.",
         defaultValue: true
+      }
+    ]
+  },
+  {
+    type: "mood-calendar-heatmap",
+    label: "Mood calendar heatmap",
+    category: "mental",
+    description: "Calendar grid colored by average State of Mind valence.",
+    defaultLast: 120,
+    defaultHeight: 220,
+    params: []
+  },
+  {
+    type: "mood-sleep-scatter",
+    label: "Mood \xD7 sleep scatter",
+    category: "mental",
+    description: "Scatterplot comparing daily mood valence with sleep duration and exercise context.",
+    defaultLast: 60,
+    defaultHeight: 280,
+    params: []
+  },
+  {
+    type: "mood-day-timeline",
+    label: "Mood day timeline",
+    category: "mental",
+    description: "Time-of-day lanes for mood entries, with sleep spans behind each day.",
+    defaultLast: 14,
+    defaultHeight: 320,
+    params: [
+      {
+        kind: "text",
+        key: "maxDays",
+        label: "Max days",
+        desc: "Maximum number of recent days to draw as timeline rows.",
+        defaultValue: "21",
+        validation: "positive-integer"
+      }
+    ]
+  },
+  {
+    type: "mood-association-breakdown",
+    label: "Mood association breakdown",
+    category: "mental",
+    description: "Average mood valence grouped by State of Mind association such as Work, Fitness, or Family.",
+    defaultLast: 90,
+    defaultHeight: 320,
+    params: [
+      {
+        kind: "text",
+        key: "limit",
+        label: "Limit",
+        desc: "Maximum number of associations to show.",
+        defaultValue: "10",
+        validation: "positive-integer"
+      }
+    ]
+  },
+  {
+    type: "mood-label-cloud",
+    label: "Mood label cloud",
+    category: "mental",
+    description: "Emotion labels sized by frequency and colored by average valence.",
+    defaultLast: 120,
+    defaultHeight: 260,
+    params: [
+      {
+        kind: "text",
+        key: "limit",
+        label: "Limit",
+        desc: "Maximum number of labels to include.",
+        defaultValue: "28",
+        validation: "positive-integer"
+      }
+    ]
+  },
+  {
+    type: "mood-volatility",
+    label: "Mood volatility",
+    category: "mental",
+    description: "Daily mood average with bars showing the spread between lowest and highest entries.",
+    defaultLast: 45,
+    defaultHeight: 260,
+    params: []
+  },
+  {
+    type: "mood-kind-split",
+    label: "Daily vs momentary mood",
+    category: "mental",
+    description: "Compares Daily Mood entries with Momentary Emotion entries over time.",
+    defaultLast: 45,
+    defaultHeight: 260,
+    params: []
+  },
+  {
+    type: "mood-circadian-clock",
+    label: "Circadian mood clock",
+    category: "mental",
+    description: "Radial 24-hour clock showing when mood entries happen and how pleasant they are.",
+    defaultLast: 90,
+    defaultHeight: 320,
+    params: []
+  },
+  {
+    type: "mood-recovery-tile",
+    label: "Mood recovery tile",
+    category: "mental",
+    description: "Recovery and mindset card combining latest mood, sleep, HRV, and exercise context.",
+    defaultLast: 30,
+    defaultHeight: 280,
+    params: []
+  },
+  {
+    type: "mood-association-matrix",
+    label: "Mood association matrix",
+    category: "mental",
+    description: "Matrix of emotion labels by associations, colored by valence or count.",
+    defaultLast: 120,
+    defaultHeight: 340,
+    params: [
+      {
+        kind: "select",
+        key: "metric",
+        label: "Cell metric",
+        desc: "Choose whether cells show average valence or entry count.",
+        options: [
+          { value: "valence", label: "Average valence" },
+          { value: "count", label: "Count" }
+        ],
+        defaultValue: "valence"
       }
     ]
   },

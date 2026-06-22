@@ -159,7 +159,7 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 </tr>
 <tr>
 <td><em>Screenshot coming soon.</em></td>
-<td><p><strong><code>mood-trend</code></strong></p><p>State of Mind / mood valence over time with optional sleep and exercise context.</p><p><strong>Extra arguments:</strong> <code>showContext</code>.</p></td>
+<td><p><strong><code>mood-trend</code></strong> and mood insights</p><p>State of Mind / mood valence over time plus calendar, sleep scatter, day timeline, association breakdown, label cloud, volatility, kind split, circadian clock, recovery tile, and association matrix views.</p><p><strong>Extra arguments:</strong> <code>showContext</code>, <code>limit</code>, <code>maxDays</code>, <code>metric</code> depending on chart.</p></td>
 </tr>
 <tr>
 <td><em>Screenshot coming soon.</em></td>
