@@ -315,6 +315,17 @@ function getFirstRaw(fm: Record<string, unknown>, ...keys: string[]): unknown {
 	return undefined;
 }
 
+function shouldParseMoodContainer(key: string, value: unknown): boolean {
+	if (value === undefined || value === null || value === "") return false;
+	// Health.md daily frontmatter uses mood_entries/state_of_mind_entries as
+	// aggregate count fields, while nested arrays/objects under those keys are
+	// still valid entry containers from older/custom exports.
+	if (["mood_entries", "moodEntries", "state_of_mind_entries", "stateOfMindEntries"].includes(key)) {
+		return Array.isArray(value) || (typeof value === "object" && value !== null);
+	}
+	return true;
+}
+
 function parseMoodEntriesFromFrontmatter(fm: Record<string, unknown>, date: string): MoodEntry[] {
 	const entries: MoodEntry[] = [];
 	for (const key of [
@@ -324,10 +335,13 @@ function parseMoodEntriesFromFrontmatter(fm: Record<string, unknown>, date: stri
 		"moodEntries",
 		"state_of_mind",
 		"stateOfMind",
+		"state_of_mind_entries",
+		"stateOfMindEntries",
 		"states_of_mind",
 		"statesOfMind",
 	]) {
-		entries.push(...moodEntriesFromUnknown(fm[key], date));
+		const value = fm[key];
+		if (shouldParseMoodContainer(key, value)) entries.push(...moodEntriesFromUnknown(value, date));
 	}
 
 	const explicitValence = getFirstNum(
@@ -337,7 +351,9 @@ function parseMoodEntriesFromFrontmatter(fm: Record<string, unknown>, date: stri
 		"state_of_mind_valence",
 		"stateOfMindValence",
 		"average_mood_valence",
-		"averageMoodValence"
+		"averageMoodValence",
+		"average_valence",
+		"averageValence"
 	);
 	const explicitScore = getFirstNum(
 		fm,
@@ -346,7 +362,15 @@ function parseMoodEntriesFromFrontmatter(fm: Record<string, unknown>, date: stri
 		"mood_rating",
 		"moodRating",
 		"state_of_mind_score",
-		"stateOfMindScore"
+		"stateOfMindScore",
+		"average_mood_percent",
+		"averageMoodPercent",
+		"average_valence_percent",
+		"averageValencePercent",
+		"daily_mood_percent",
+		"dailyMoodPercent",
+		"valence_percent",
+		"valencePercent"
 	);
 	const label = getFirstStr(
 		fm,
@@ -363,6 +387,7 @@ function parseMoodEntriesFromFrontmatter(fm: Record<string, unknown>, date: stri
 	const timestamp = getFirstStr(fm, "mood_time", "moodTime", "mood_timestamp", "moodTimestamp", "state_of_mind_time", "stateOfMindTime");
 	const labels = [
 		...stringArrayFromUnknown(getFirstRaw(fm, "mood_labels", "moodLabels")),
+		...stringArrayFromUnknown(getFirstRaw(fm, "emotion_labels", "emotionLabels")),
 		...stringArrayFromUnknown(getFirstRaw(fm, "emotions", "feelings")),
 	].filter((item, index, all) => all.indexOf(item) === index);
 	const associations = [

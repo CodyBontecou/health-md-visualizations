@@ -178,11 +178,17 @@ function formatLocalDateTime(ms: number): string {
 }
 
 function timestampFromClock(date: string, rawClock: string): string | undefined {
-	const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(rawClock.trim());
+	const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]\.?m\.?)?$/i.exec(rawClock.trim());
 	if (!match) return undefined;
-	const h = Number(match[1]);
+	let h = Number(match[1]);
 	const m = Number(match[2]);
 	const s = Number(match[3] ?? 0);
+	const meridiem = match[4]?.replace(/\./g, "").toLowerCase();
+	if (meridiem) {
+		if (h < 1 || h > 12) return undefined;
+		if (meridiem === "pm" && h !== 12) h += 12;
+		if (meridiem === "am" && h === 12) h = 0;
+	}
 	if (h > 23 || m > 59 || s > 59) return undefined;
 	return `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
@@ -192,6 +198,11 @@ function normalizeTimestamp(date: string, raw: string | undefined): string | und
 	if (!value) return undefined;
 	if (isFinite(Date.parse(value))) return value;
 	return timestampFromClock(date, value);
+}
+
+function timestampFromMetric(date: string, metric: string): string | undefined {
+	const match = /\bat\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]\.?m\.?)?)\s*$/i.exec(metric.trim());
+	return match ? timestampFromClock(date, match[1]) : undefined;
 }
 
 function samplesFromRows(
@@ -232,19 +243,28 @@ function csvMoodKind(metric: string): string | undefined {
 	return undefined;
 }
 
+function isMoodCountMetric(metric: string, unit: string): boolean {
+	const normalizedUnit = normalizeLabel(unit);
+	return (normalizedUnit === "count" || normalizedUnit === "entries") &&
+		(metric.includes("count") || metric.includes("entries"));
+}
+
+function isAverageMoodMetric(metric: string): boolean {
+	return metric.includes("average") && (metric.includes("mood") || metric.includes("valence"));
+}
+
 function moodEntryFromRow(row: CsvRow): MoodEntry | null {
 	const metric = normalizeLabel(row.metric);
 	const value = row.value.trim();
-	if (!value) return null;
+	if (!value || isMoodCountMetric(metric, row.unit)) return null;
 
-	const timestamp = normalizeTimestamp(row.date, row.timestamp) ?? `${row.date}T12:00:00`;
-	const isScore = metric.includes("score") || metric.includes("rating");
-	const isLabel = metric.includes("label") || metric.includes("emotion") || metric.includes("feeling") || metric.includes("classification");
+	const timestamp = normalizeTimestamp(row.date, row.timestamp) ?? timestampFromMetric(row.date, row.metric) ?? `${row.date}T12:00:00`;
+	const isScore = metric.includes("score") || metric.includes("rating") || metric.includes("percent") || normalizeLabel(row.unit) === "percent";
+	const isLabel = metric.includes("label") || metric.includes("feeling") || metric.includes("classification");
+	const isAssociation = metric.includes("association") || metric.includes("context") || metric.includes("factor");
 	const labels = isLabel ? stringArrayFromUnknown(value) : [];
-	const associations = metric.includes("association") || metric.includes("context") || metric.includes("factor")
-		? stringArrayFromUnknown(value)
-		: [];
-	const label = labels[0] ?? (parseNumber(value) === undefined ? value : undefined);
+	const associations = isAssociation ? stringArrayFromUnknown(value) : [];
+	const label = labels[0] ?? (!isAssociation && parseNumber(value) === undefined ? value : undefined);
 	const valence = normalizeMoodValence(value, isScore ? "score" : isLabel ? "label" : "valence") ??
 		normalizeMoodValence(label, "label");
 	const score = isScore ? parseNumber(value) : undefined;
@@ -262,31 +282,36 @@ function moodEntryFromRow(row: CsvRow): MoodEntry | null {
 	};
 }
 
-function parseMoodEntries(rows: CsvRow[]): MoodEntry[] {
-	const entries: MoodEntry[] = [];
+function mergeMoodEntry(existing: MoodEntry, entry: MoodEntry): MoodEntry {
+	return {
+		...existing,
+		...entry,
+		valence: existing.valence ?? entry.valence,
+		score: existing.score ?? entry.score,
+		label: existing.label ?? entry.label,
+		labels: [...(existing.labels ?? []), ...(entry.labels ?? [])].filter((item, index, all) => all.indexOf(item) === index),
+		associations: [...(existing.associations ?? []), ...(entry.associations ?? [])].filter((item, index, all) => all.indexOf(item) === index),
+	};
+}
+
+function collectMoodEntries(rows: CsvRow[], includeAverageRows: boolean): MoodEntry[] {
 	const pendingByTimestamp = new Map<string, MoodEntry>();
 	for (const row of rows) {
 		if (!isMoodRow(row)) continue;
+		const metric = normalizeLabel(row.metric);
+		if (!includeAverageRows && isAverageMoodMetric(metric)) continue;
 		const entry = moodEntryFromRow(row);
 		if (!entry) continue;
 		const timestamp = entry.timestamp ?? entry.startDate ?? row.date;
 		const existing = pendingByTimestamp.get(timestamp);
-		if (!existing) {
-			pendingByTimestamp.set(timestamp, entry);
-			continue;
-		}
-		pendingByTimestamp.set(timestamp, {
-			...existing,
-			...entry,
-			valence: existing.valence ?? entry.valence,
-			score: existing.score ?? entry.score,
-			label: existing.label ?? entry.label,
-			labels: [...(existing.labels ?? []), ...(entry.labels ?? [])].filter((item, index, all) => all.indexOf(item) === index),
-			associations: [...(existing.associations ?? []), ...(entry.associations ?? [])].filter((item, index, all) => all.indexOf(item) === index),
-		});
+		pendingByTimestamp.set(timestamp, existing ? mergeMoodEntry(existing, entry) : entry);
 	}
-	entries.push(...pendingByTimestamp.values());
-	return entries.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
+	return Array.from(pendingByTimestamp.values()).sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
+}
+
+function parseMoodEntries(rows: CsvRow[]): MoodEntry[] {
+	const entriesWithoutAverageRows = collectMoodEntries(rows, false);
+	return entriesWithoutAverageRows.length ? entriesWithoutAverageRows : collectMoodEntries(rows, true);
 }
 
 function normalizeSleepStage(stage: string): string {

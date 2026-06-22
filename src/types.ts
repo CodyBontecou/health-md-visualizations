@@ -182,10 +182,15 @@ export interface MoodEntry {
 	valence?: number;
 	/** Original score/rating when exported on a 1–5, 0–10, or 0–100 scale. */
 	score?: number;
+	/** Health.md percent display derived from valence, on a 0–100 scale. */
+	valencePercent?: number;
+	/** Human-readable valence bucket, e.g. Very Pleasant or Neutral. */
+	valenceDescription?: string;
 	/** Primary human-readable mood label, e.g. Happy, Calm, Stressed. */
 	label?: string;
 	labels?: string[];
 	associations?: string[];
+	metadata?: unknown;
 }
 
 export interface MoodSummary {
@@ -290,6 +295,16 @@ export interface HealthDay {
 		mindfulMinutes?: number;
 		mindfulSessions?: number;
 		sessions?: MindfulnessSession[];
+		stateOfMindCount?: number;
+		averageValence?: number;
+		averageValencePercent?: number;
+		dailyMoodCount?: number;
+		averageDailyMoodValence?: number;
+		momentaryEmotionCount?: number;
+		emotionLabels?: string[];
+		associations?: string[];
+		stateOfMindEntries?: MoodEntry[];
+		stateOfMind?: MoodEntry[];
 	};
 	medicationCount?: number;
 	medication_count?: number;

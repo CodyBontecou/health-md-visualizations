@@ -10352,37 +10352,6 @@ function hasMedicationData(day) {
   return getMedicationDaySummary(day).hasMedicationData;
 }
 
-// src/parsers/json-parser.ts
-function parseJSON(content) {
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed.schema === HEALTHMD_ROLLUP_SCHEMA || parsed.type === "health_rollup") return null;
-    if (parsed.type !== "health-data" || !parsed.date) return null;
-    if (typeof parsed.schema === "string" && parsed.schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
-    const day = { ...parsed };
-    if (typeof parsed.schema === "string") day.schema = parsed.schema;
-    const schemaVersion = schemaVersionOf(parsed);
-    if (schemaVersion > 0) {
-      day.schemaVersion = schemaVersion;
-      day.schema_version = schemaVersion;
-    }
-    if (typeof parsed.unit_system === "string") {
-      day.unitSystem = parsed.unit_system;
-      day.unit_system = parsed.unit_system;
-    } else if (day.schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1) {
-      day.unitSystem = "metric";
-      day.unit_system = "metric";
-    }
-    if (isUnitMap(parsed.units)) {
-      day.units = parsed.units;
-    }
-    Object.assign(day, normalizeMedicationFields(parsed));
-    return day;
-  } catch (e) {
-    return null;
-  }
-}
-
 // src/mood-utils.ts
 var VALENCE_LABELS = [
   { max: -0.72, label: "Very unpleasant" },
@@ -10526,7 +10495,7 @@ function normalizeTimestamp(raw, fallbackDate) {
   return value;
 }
 function moodEntryFromRecord(record, fallbackDate) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d;
   const valenceRaw = firstNumber2(record, [
     "valence",
     "moodValence",
@@ -10544,7 +10513,15 @@ function moodEntryFromRecord(record, fallbackDate) {
     "mood_score",
     "rating",
     "moodRating",
-    "mood_rating"
+    "mood_rating",
+    "valencePercent",
+    "valence_percent",
+    "moodPercent",
+    "mood_percent",
+    "averageValencePercent",
+    "average_valence_percent",
+    "averageMoodPercent",
+    "average_mood_percent"
   ]);
   const label = firstString2(record, [
     "label",
@@ -10552,10 +10529,15 @@ function moodEntryFromRecord(record, fallbackDate) {
     "primary_label",
     "moodLabel",
     "mood_label",
+    "state"
+  ]);
+  const valenceDescription = firstString2(record, [
     "classification",
     "valenceClassification",
     "valence_classification",
-    "state"
+    "valenceDescription",
+    "valence_description",
+    "feeling"
   ]);
   const rawMood = record.mood;
   const moodLabel = typeof rawMood === "string" && rawMood.trim() ? rawMood.trim() : void 0;
@@ -10564,8 +10546,8 @@ function moodEntryFromRecord(record, fallbackDate) {
     ...stringArrayFromUnknown2(record.emotions),
     ...stringArrayFromUnknown2(record.feelings)
   ].filter((item, index, all) => all.indexOf(item) === index);
-  const primaryLabel2 = (_a = label != null ? label : moodLabel) != null ? _a : labels[0];
-  const valence = (_c = (_b = normalizeMoodValence(valenceRaw, "valence")) != null ? _b : normalizeMoodValence(scoreRaw, "score")) != null ? _c : normalizeMoodValence(primaryLabel2, "label");
+  const primaryLabel2 = (_b = (_a = label != null ? label : moodLabel) != null ? _a : labels[0]) != null ? _b : valenceDescription;
+  const valence = (_d = (_c = normalizeMoodValence(valenceRaw, "valence")) != null ? _c : normalizeMoodValence(scoreRaw, "score")) != null ? _d : normalizeMoodValence(primaryLabel2, "label");
   const timestamp = normalizeTimestamp(firstString2(record, [
     "timestamp",
     "date",
@@ -10623,7 +10605,7 @@ function moodEntriesFromUnknown(value, fallbackDate) {
     return entry ? [entry] : [];
   }
   const entries = [];
-  for (const key of ["entries", "samples", "records", "states", "stateOfMind", "state_of_mind", "moods"]) {
+  for (const key of ["entries", "samples", "records", "states", "stateOfMind", "state_of_mind", "stateOfMindEntries", "state_of_mind_entries", "moods"]) {
     const nested = value[key];
     if (Array.isArray(nested)) entries.push(...moodEntriesFromArray(nested, fallbackDate));
   }
@@ -10695,7 +10677,8 @@ function getMoodDaySummary(day) {
     ...moodEntriesFromUnknown(dayRecord.mood, day.date),
     ...moodEntriesFromUnknown(dayRecord.stateOfMind, day.date),
     ...moodEntriesFromUnknown(dayRecord.state_of_mind, day.date),
-    ...moodEntriesFromUnknown(dayRecord.moods, day.date)
+    ...moodEntriesFromUnknown(dayRecord.moods, day.date),
+    ...moodEntriesFromUnknown(dayRecord.mindfulness, day.date)
   ]);
   const summary = createMoodSummary(entries);
   return {
@@ -10706,6 +10689,47 @@ function getMoodDaySummary(day) {
     maxValence: summary == null ? void 0 : summary.maxValence,
     primaryLabel: summary == null ? void 0 : summary.primaryLabel
   };
+}
+
+// src/parsers/json-parser.ts
+function parseJSON(content) {
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed.schema === HEALTHMD_ROLLUP_SCHEMA || parsed.type === "health_rollup") return null;
+    if (parsed.type !== "health-data" || !parsed.date) return null;
+    if (typeof parsed.schema === "string" && parsed.schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
+    const day = { ...parsed };
+    if (typeof parsed.schema === "string") day.schema = parsed.schema;
+    const schemaVersion = schemaVersionOf(parsed);
+    if (schemaVersion > 0) {
+      day.schemaVersion = schemaVersion;
+      day.schema_version = schemaVersion;
+    }
+    if (typeof parsed.unit_system === "string") {
+      day.unitSystem = parsed.unit_system;
+      day.unit_system = parsed.unit_system;
+    } else if (day.schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1) {
+      day.unitSystem = "metric";
+      day.unit_system = "metric";
+    }
+    if (isUnitMap(parsed.units)) {
+      day.units = parsed.units;
+    }
+    Object.assign(day, normalizeMedicationFields(parsed));
+    const moodSummary = getMoodDaySummary(day);
+    if (moodSummary.entries.length) {
+      day.mood = {
+        entries: moodSummary.entries,
+        averageValence: moodSummary.averageValence,
+        minValence: moodSummary.minValence,
+        maxValence: moodSummary.maxValence,
+        primaryLabel: moodSummary.primaryLabel
+      };
+    }
+    return day;
+  } catch (e) {
+    return null;
+  }
 }
 
 // src/parsers/csv-parser.ts
@@ -10832,12 +10856,18 @@ function formatLocalDateTime(ms) {
   return `${yyyy}-${mm}-${dd}T${hh}:${min}:${sec}`;
 }
 function timestampFromClock(date, rawClock) {
-  var _a;
-  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(rawClock.trim());
+  var _a, _b;
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]\.?m\.?)?$/i.exec(rawClock.trim());
   if (!match) return void 0;
-  const h = Number(match[1]);
+  let h = Number(match[1]);
   const m = Number(match[2]);
   const s = Number((_a = match[3]) != null ? _a : 0);
+  const meridiem = (_b = match[4]) == null ? void 0 : _b.replace(/\./g, "").toLowerCase();
+  if (meridiem) {
+    if (h < 1 || h > 12) return void 0;
+    if (meridiem === "pm" && h !== 12) h += 12;
+    if (meridiem === "am" && h === 12) h = 0;
+  }
   if (h > 23 || m > 59 || s > 59) return void 0;
   return `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
@@ -10846,6 +10876,10 @@ function normalizeTimestamp2(date, raw) {
   if (!value) return void 0;
   if (isFinite(Date.parse(value))) return value;
   return timestampFromClock(date, value);
+}
+function timestampFromMetric(date, metric) {
+  const match = /\bat\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]\.?m\.?)?)\s*$/i.exec(metric.trim());
+  return match ? timestampFromClock(date, match[1]) : void 0;
 }
 function samplesFromRows(rows, lookups, transformValue = (value) => value) {
   const samples = [];
@@ -10869,18 +10903,26 @@ function csvMoodKind(metric) {
   if (metric.includes("momentary") || metric.includes("emotion")) return "momentaryEmotion";
   return void 0;
 }
+function isMoodCountMetric(metric, unit) {
+  const normalizedUnit = normalizeLabel(unit);
+  return (normalizedUnit === "count" || normalizedUnit === "entries") && (metric.includes("count") || metric.includes("entries"));
+}
+function isAverageMoodMetric(metric) {
+  return metric.includes("average") && (metric.includes("mood") || metric.includes("valence"));
+}
 function moodEntryFromRow(row) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d;
   const metric = normalizeLabel(row.metric);
   const value = row.value.trim();
-  if (!value) return null;
-  const timestamp = (_a = normalizeTimestamp2(row.date, row.timestamp)) != null ? _a : `${row.date}T12:00:00`;
-  const isScore = metric.includes("score") || metric.includes("rating");
-  const isLabel = metric.includes("label") || metric.includes("emotion") || metric.includes("feeling") || metric.includes("classification");
+  if (!value || isMoodCountMetric(metric, row.unit)) return null;
+  const timestamp = (_b = (_a = normalizeTimestamp2(row.date, row.timestamp)) != null ? _a : timestampFromMetric(row.date, row.metric)) != null ? _b : `${row.date}T12:00:00`;
+  const isScore = metric.includes("score") || metric.includes("rating") || metric.includes("percent") || normalizeLabel(row.unit) === "percent";
+  const isLabel = metric.includes("label") || metric.includes("feeling") || metric.includes("classification");
+  const isAssociation = metric.includes("association") || metric.includes("context") || metric.includes("factor");
   const labels = isLabel ? stringArrayFromUnknown2(value) : [];
-  const associations = metric.includes("association") || metric.includes("context") || metric.includes("factor") ? stringArrayFromUnknown2(value) : [];
-  const label = (_b = labels[0]) != null ? _b : parseNumber2(value) === void 0 ? value : void 0;
-  const valence = (_c = normalizeMoodValence(value, isScore ? "score" : isLabel ? "label" : "valence")) != null ? _c : normalizeMoodValence(label, "label");
+  const associations = isAssociation ? stringArrayFromUnknown2(value) : [];
+  const label = (_c = labels[0]) != null ? _c : !isAssociation && parseNumber2(value) === void 0 ? value : void 0;
+  const valence = (_d = normalizeMoodValence(value, isScore ? "score" : isLabel ? "label" : "valence")) != null ? _d : normalizeMoodValence(label, "label");
   const score = isScore ? parseNumber2(value) : void 0;
   if (valence === void 0 && !label && !labels.length && !associations.length) return null;
   return {
@@ -10894,35 +10936,39 @@ function moodEntryFromRow(row) {
     associations: associations.length ? associations : void 0
   };
 }
-function parseMoodEntries(rows) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
-  const entries = [];
+function mergeMoodEntry(existing, entry) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  return {
+    ...existing,
+    ...entry,
+    valence: (_a = existing.valence) != null ? _a : entry.valence,
+    score: (_b = existing.score) != null ? _b : entry.score,
+    label: (_c = existing.label) != null ? _c : entry.label,
+    labels: [...(_d = existing.labels) != null ? _d : [], ...(_e = entry.labels) != null ? _e : []].filter((item, index, all) => all.indexOf(item) === index),
+    associations: [...(_f = existing.associations) != null ? _f : [], ...(_g = entry.associations) != null ? _g : []].filter((item, index, all) => all.indexOf(item) === index)
+  };
+}
+function collectMoodEntries(rows, includeAverageRows) {
+  var _a, _b;
   const pendingByTimestamp = /* @__PURE__ */ new Map();
   for (const row of rows) {
     if (!isMoodRow(row)) continue;
+    const metric = normalizeLabel(row.metric);
+    if (!includeAverageRows && isAverageMoodMetric(metric)) continue;
     const entry = moodEntryFromRow(row);
     if (!entry) continue;
     const timestamp = (_b = (_a = entry.timestamp) != null ? _a : entry.startDate) != null ? _b : row.date;
     const existing = pendingByTimestamp.get(timestamp);
-    if (!existing) {
-      pendingByTimestamp.set(timestamp, entry);
-      continue;
-    }
-    pendingByTimestamp.set(timestamp, {
-      ...existing,
-      ...entry,
-      valence: (_c = existing.valence) != null ? _c : entry.valence,
-      score: (_d = existing.score) != null ? _d : entry.score,
-      label: (_e = existing.label) != null ? _e : entry.label,
-      labels: [...(_f = existing.labels) != null ? _f : [], ...(_g = entry.labels) != null ? _g : []].filter((item, index, all) => all.indexOf(item) === index),
-      associations: [...(_h = existing.associations) != null ? _h : [], ...(_i = entry.associations) != null ? _i : []].filter((item, index, all) => all.indexOf(item) === index)
-    });
+    pendingByTimestamp.set(timestamp, existing ? mergeMoodEntry(existing, entry) : entry);
   }
-  entries.push(...pendingByTimestamp.values());
-  return entries.sort((a, b) => {
+  return Array.from(pendingByTimestamp.values()).sort((a, b) => {
     var _a2, _b2;
     return ((_a2 = a.timestamp) != null ? _a2 : "").localeCompare((_b2 = b.timestamp) != null ? _b2 : "");
   });
+}
+function parseMoodEntries(rows) {
+  const entriesWithoutAverageRows = collectMoodEntries(rows, false);
+  return entriesWithoutAverageRows.length ? entriesWithoutAverageRows : collectMoodEntries(rows, true);
 }
 function normalizeSleepStage(stage) {
   const normalized = normalizeLabel(stage).replace(/^asleep[_\s-]*/, "").replace(/^sleep[_\s-]*/, "");
@@ -11402,6 +11448,13 @@ function getFirstRaw(fm, ...keys) {
   }
   return void 0;
 }
+function shouldParseMoodContainer(key, value) {
+  if (value === void 0 || value === null || value === "") return false;
+  if (["mood_entries", "moodEntries", "state_of_mind_entries", "stateOfMindEntries"].includes(key)) {
+    return Array.isArray(value) || typeof value === "object" && value !== null;
+  }
+  return true;
+}
 function parseMoodEntriesFromFrontmatter(fm, date) {
   var _a, _b;
   const entries = [];
@@ -11412,10 +11465,13 @@ function parseMoodEntriesFromFrontmatter(fm, date) {
     "moodEntries",
     "state_of_mind",
     "stateOfMind",
+    "state_of_mind_entries",
+    "stateOfMindEntries",
     "states_of_mind",
     "statesOfMind"
   ]) {
-    entries.push(...moodEntriesFromUnknown(fm[key], date));
+    const value = fm[key];
+    if (shouldParseMoodContainer(key, value)) entries.push(...moodEntriesFromUnknown(value, date));
   }
   const explicitValence = getFirstNum(
     fm,
@@ -11424,7 +11480,9 @@ function parseMoodEntriesFromFrontmatter(fm, date) {
     "state_of_mind_valence",
     "stateOfMindValence",
     "average_mood_valence",
-    "averageMoodValence"
+    "averageMoodValence",
+    "average_valence",
+    "averageValence"
   );
   const explicitScore = getFirstNum(
     fm,
@@ -11433,7 +11491,15 @@ function parseMoodEntriesFromFrontmatter(fm, date) {
     "mood_rating",
     "moodRating",
     "state_of_mind_score",
-    "stateOfMindScore"
+    "stateOfMindScore",
+    "average_mood_percent",
+    "averageMoodPercent",
+    "average_valence_percent",
+    "averageValencePercent",
+    "daily_mood_percent",
+    "dailyMoodPercent",
+    "valence_percent",
+    "valencePercent"
   );
   const label = getFirstStr(
     fm,
@@ -11450,6 +11516,7 @@ function parseMoodEntriesFromFrontmatter(fm, date) {
   const timestamp = getFirstStr(fm, "mood_time", "moodTime", "mood_timestamp", "moodTimestamp", "state_of_mind_time", "stateOfMindTime");
   const labels = [
     ...stringArrayFromUnknown2(getFirstRaw(fm, "mood_labels", "moodLabels")),
+    ...stringArrayFromUnknown2(getFirstRaw(fm, "emotion_labels", "emotionLabels")),
     ...stringArrayFromUnknown2(getFirstRaw(fm, "emotions", "feelings"))
   ].filter((item, index, all) => all.indexOf(item) === index);
   const associations = [

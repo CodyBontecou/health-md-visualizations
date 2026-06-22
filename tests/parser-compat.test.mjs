@@ -256,6 +256,50 @@ test("JSON parser accepts Health.md schema v1 metadata and units map", async () 
 	assert.equal(day.activity.walkingRunningDistanceKm, 9.5);
 });
 
+test("JSON parser reads Health.md mindfulness State of Mind entries", async () => {
+	const { parseJSON } = await loadParsers();
+	const day = parseJSON(JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 2,
+		type: "health-data",
+		date: "2026-05-12",
+		unit_system: "metric",
+		mindfulness: {
+			stateOfMindCount: 2,
+			averageValence: 0.42,
+			averageValencePercent: 71,
+			dailyMoodCount: 1,
+			momentaryEmotionCount: 1,
+			emotionLabels: ["Calm", "Focused"],
+			associations: ["Fitness", "Work"],
+			stateOfMindEntries: [
+				{
+					timestamp: "08:30",
+					kind: "Daily Mood",
+					valence: 0.64,
+					valencePercent: 82,
+					valenceDescription: "Very Pleasant",
+					labels: ["Calm"],
+					associations: ["Fitness"],
+				},
+				{
+					timestamp: "15:45",
+					kind: "Momentary Emotion",
+					valence: 0.2,
+					labels: ["Focused"],
+					associations: ["Work"],
+				},
+			],
+		},
+	}));
+
+	assert.equal(day.mood?.entries.length, 2);
+	assert.equal(day.mood?.entries[0].timestamp, "2026-05-12T08:30:00");
+	assert.equal(day.mood?.entries[0].kind, "Daily Mood");
+	assert.equal(day.mood?.entries[0].label, "Calm");
+	assert.equal(Math.round((day.mood?.averageValence ?? 0) * 100) / 100, 0.42);
+});
+
 test("schema detection classifies legacy, daily, roll-up, dictionary, and future versions", async () => {
 	const {
 		detectJsonSchema,
@@ -410,6 +454,33 @@ test("CSV parser reads mood/state-of-mind rows", async () => {
 	assert.deepEqual(day.mood?.entries[0].associations, ["Work"]);
 	assert.equal(day.activity?.exerciseMinutes, 30);
 	assert.equal(day.sleep?.totalDuration, 28800);
+});
+
+test("CSV parser reads Health.md app State of Mind export rows", async () => {
+	const { parseCSV } = await loadParsers();
+	const csv = `Date,Category,Metric,Value,Unit,Timestamp
+2026-05-12,Mindfulness,State of Mind Entries,2,count,
+2026-05-12,Mindfulness,Average Mood Valence,0.42,scale(-1 to 1),
+2026-05-12,Mindfulness,Average Mood Percent,71,percent,
+2026-05-12,Mindfulness,Daily Mood Count,1,count,
+2026-05-12,Mindfulness,Momentary Emotion Count,1,count,
+2026-05-12,State of Mind,Daily Mood at 08:30,0.64,valence,
+2026-05-12,State of Mind,Daily Mood Labels at 08:30,"Calm; Grateful",labels,
+2026-05-12,State of Mind,Daily Mood Associations at 08:30,Fitness,associations,
+2026-05-12,State of Mind,Momentary Emotion at 15:45,0.20,valence,
+2026-05-12,State of Mind,Momentary Emotion Labels at 15:45,Focused,labels,
+2026-05-12,State of Mind,Momentary Emotion Associations at 15:45,Work,associations,`;
+
+	const [day] = parseCSV(csv);
+
+	assert.equal(day.mood?.entries.length, 2);
+	assert.equal(day.mood?.entries[0].timestamp, "2026-05-12T08:30:00");
+	assert.equal(day.mood?.entries[0].kind, "dailyMood");
+	assert.equal(day.mood?.entries[0].label, "Calm");
+	assert.deepEqual(day.mood?.entries[0].labels, ["Calm", "Grateful"]);
+	assert.deepEqual(day.mood?.entries[0].associations, ["Fitness"]);
+	assert.equal(day.mood?.entries[1].timestamp, "2026-05-12T15:45:00");
+	assert.equal(Math.round((day.mood?.averageValence ?? 0) * 100) / 100, 0.42);
 });
 
 test("CSV parser preserves legacy plugin labels", async () => {
@@ -567,6 +638,32 @@ sleep_total_hours: 7
 	assert.equal(day.mood?.primaryLabel, "Stressed");
 	assert.deepEqual(day.mood?.entries[0].associations, ["Work", "Health"]);
 	assert.equal(day.sleep?.totalDuration, 25200);
+});
+
+test("Markdown parser treats Health.md mood count fields as aggregates", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = `---
+date: 2026-05-12
+type: health-data
+mood_entries: 2
+average_mood_valence: 0.42
+average_mood_percent: 71
+daily_mood_count: 1
+daily_mood_percent: 82
+momentary_emotion_count: 1
+mood_labels: [calm, grateful]
+mood_associations: [fitness, work]
+---
+`;
+
+	const day = parseMarkdown(markdown);
+
+	assert.ok(day);
+	assert.equal(day.mood?.entries.length, 1);
+	assert.equal(day.mood?.averageValence, 0.42);
+	assert.equal(day.mood?.entries[0].timestamp, "2026-05-12T12:00:00");
+	assert.deepEqual(day.mood?.entries[0].labels, ["calm", "grateful"]);
+	assert.deepEqual(day.mood?.entries[0].associations, ["fitness", "work"]);
 });
 
 test("Markdown parser reads schema v1 metadata, units map, and data dictionary aliases", async () => {

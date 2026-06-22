@@ -62,7 +62,7 @@ Notes:
 | `sleep-quality-bars` | Nightly sleep-stage composition | sleep stages | none |
 | `sleep-architecture` | Linear sleep-stage timeline | sleep stages | none |
 | `sleep-polar` | Clock-face sleep stages | sleep stages | none |
-| `mood-trend` | Mood valence with sleep/workout context | `mood.entries` or State of Mind exports | `showContext` |
+| `mood-trend` | Mood valence with sleep/workout context | `mindfulness.stateOfMindEntries`, `mood.entries`, or State of Mind exports | `showContext` |
 | `medication-overview` | All medication sections in one component | schema v2 medication counts/details/dose events | `trend`, `limit` |
 | `medication-inventory` | Medication inventory section | schema v2 medication counts/details | none |
 | `medication-adherence-summary` | Taken/skipped adherence summary section | schema v2 medication dose counts/events | none |
@@ -539,9 +539,11 @@ Shows HealthKit State of Mind / mood valence on a -1 (unpleasant) to +1
 exercise/workout bars render behind the mood dots so mood can be inspected
 alongside recovery and training load.
 
-The parser accepts JSON mood summaries (`mood.entries`, `mood.samples`, or
-`stateOfMind`), CSV rows in `Mood` / `State of Mind` categories, and daily-note
-frontmatter such as `mood_valence`, `mood_score`, `mood_label`,
+The parser accepts Health.md JSON State of Mind entries under
+`mindfulness.stateOfMindEntries` plus legacy JSON mood summaries
+(`mood.entries`, `mood.samples`, or `stateOfMind`), CSV rows in `Mindfulness`,
+`Mood`, or `State of Mind` categories, and daily-note frontmatter such as
+`average_mood_valence`, `mood_valence`, `mood_score`, `mood_label`,
 `mood_associations`, and `mood_kind`.
 
 | Argument | Values | Default | Effect |

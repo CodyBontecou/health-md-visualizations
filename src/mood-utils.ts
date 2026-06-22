@@ -195,6 +195,14 @@ function moodEntryFromRecord(record: Record<string, unknown>, fallbackDate?: str
 		"rating",
 		"moodRating",
 		"mood_rating",
+		"valencePercent",
+		"valence_percent",
+		"moodPercent",
+		"mood_percent",
+		"averageValencePercent",
+		"average_valence_percent",
+		"averageMoodPercent",
+		"average_mood_percent",
 	]);
 	const label = firstString(record, [
 		"label",
@@ -202,10 +210,15 @@ function moodEntryFromRecord(record: Record<string, unknown>, fallbackDate?: str
 		"primary_label",
 		"moodLabel",
 		"mood_label",
+		"state",
+	]);
+	const valenceDescription = firstString(record, [
 		"classification",
 		"valenceClassification",
 		"valence_classification",
-		"state",
+		"valenceDescription",
+		"valence_description",
+		"feeling",
 	]);
 	const rawMood = record.mood;
 	const moodLabel = typeof rawMood === "string" && rawMood.trim() ? rawMood.trim() : undefined;
@@ -214,7 +227,7 @@ function moodEntryFromRecord(record: Record<string, unknown>, fallbackDate?: str
 		...stringArrayFromUnknown(record.emotions),
 		...stringArrayFromUnknown(record.feelings),
 	].filter((item, index, all) => all.indexOf(item) === index);
-	const primaryLabel = label ?? moodLabel ?? labels[0];
+	const primaryLabel = label ?? moodLabel ?? labels[0] ?? valenceDescription;
 	const valence = normalizeMoodValence(valenceRaw, "valence") ??
 		normalizeMoodValence(scoreRaw, "score") ??
 		normalizeMoodValence(primaryLabel, "label");
@@ -281,7 +294,7 @@ export function moodEntriesFromUnknown(value: unknown, fallbackDate?: string): M
 	}
 
 	const entries: MoodEntry[] = [];
-	for (const key of ["entries", "samples", "records", "states", "stateOfMind", "state_of_mind", "moods"]) {
+	for (const key of ["entries", "samples", "records", "states", "stateOfMind", "state_of_mind", "stateOfMindEntries", "state_of_mind_entries", "moods"]) {
 		const nested = value[key];
 		if (Array.isArray(nested)) entries.push(...moodEntriesFromArray(nested, fallbackDate));
 	}
@@ -357,6 +370,7 @@ export function getMoodDaySummary(day: HealthDay): MoodDaySummary {
 		...moodEntriesFromUnknown(dayRecord.stateOfMind, day.date),
 		...moodEntriesFromUnknown(dayRecord.state_of_mind, day.date),
 		...moodEntriesFromUnknown(dayRecord.moods, day.date),
+		...moodEntriesFromUnknown(dayRecord.mindfulness, day.date),
 	]);
 	const summary = createMoodSummary(entries);
 	return {

@@ -1,5 +1,6 @@
 import { HEALTHMD_HEALTH_DATA_SCHEMA, HEALTHMD_ROLLUP_SCHEMA, isUnitMap, schemaVersionOf } from "../healthmd-schema";
 import { normalizeMedicationFields } from "../medication-utils";
+import { getMoodDaySummary } from "../mood-utils";
 import { HealthDay } from "../types";
 
 export function parseJSON(content: string): HealthDay | null {
@@ -38,6 +39,17 @@ export function parseJSON(content: string): HealthDay | null {
 		}
 
 		Object.assign(day, normalizeMedicationFields(parsed as Record<string, unknown>));
+
+		const moodSummary = getMoodDaySummary(day);
+		if (moodSummary.entries.length) {
+			day.mood = {
+				entries: moodSummary.entries,
+				averageValence: moodSummary.averageValence,
+				minValence: moodSummary.minValence,
+				maxValence: moodSummary.maxValence,
+				primaryLabel: moodSummary.primaryLabel,
+			};
+		}
 
 		return day;
 	} catch {

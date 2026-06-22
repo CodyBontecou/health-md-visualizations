@@ -115,6 +115,10 @@ function localTimestamp(dateIso, minutesFromMidnight, seconds = 0) {
 	return `${d}T${hh}:${mm}:${ss}`;
 }
 
+function localTime(dateIso, minutesFromMidnight) {
+	return localTimestamp(dateIso, minutesFromMidnight).slice(11, 16);
+}
+
 function durationText(seconds) {
 	const h = Math.floor(seconds / 3600);
 	const m = Math.round((seconds % 3600) / 60);
@@ -511,13 +515,17 @@ function moodLabelForValence(valence) {
 }
 
 function moodClassificationForValence(valence) {
-	if (valence <= -0.72) return "Very unpleasant";
+	if (valence <= -0.72) return "Very Unpleasant";
 	if (valence <= -0.44) return "Unpleasant";
-	if (valence <= -0.16) return "Slightly unpleasant";
+	if (valence <= -0.16) return "Slightly Unpleasant";
 	if (valence < 0.16) return "Neutral";
-	if (valence < 0.44) return "Slightly pleasant";
+	if (valence < 0.44) return "Slightly Pleasant";
 	if (valence < 0.72) return "Pleasant";
-	return "Very pleasant";
+	return "Very Pleasant";
+}
+
+function moodPercentForValence(valence) {
+	return Math.round(((valence + 1) / 2) * 100);
 }
 
 function moodAssociations(rng, sleepHours, exerciseMinutes, workouts, recoveryFlag, dow) {
@@ -554,13 +562,13 @@ function buildMood(dateIso, rng, dayIndex, sleep, activity, workouts, recoveryFl
 	const associations = moodAssociations(rng, sleepHours, exerciseMinutes, workouts, recoveryFlag, dow);
 	const entries = [
 		{
-			timestamp: localTimestamp(dateIso, 20 * 60 + 30 + Math.round(randBetween(rng, -32, 28))),
-			kind: "dailyMood",
+			timestamp: localTime(dateIso, 20 * 60 + 30 + Math.round(randBetween(rng, -32, 28))),
+			kind: "Daily Mood",
 			valence: dailyValence,
-			label: primaryLabel,
+			valencePercent: moodPercentForValence(dailyValence),
+			valenceDescription: moodClassificationForValence(dailyValence),
 			labels: [primaryLabel],
 			associations,
-			valenceClassification: moodClassificationForValence(dailyValence),
 		},
 	];
 
@@ -572,13 +580,13 @@ function buildMood(dateIso, rng, dayIndex, sleep, activity, workouts, recoveryFl
 		), 2);
 		const label = moodLabelForValence(momentValence);
 		entries.push({
-			timestamp: localTimestamp(dateIso, workouts[0]?.startTime ? 18 * 60 : 13 * 60 + Math.round(randBetween(rng, -45, 80))),
-			kind: "momentaryEmotion",
+			timestamp: localTime(dateIso, workouts[0]?.startTime ? 18 * 60 : 13 * 60 + Math.round(randBetween(rng, -45, 80))),
+			kind: "Momentary Emotion",
 			valence: momentValence,
-			label,
+			valencePercent: moodPercentForValence(momentValence),
+			valenceDescription: moodClassificationForValence(momentValence),
 			labels: [label],
 			associations: exerciseMinutes > 35 ? ["Fitness", ...associations.filter((item) => item !== "Fitness").slice(0, 1)] : associations.slice(0, 2),
-			valenceClassification: moodClassificationForValence(momentValence),
 		});
 	}
 
@@ -681,13 +689,21 @@ function buildDay(dateIso, dayIndex, totalDays) {
 	const vitals = buildVitals(dateIso, rngFor(dateIso, "vitals"), dayIndex, sleep, recoveryFlag);
 	const mobility = buildMobility(rngFor(dateIso, "mobility"), dayIndex, totalDays, recoveryFlag);
 	const mood = buildMood(dateIso, rngFor(dateIso, "mood"), dayIndex, sleep, finalActivity, refreshedWorkouts, recoveryFlag);
-	const stateOfMind = {
-		entries: mood.entries,
-		samples: mood.entries,
+	const dailyMoods = mood.entries.filter((entry) => entry.kind === "Daily Mood");
+	const momentaryEmotions = mood.entries.filter((entry) => entry.kind === "Momentary Emotion");
+	const averageDailyMoodValence = dailyMoods.length
+		? round(dailyMoods.reduce((sum, entry) => sum + entry.valence, 0) / dailyMoods.length, 2)
+		: undefined;
+	const mindfulness = {
+		stateOfMindCount: mood.entries.length,
 		averageValence: mood.averageValence,
-		minValence: mood.minValence,
-		maxValence: mood.maxValence,
-		primaryLabel: mood.primaryLabel,
+		averageValencePercent: moodPercentForValence(mood.averageValence),
+		dailyMoodCount: dailyMoods.length,
+		averageDailyMoodValence,
+		momentaryEmotionCount: momentaryEmotions.length,
+		emotionLabels: Array.from(new Set(mood.entries.flatMap((entry) => entry.labels ?? []))).sort(),
+		associations: Array.from(new Set(mood.entries.flatMap((entry) => entry.associations ?? []))).sort(),
+		stateOfMindEntries: mood.entries,
 	};
 	const medication = buildMedication(dateIso, rngFor(dateIso, "medication"), dayIndex, recoveryFlag);
 	const day = {
@@ -702,9 +718,7 @@ function buildDay(dateIso, dayIndex, totalDays) {
 		vitals,
 		sleep,
 		mobility,
-		mood,
-		stateOfMind,
-		state_of_mind: stateOfMind,
+		mindfulness,
 		...medication,
 		hearing: {
 			headphoneAudioLevel: round(clamp(64 + Math.sin(dayIndex / 11) * 3 + randBetween(rng, -4, 5), 48, 82), 1),
@@ -733,7 +747,7 @@ async function main() {
 		await writeFile(path.join(OUT_DIR, `${dates[i]}.json`), `${JSON.stringify(day)}\n`);
 	}
 
-	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, respiratory rate, mobility, mood / State of Mind entries (\`mood.entries\`, \`stateOfMind\`, and \`state_of_mind\`), schema v2 medication inventory/dose events, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
+	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, respiratory rate, mobility, mood / State of Mind entries under \`mindfulness.stateOfMindEntries\`, schema v2 medication inventory/dose events, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
 	await writeFile(path.join(OUT_DIR, "README.md"), readme);
 
 	console.log(`Wrote ${dates.length} mock Health.md JSON files to ${path.relative(REPO_ROOT, OUT_DIR)}`);

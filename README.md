@@ -197,7 +197,7 @@ Starter dashboards live in the `examples/` folder — copy any of them into your
 - `examples/weekly-overview.md` — rolling week-at-a-glance across activity, heart, respiratory, sleep, mood, mobility, and workouts.
 - `examples/sleep-analysis.md` — sleep-focused drill-down.
 
-This repo also ships deterministic mock data in `examples/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31) including activity, heart, vitals, sleep, workouts, and mood / State of Mind entries. When the default `Health/` folder is empty or missing, the plugin falls back to this bundled dataset so cloned examples render immediately. You can also set **Settings → Health.md Visualizations → Data folder** to `examples/Health` explicitly.
+This repo also ships deterministic mock data in `examples/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31) including activity, heart, vitals, sleep, workouts, and Health.md-style mood / State of Mind entries under `mindfulness.stateOfMindEntries`. When the default `Health/` folder is empty or missing, the plugin falls back to this bundled dataset so cloned examples render immediately. You can also set **Settings → Health.md Visualizations → Data folder** to `examples/Health` explicitly.
 
 ## Embedding charts in notes
 
