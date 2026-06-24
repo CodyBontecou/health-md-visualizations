@@ -872,7 +872,7 @@ export async function renderCodeBlock(
 		const container = el.createDiv({ cls: "health-md-container" });
 		function drawHtml(): void {
 			container.empty();
-			htmlRenderFn(data, container, config, resolveTheme(plugin.settings));
+			htmlRenderFn(data, container, config, resolveTheme(plugin.settings, config));
 		}
 		drawHtml();
 		const htmlChild = new VizRenderChild(container);
@@ -1021,7 +1021,7 @@ export async function renderCodeBlock(
 		hideTooltip();
 		canvas.removeClass("health-md-canvas-pointer");
 		const canvasCtx = setupCanvas(canvas, width, height);
-		renderFn(canvasCtx, data, width, height, config, resolveTheme(plugin.settings), statsEl, hits);
+		renderFn(canvasCtx, data, width, height, config, resolveTheme(plugin.settings, config), statsEl, hits);
 	}
 
 	draw();

@@ -19,6 +19,7 @@ import {
 	DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE,
 	normalizeDataFolderPathTemplate,
 } from "./data-folder-layout";
+import { COLOR_SCHEMES } from "./canvas-utils";
 import { renderCodeBlock } from "./renderer";
 import { openInsertVisualizationWizard } from "./insert-wizard";
 import {
@@ -26,80 +27,6 @@ import {
 	HEALTH_MD_SOURCE_VIEW_TYPE,
 	HealthMdSourceFileView,
 } from "./source-file-view";
-
-interface ColorScheme {
-	label: string;
-	accent: string;
-	secondary: string;
-	heart: string;
-	sleepDeep: string;
-	sleepRem: string;
-	sleepCore: string;
-	sleepAwake: string;
-}
-
-const COLOR_SCHEMES: Record<Exclude<ColorSchemeId, "custom">, ColorScheme> = {
-	default: {
-		label: "Default",
-		accent: "#2dd4bf",
-		secondary: "#f59e0b",
-		heart: "#ef4444",
-		sleepDeep: "#312e81",
-		sleepRem: "#7c3aed",
-		sleepCore: "#2dd4bf",
-		sleepAwake: "#f59e0b",
-	},
-	ocean: {
-		label: "Ocean",
-		accent: "#0ea5e9",
-		secondary: "#38bdf8",
-		heart: "#e11d48",
-		sleepDeep: "#0c2461",
-		sleepRem: "#1d4ed8",
-		sleepCore: "#0ea5e9",
-		sleepAwake: "#7dd3fc",
-	},
-	forest: {
-		label: "Forest",
-		accent: "#22c55e",
-		secondary: "#84cc16",
-		heart: "#ef4444",
-		sleepDeep: "#14532d",
-		sleepRem: "#15803d",
-		sleepCore: "#4ade80",
-		sleepAwake: "#bbf7d0",
-	},
-	sunset: {
-		label: "Sunset",
-		accent: "#f97316",
-		secondary: "#ec4899",
-		heart: "#ef4444",
-		sleepDeep: "#7f1d1d",
-		sleepRem: "#be185d",
-		sleepCore: "#f97316",
-		sleepAwake: "#fbbf24",
-	},
-	aurora: {
-		label: "Aurora",
-		accent: "#a855f7",
-		secondary: "#06b6d4",
-		heart: "#f43f5e",
-		sleepDeep: "#1e1b4b",
-		sleepRem: "#6d28d9",
-		sleepCore: "#a855f7",
-		sleepAwake: "#818cf8",
-	},
-	monochrome: {
-		label: "Monochrome",
-		accent: "#94a3b8",
-		secondary: "#64748b",
-		heart: "#475569",
-		sleepDeep: "#0f172a",
-		sleepRem: "#334155",
-		sleepCore: "#64748b",
-		sleepAwake: "#cbd5e1",
-	},
-};
 
 const DEFAULT_SETTINGS: HealthMdSettings = {
 	dataFolder: "Health",
@@ -150,6 +77,13 @@ function isDataPointClickAction(value: unknown): value is DataPointClickAction {
 
 function isDataFolderGranularity(value: unknown): value is DataFolderGranularity {
 	return typeof value === "string" && DATA_FOLDER_GRANULARITIES.includes(value as DataFolderGranularity);
+}
+
+function isColorSchemeId(value: unknown): value is ColorSchemeId {
+	return (
+		typeof value === "string" &&
+		(value === "theme" || value === "custom" || Object.prototype.hasOwnProperty.call(COLOR_SCHEMES, value))
+	);
 }
 
 export default class HealthMdPlugin extends Plugin {
@@ -226,6 +160,9 @@ export default class HealthMdPlugin extends Plugin {
 		}
 		if (!isDataFolderGranularity(this.settings.dataFolderGranularity)) {
 			this.settings.dataFolderGranularity = DEFAULT_SETTINGS.dataFolderGranularity;
+		}
+		if (!isColorSchemeId(this.settings.colorScheme)) {
+			this.settings.colorScheme = DEFAULT_SETTINGS.colorScheme;
 		}
 		this.settings.dataFolderCustomPathTemplate = normalizeDataFolderPathTemplate(
 			this.settings.dataFolderCustomPathTemplate ??
@@ -333,7 +270,7 @@ class HealthMdSettingTab extends PluginSettingTab {
 
 		const applyScheme = async (schemeId: ColorSchemeId): Promise<void> => {
 			this.plugin.settings.colorScheme = schemeId;
-			if (schemeId !== "custom") {
+			if (schemeId !== "custom" && schemeId !== "theme") {
 				const scheme = COLOR_SCHEMES[schemeId];
 				this.plugin.settings.colorAccent = scheme.accent;
 				this.plugin.settings.colorSecondary = scheme.secondary;
@@ -557,12 +494,13 @@ class HealthMdSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Color scheme",
-						desc: "Choose a preset palette or customize individual colors below",
+						desc: "Choose a preset palette, match the active Obsidian theme accent, or customize individual colors below",
 						render: (setting) => {
 							setting.addDropdown((dropdown) => {
-								(Object.keys(COLOR_SCHEMES) as Array<Exclude<ColorSchemeId, "custom">>).forEach((id) => {
+								(Object.keys(COLOR_SCHEMES) as Array<Exclude<ColorSchemeId, "custom" | "theme">>).forEach((id) => {
 									dropdown.addOption(id, COLOR_SCHEMES[id].label);
 								});
+								dropdown.addOption("theme", "Match Obsidian theme");
 								dropdown.addOption("custom", "Custom");
 								dropdown.setValue(this.plugin.settings.colorScheme);
 								dropdown.onChange(async (value) => {

@@ -28,6 +28,10 @@ Lines beginning with `#` are comments and are ignored by the plugin.
 | `from` | all | none | Start date or datetime, inclusive. Accepts `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM`, or `YYYY-MM-DDTHH:MM:SS` with optional timezone. |
 | `to` | all | none | End date or datetime, inclusive. Also anchors `last`. |
 | `last` | all | none | Number of calendar days ending at `to` when present, otherwise ending today. |
+| `theme` | all | plugin setting | `auto`, `dark`, or `light`. `auto` follows the active Obsidian theme. |
+| `colorScheme` / `palette` | all | plugin setting | `theme`, `default`, `ocean`, `forest`, `sunset`, `aurora`, or `monochrome`. |
+| `background` / `bg`, `foreground` / `fg`, `muted` | all | resolved theme | Override chart surface and label colors. |
+| `accent`, `secondary`, `heart`, `sleepDeep`, `sleepRem`, `sleepCore`, `sleepAwake` | all | resolved palette | Override semantic health colors for one block. |
 
 Notes:
 
@@ -36,6 +40,18 @@ Notes:
 - For `showAverage`, use `false` or `0` to disable the line.
 - Date filtering happens before a renderer-specific argument like `date` selects
   a workout, so make sure the selected workout is inside the filtered window.
+- Appearance overrides are optional; most users can use Settings → Health.md
+  Visualizations → Theme / Color scheme to match their vault or website style.
+
+Example themed block:
+
+```health-viz
+type: summary-card
+metric: hrv
+last: 14
+colorScheme: theme
+accent: #7c3aed
+```
 
 ---
 

@@ -59,7 +59,8 @@ Open **Settings → Health.md Visualizations**:
 | **Custom folder path template** | Used when structure is `Custom template`. Supports predefined variables `{year}`, `{month}`, `{week}` (for example `W23`), `{day}`, and `{date}` plus static folder names. Example: `{year}/{month}/{day}`. |
 | **File pattern** | Glob to filter which files in that folder are loaded. Examples: `*` (all supported), `*.json`, `2026-*.md`, `health-*.csv`, `2026/**/*.json` for nested paths. |
 | **Data format** | `auto` (detect by file extension), `json`, `csv`, `markdown`, or `bases`. Markdown support requires YAML frontmatter (Bases-style). |
-| **Theme** | `auto` matches Obsidian, or force `dark` / `light`. |
+| **Theme** | `auto` matches the active Obsidian theme (including custom CSS colors), or force `dark` / `light`. |
+| **Color scheme** | Pick a built-in palette, choose `Match Obsidian theme` to use the theme accent, or set individual custom colors. |
 | **Default width** | Default canvas width in pixels (charts shrink to container width). |
 | **Default height** | Default canvas height in pixels. |
 | **Data point click action** | What clicking a hoverable canvas point does: pin the tooltip, open the source health data file, or open the matching Daily Note. |
@@ -67,6 +68,22 @@ Open **Settings → Health.md Visualizations**:
 Nested folders are opt-in so existing vaults keep working unchanged. In any nested mode, including custom templates, files directly under the data folder are still loaded, which lets you migrate from flat exports gradually.
 
 The plugin watches your data folder and automatically refreshes its cache when files are added, modified, or deleted.
+
+### Visualization appearance
+
+Global appearance is controlled from settings, and each `health-viz` block can override it when a specific chart needs its own style:
+
+```health-viz
+type: bar-chart
+metric: steps
+colorScheme: theme
+accent: #7c3aed
+background: #111827
+foreground: #f9fafb
+muted: #9ca3af
+```
+
+Supported appearance keys are `theme` (`auto`, `dark`, `light`), `colorScheme`/`palette` (`theme`, `default`, `ocean`, `forest`, `sunset`, `aurora`, `monochrome`), `background`/`bg`, `foreground`/`fg`, `muted`, `accent`, `secondary`, `heart`, `sleepDeep`, `sleepRem`, `sleepCore`, and `sleepAwake`.
 
 ### Health.md schema compatibility
 

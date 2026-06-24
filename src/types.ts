@@ -352,7 +352,7 @@ export interface ColorPalette {
 	};
 }
 
-export type ColorSchemeId = "default" | "ocean" | "forest" | "sunset" | "aurora" | "monochrome" | "custom";
+export type ColorSchemeId = "default" | "ocean" | "forest" | "sunset" | "aurora" | "monochrome" | "theme" | "custom";
 
 export interface HealthMdSettings {
 	dataFolder: string;

@@ -13217,10 +13217,69 @@ function mergeDays(a, b) {
   };
 }
 
-// src/renderer.ts
-var import_obsidian2 = require("obsidian");
-
 // src/canvas-utils.ts
+var COLOR_SCHEMES = {
+  default: {
+    label: "Default",
+    accent: "#2dd4bf",
+    secondary: "#f59e0b",
+    heart: "#ef4444",
+    sleepDeep: "#312e81",
+    sleepRem: "#7c3aed",
+    sleepCore: "#2dd4bf",
+    sleepAwake: "#f59e0b"
+  },
+  ocean: {
+    label: "Ocean",
+    accent: "#0ea5e9",
+    secondary: "#38bdf8",
+    heart: "#e11d48",
+    sleepDeep: "#0c2461",
+    sleepRem: "#1d4ed8",
+    sleepCore: "#0ea5e9",
+    sleepAwake: "#7dd3fc"
+  },
+  forest: {
+    label: "Forest",
+    accent: "#22c55e",
+    secondary: "#84cc16",
+    heart: "#ef4444",
+    sleepDeep: "#14532d",
+    sleepRem: "#15803d",
+    sleepCore: "#4ade80",
+    sleepAwake: "#bbf7d0"
+  },
+  sunset: {
+    label: "Sunset",
+    accent: "#f97316",
+    secondary: "#ec4899",
+    heart: "#ef4444",
+    sleepDeep: "#7f1d1d",
+    sleepRem: "#be185d",
+    sleepCore: "#f97316",
+    sleepAwake: "#fbbf24"
+  },
+  aurora: {
+    label: "Aurora",
+    accent: "#a855f7",
+    secondary: "#06b6d4",
+    heart: "#f43f5e",
+    sleepDeep: "#1e1b4b",
+    sleepRem: "#6d28d9",
+    sleepCore: "#a855f7",
+    sleepAwake: "#818cf8"
+  },
+  monochrome: {
+    label: "Monochrome",
+    accent: "#94a3b8",
+    secondary: "#64748b",
+    heart: "#475569",
+    sleepDeep: "#0f172a",
+    sleepRem: "#334155",
+    sleepCore: "#64748b",
+    sleepAwake: "#cbd5e1"
+  }
+};
 function setupCanvas(canvas, w, h) {
   const dpr = activeWindow.devicePixelRatio || 1;
   canvas.width = w * dpr;
@@ -13253,37 +13312,155 @@ function hsl(h, s, l) {
   return `hsl(${h},${s}%,${l}%)`;
 }
 function hexToRgba(hex, alpha) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
+  const normalized = normalizeColor(hex, "#000000");
+  const r = parseInt(normalized.slice(1, 3), 16);
+  const g = parseInt(normalized.slice(3, 5), 16);
+  const b = parseInt(normalized.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
 function hexToRgb(hex) {
+  const normalized = normalizeColor(hex, "#000000");
   return {
-    r: parseInt(hex.slice(1, 3), 16),
-    g: parseInt(hex.slice(3, 5), 16),
-    b: parseInt(hex.slice(5, 7), 16)
+    r: parseInt(normalized.slice(1, 3), 16),
+    g: parseInt(normalized.slice(3, 5), 16),
+    b: parseInt(normalized.slice(5, 7), 16)
   };
 }
-function resolveTheme(settings) {
+function normalizeHexColor(value) {
+  const trimmed = value.trim();
+  const short = /^#([0-9a-f]{3})$/i.exec(trimmed);
+  if (short) {
+    return `#${short[1].split("").map((c) => c + c).join("")}`.toLowerCase();
+  }
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed.toLowerCase();
+  return null;
+}
+function rgbToHex(r, g, b) {
+  return `#${[r, g, b].map((n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0")).join("")}`;
+}
+function parseRgbColor(value) {
+  const match = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*[\d.]+)?\s*\)$/i.exec(value.trim());
+  if (!match) return null;
+  return rgbToHex(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+function cssColorToHex(value) {
+  var _a;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const hex = normalizeHexColor(trimmed);
+  if (hex) return hex;
+  const rgb = parseRgbColor(trimmed);
+  if (rgb) return rgb;
+  try {
+    const probe = activeDocument.createElement("span");
+    probe.style.color = trimmed;
+    if (!probe.style.color && !trimmed.startsWith("var(")) return null;
+    activeDocument.body.appendChild(probe);
+    const computed = activeWindow.getComputedStyle(probe).color;
+    probe.remove();
+    return (_a = parseRgbColor(computed)) != null ? _a : normalizeHexColor(computed);
+  } catch (e) {
+    return null;
+  }
+}
+function normalizeColor(value, fallback) {
+  var _a;
+  if (typeof value !== "string") return fallback;
+  return (_a = cssColorToHex(value)) != null ? _a : fallback;
+}
+function getCssColor(name, fallback) {
+  try {
+    const value = activeWindow.getComputedStyle(activeDocument.body).getPropertyValue(name);
+    return normalizeColor(value, fallback);
+  } catch (e) {
+    return fallback;
+  }
+}
+function configColor(config, keys, fallback) {
+  if (!config) return fallback;
+  for (const key of keys) {
+    const value = config[key];
+    if (typeof value === "string") {
+      const color = normalizeColor(value, "");
+      if (color) return color;
+    }
+  }
+  return fallback;
+}
+function normalizeThemeMode(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const mode = value.trim().toLowerCase();
+  return mode === "auto" || mode === "dark" || mode === "light" ? mode : fallback;
+}
+function normalizeColorScheme(value) {
+  if (typeof value !== "string") return null;
+  const scheme = value.trim().toLowerCase();
+  if (scheme === "theme" || scheme === "custom") return scheme;
+  if (Object.prototype.hasOwnProperty.call(COLOR_SCHEMES, scheme)) {
+    return scheme;
+  }
+  return null;
+}
+function resolveTheme(settings, config) {
+  var _a;
+  const themeMode = normalizeThemeMode(config == null ? void 0 : config.theme, settings.theme);
   let isDark;
-  if (settings.theme === "auto") {
+  if (themeMode === "auto") {
     isDark = activeDocument.body.classList.contains("theme-dark");
   } else {
-    isDark = settings.theme === "dark";
+    isDark = themeMode === "dark";
   }
-  const base = isDark ? { bg: "#0a0a0f", fg: "#e0e0e0", muted: "#555", isDark: true } : { bg: "#ffffff", fg: "#1a1a1a", muted: "#999", isDark: false };
+  const fallbackBase = isDark ? { bg: "#0a0a0f", fg: "#e0e0e0", muted: "#555555", isDark: true } : { bg: "#ffffff", fg: "#1a1a1a", muted: "#999999", isDark: false };
+  const obsidianBase = themeMode === "auto" ? {
+    bg: getCssColor("--background-primary", fallbackBase.bg),
+    fg: getCssColor("--text-normal", fallbackBase.fg),
+    muted: getCssColor("--text-muted", fallbackBase.muted),
+    isDark
+  } : fallbackBase;
+  const requestedScheme = normalizeColorScheme((_a = config == null ? void 0 : config.colorScheme) != null ? _a : config == null ? void 0 : config.palette);
+  const scheme = requestedScheme != null ? requestedScheme : settings.colorScheme;
+  const preset = scheme !== "custom" && scheme !== "theme" ? COLOR_SCHEMES[scheme] : void 0;
+  const themeAccent = getCssColor("--interactive-accent", getCssColor("--color-accent", settings.colorAccent));
+  const themeSecondary = getCssColor("--text-accent", getCssColor("--interactive-accent-hover", settings.colorSecondary));
+  const palette = preset ? {
+    accent: preset.accent,
+    secondary: preset.secondary,
+    heart: preset.heart,
+    sleepDeep: preset.sleepDeep,
+    sleepRem: preset.sleepRem,
+    sleepCore: preset.sleepCore,
+    sleepAwake: preset.sleepAwake
+  } : scheme === "theme" ? {
+    accent: themeAccent,
+    secondary: themeSecondary,
+    heart: settings.colorHeart,
+    sleepDeep: settings.colorSleepDeep,
+    sleepRem: settings.colorSleepRem,
+    sleepCore: themeAccent,
+    sleepAwake: settings.colorSleepAwake
+  } : {
+    accent: settings.colorAccent,
+    secondary: settings.colorSecondary,
+    heart: settings.colorHeart,
+    sleepDeep: settings.colorSleepDeep,
+    sleepRem: settings.colorSleepRem,
+    sleepCore: settings.colorSleepCore,
+    sleepAwake: settings.colorSleepAwake
+  };
   return {
-    ...base,
+    bg: configColor(config, ["background", "bg", "colorBackground"], obsidianBase.bg),
+    fg: configColor(config, ["foreground", "fg", "text", "colorForeground"], obsidianBase.fg),
+    muted: configColor(config, ["muted", "textMuted", "colorMuted"], obsidianBase.muted),
+    isDark,
     colors: {
-      accent: settings.colorAccent,
-      secondary: settings.colorSecondary,
-      heart: settings.colorHeart,
+      accent: configColor(config, ["accent", "colorAccent"], palette.accent),
+      secondary: configColor(config, ["secondary", "colorSecondary"], palette.secondary),
+      heart: configColor(config, ["heart", "heartRate", "colorHeart"], palette.heart),
       sleep: {
-        deep: settings.colorSleepDeep,
-        rem: settings.colorSleepRem,
-        core: settings.colorSleepCore,
-        awake: settings.colorSleepAwake
+        deep: configColor(config, ["sleepDeep", "colorSleepDeep"], palette.sleepDeep),
+        rem: configColor(config, ["sleepRem", "colorSleepRem"], palette.sleepRem),
+        core: configColor(config, ["sleepCore", "colorSleepCore"], palette.sleepCore),
+        awake: configColor(config, ["sleepAwake", "colorSleepAwake"], palette.sleepAwake)
       }
     },
     maxHeartRate: settings.maxHeartRate,
@@ -13292,6 +13469,9 @@ function resolveTheme(settings) {
     mapTileAttribution: settings.mapTileAttribution
   };
 }
+
+// src/renderer.ts
+var import_obsidian2 = require("obsidian");
 
 // src/dom-utils.ts
 function renderStatBoxes(statsEl, boxes) {
@@ -19901,7 +20081,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
   if (htmlRenderFn) {
     let drawHtml = function() {
       container2.empty();
-      htmlRenderFn(data2, container2, config, resolveTheme(plugin.settings));
+      htmlRenderFn(data2, container2, config, resolveTheme(plugin.settings, config));
     };
     const allData2 = await plugin.dataLoader.load();
     if (!allData2.length) {
@@ -20041,7 +20221,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     hideTooltip();
     canvas.removeClass("health-md-canvas-pointer");
     const canvasCtx = setupCanvas(canvas, width, height);
-    renderFn(canvasCtx, data, width, height, config, resolveTheme(plugin.settings), statsEl, hits);
+    renderFn(canvasCtx, data, width, height, config, resolveTheme(plugin.settings, config), statsEl, hits);
   }
   draw();
   const observer = new ResizeObserver(() => draw());
@@ -21442,68 +21622,6 @@ var HealthMdSourceFileView = class extends import_obsidian4.FileView {
 };
 
 // src/main.ts
-var COLOR_SCHEMES = {
-  default: {
-    label: "Default",
-    accent: "#2dd4bf",
-    secondary: "#f59e0b",
-    heart: "#ef4444",
-    sleepDeep: "#312e81",
-    sleepRem: "#7c3aed",
-    sleepCore: "#2dd4bf",
-    sleepAwake: "#f59e0b"
-  },
-  ocean: {
-    label: "Ocean",
-    accent: "#0ea5e9",
-    secondary: "#38bdf8",
-    heart: "#e11d48",
-    sleepDeep: "#0c2461",
-    sleepRem: "#1d4ed8",
-    sleepCore: "#0ea5e9",
-    sleepAwake: "#7dd3fc"
-  },
-  forest: {
-    label: "Forest",
-    accent: "#22c55e",
-    secondary: "#84cc16",
-    heart: "#ef4444",
-    sleepDeep: "#14532d",
-    sleepRem: "#15803d",
-    sleepCore: "#4ade80",
-    sleepAwake: "#bbf7d0"
-  },
-  sunset: {
-    label: "Sunset",
-    accent: "#f97316",
-    secondary: "#ec4899",
-    heart: "#ef4444",
-    sleepDeep: "#7f1d1d",
-    sleepRem: "#be185d",
-    sleepCore: "#f97316",
-    sleepAwake: "#fbbf24"
-  },
-  aurora: {
-    label: "Aurora",
-    accent: "#a855f7",
-    secondary: "#06b6d4",
-    heart: "#f43f5e",
-    sleepDeep: "#1e1b4b",
-    sleepRem: "#6d28d9",
-    sleepCore: "#a855f7",
-    sleepAwake: "#818cf8"
-  },
-  monochrome: {
-    label: "Monochrome",
-    accent: "#94a3b8",
-    secondary: "#64748b",
-    heart: "#475569",
-    sleepDeep: "#0f172a",
-    sleepRem: "#334155",
-    sleepCore: "#64748b",
-    sleepAwake: "#cbd5e1"
-  }
-};
 var DEFAULT_SETTINGS = {
   dataFolder: "Health",
   filePattern: "*",
@@ -21540,6 +21658,9 @@ function isDataPointClickAction(value) {
 }
 function isDataFolderGranularity(value) {
   return typeof value === "string" && DATA_FOLDER_GRANULARITIES.includes(value);
+}
+function isColorSchemeId(value) {
+  return typeof value === "string" && (value === "theme" || value === "custom" || Object.prototype.hasOwnProperty.call(COLOR_SCHEMES, value));
 }
 var HealthMdPlugin = class extends import_obsidian5.Plugin {
   constructor() {
@@ -21608,6 +21729,9 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
     }
     if (!isDataFolderGranularity(this.settings.dataFolderGranularity)) {
       this.settings.dataFolderGranularity = DEFAULT_SETTINGS.dataFolderGranularity;
+    }
+    if (!isColorSchemeId(this.settings.colorScheme)) {
+      this.settings.colorScheme = DEFAULT_SETTINGS.colorScheme;
     }
     this.settings.dataFolderCustomPathTemplate = normalizeDataFolderPathTemplate(
       (_a = this.settings.dataFolderCustomPathTemplate) != null ? _a : DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE
@@ -21690,7 +21814,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
     const colorInputs = {};
     const applyScheme = async (schemeId) => {
       this.plugin.settings.colorScheme = schemeId;
-      if (schemeId !== "custom") {
+      if (schemeId !== "custom" && schemeId !== "theme") {
         const scheme = COLOR_SCHEMES[schemeId];
         this.plugin.settings.colorAccent = scheme.accent;
         this.plugin.settings.colorSecondary = scheme.secondary;
@@ -21865,12 +21989,13 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
         items: [
           {
             name: "Color scheme",
-            desc: "Choose a preset palette or customize individual colors below",
+            desc: "Choose a preset palette, match the active Obsidian theme accent, or customize individual colors below",
             render: (setting) => {
               setting.addDropdown((dropdown) => {
                 Object.keys(COLOR_SCHEMES).forEach((id) => {
                   dropdown.addOption(id, COLOR_SCHEMES[id].label);
                 });
+                dropdown.addOption("theme", "Match Obsidian theme");
                 dropdown.addOption("custom", "Custom");
                 dropdown.setValue(this.plugin.settings.colorScheme);
                 dropdown.onChange(async (value) => {
