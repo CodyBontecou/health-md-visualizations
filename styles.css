@@ -81,6 +81,7 @@
 	justify-content: center;
 	padding: 8px 0 4px;
 	container-type: inline-size;
+	margin-block: 0;
 }
 
 .health-md-stat-box {
@@ -92,12 +93,14 @@
 	min-width: 72px;
 	max-width: 150px;
 	text-align: center;
+	margin-block: 0 !important;
 }
 
 .health-md-stat-value {
 	font-size: 1.3em;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
+	margin-block: 0 !important;
 }
 
 .health-md-stat-label {
@@ -105,6 +108,11 @@
 	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
+	margin-block: 0 !important;
+}
+
+.health-md-stats:not(:has(.health-md-stat-box:nth-child(4))) .health-md-stat-label {
+	white-space: nowrap;
 }
 
 @container (max-width: 360px) {
