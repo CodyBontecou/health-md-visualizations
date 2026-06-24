@@ -366,6 +366,12 @@ export const renderWorkoutMap: HtmlRenderFn = (
 	if (theme.mapTilesEnabled) {
 		renderLeafletMap(el, route, colorBy, hrSamples, theme, heightCfg);
 	} else {
-		renderCanvasPolyline(el, route, colorBy, hrSamples, theme, widthCfg, heightCfg);
+		// The canvas fallback is used by the docs/screenshot renderer when map
+		// tiles are disabled. Size the drawing surface to the rendered container
+		// instead of the nominal config width so narrow/mobile cards don't crop an
+		// 800px canvas down to a tiny centered route.
+		const renderedWidth = Math.round(el.clientWidth || widthCfg);
+		const responsiveWidth = Math.min(widthCfg, Math.max(240, renderedWidth));
+		renderCanvasPolyline(el, route, colorBy, hrSamples, theme, responsiveWidth, heightCfg);
 	}
 };

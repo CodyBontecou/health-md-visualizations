@@ -17761,7 +17761,9 @@ var renderWorkoutMap = (data, el, config, theme) => {
   if (theme.mapTilesEnabled) {
     renderLeafletMap(el, route, colorBy, hrSamples, theme, heightCfg);
   } else {
-    renderCanvasPolyline(el, route, colorBy, hrSamples, theme, widthCfg, heightCfg);
+    const renderedWidth = Math.round(el.clientWidth || widthCfg);
+    const responsiveWidth = Math.min(widthCfg, Math.max(240, renderedWidth));
+    renderCanvasPolyline(el, route, colorBy, hrSamples, theme, responsiveWidth, heightCfg);
   }
 };
 

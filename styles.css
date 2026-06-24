@@ -80,6 +80,7 @@
 	gap: 6px 16px;
 	justify-content: center;
 	padding: 8px 0 4px;
+	container-type: inline-size;
 }
 
 .health-md-stat-box {
@@ -104,6 +105,13 @@
 	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
+}
+
+@container (max-width: 360px) {
+	.health-md-stats:has(.health-md-stat-box:nth-child(4)) .health-md-stat-box {
+		flex-basis: calc(50% - 8px);
+		max-width: calc(50% - 8px);
+	}
 }
 
 /* Summary card */
