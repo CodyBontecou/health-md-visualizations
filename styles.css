@@ -83,7 +83,13 @@
 }
 
 .health-md-stat-box {
+	/* Keep stats in the same row when the container is narrow. Without an
+	   explicit flex basis, long labels (for example “EXERCISE / 45”) inflate
+	   their item's intrinsic width and can push neighboring stats onto a
+	   different row/vertical offset. */
+	flex: 1 1 72px;
 	min-width: 72px;
+	max-width: 150px;
 	text-align: center;
 }
 
