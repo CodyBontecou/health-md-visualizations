@@ -8,6 +8,10 @@ const RING_COLORS = {
 	stand: "#1eeaef",
 };
 
+function activityRingColors(theme: ResolvedTheme): typeof RING_COLORS {
+	return theme.colors.activity ?? RING_COLORS;
+}
+
 interface RingValues {
 	move: number;
 	exercise: number;
@@ -45,6 +49,7 @@ function drawRingSet(
 	day: HealthDay,
 	label: string
 ): void {
+	const ringColors = activityRingColors(theme);
 	const rings: Array<{
 		key: "move" | "exercise" | "stand";
 		color: string;
@@ -52,9 +57,9 @@ function drawRingSet(
 		goal: number;
 		unit: string;
 	}> = [
-		{ key: "move", color: RING_COLORS.move, value: values.move, goal: goals.move, unit: "CAL" },
-		{ key: "exercise", color: RING_COLORS.exercise, value: values.exercise, goal: goals.exercise, unit: "MIN" },
-		{ key: "stand", color: RING_COLORS.stand, value: values.stand, goal: goals.stand, unit: "HR" },
+		{ key: "move", color: ringColors.move, value: values.move, goal: goals.move, unit: "CAL" },
+		{ key: "exercise", color: ringColors.exercise, value: values.exercise, goal: goals.exercise, unit: "MIN" },
+		{ key: "stand", color: ringColors.stand, value: values.stand, goal: goals.stand, unit: "HR" },
 	];
 
 	const gap = Math.max(2, stroke * 0.18);
@@ -146,6 +151,7 @@ export const renderActivityRings: RenderFn = (
 		exercise: Number(config.exerciseGoal) || 30,
 		stand: Number(config.standGoal) || 12,
 	};
+	const ringColors = activityRingColors(theme);
 
 	if (days.length === 1) {
 		// Single-day: large ring set, centered, with stat text in middle.
@@ -160,9 +166,9 @@ export const renderActivityRings: RenderFn = (
 		// Center labels
 		const innerR = outerR - 3 * (stroke + stroke * 0.18) - stroke;
 		const lines = [
-			{ text: `${Math.round(values.move)}/${goals.move} CAL`, color: RING_COLORS.move },
-			{ text: `${Math.round(values.exercise)}/${goals.exercise} MIN`, color: RING_COLORS.exercise },
-			{ text: `${Math.round(values.stand)}/${goals.stand} HR`, color: RING_COLORS.stand },
+			{ text: `${Math.round(values.move)}/${goals.move} CAL`, color: ringColors.move },
+			{ text: `${Math.round(values.exercise)}/${goals.exercise} MIN`, color: ringColors.exercise },
+			{ text: `${Math.round(values.stand)}/${goals.stand} HR`, color: ringColors.stand },
 		];
 		ctx.textAlign = "center";
 		ctx.textBaseline = "middle";
@@ -179,17 +185,17 @@ export const renderActivityRings: RenderFn = (
 			{
 				value: String(Math.round(values.move)),
 				label: `Move / ${goals.move}`,
-				color: RING_COLORS.move,
+				color: ringColors.move,
 			},
 			{
 				value: String(Math.round(values.exercise)),
 				label: `Exercise / ${goals.exercise}`,
-				color: RING_COLORS.exercise,
+				color: ringColors.exercise,
 			},
 			{
 				value: String(Math.round(values.stand)),
 				label: `Stand / ${goals.stand}`,
-				color: RING_COLORS.stand,
+				color: ringColors.stand,
 			},
 		]);
 		return;
@@ -251,17 +257,17 @@ export const renderActivityRings: RenderFn = (
 		{
 			value: `${closedMove}/${days.length}`,
 			label: "Move closed",
-			color: RING_COLORS.move,
+			color: ringColors.move,
 		},
 		{
 			value: `${closedEx}/${days.length}`,
 			label: "Exercise closed",
-			color: RING_COLORS.exercise,
+			color: ringColors.exercise,
 		},
 		{
 			value: `${closedStand}/${days.length}`,
 			label: "Stand closed",
-			color: RING_COLORS.stand,
+			color: ringColors.stand,
 		},
 		{
 			value: Math.round(totalMove).toLocaleString(),

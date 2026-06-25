@@ -303,6 +303,11 @@ export function resolveTheme(settings: HealthMdSettings, config?: VizConfig): Re
 				core: configColor(config, ["sleepCore", "colorSleepCore"], palette.sleepCore),
 				awake: configColor(config, ["sleepAwake", "colorSleepAwake"], palette.sleepAwake),
 			},
+			activity: {
+				move: configColor(config, ["activityMove", "move", "colorActivityMove"], palette.heart),
+				exercise: configColor(config, ["activityExercise", "exercise", "colorActivityExercise"], palette.accent),
+				stand: configColor(config, ["activityStand", "stand", "colorActivityStand"], palette.secondary),
+			},
 		},
 		maxHeartRate: settings.maxHeartRate,
 		mapTilesEnabled: settings.mapTilesEnabled,

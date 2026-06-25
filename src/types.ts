@@ -350,6 +350,11 @@ export interface ColorPalette {
 		core: string;
 		awake: string;
 	};
+	activity?: {
+		move: string;
+		exercise: string;
+		stand: string;
+	};
 }
 
 export type ColorSchemeId = "default" | "ocean" | "forest" | "sunset" | "aurora" | "monochrome" | "theme" | "custom";
