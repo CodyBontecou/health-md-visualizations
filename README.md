@@ -95,7 +95,7 @@ If charts look incomplete after changing Health.md export settings, open **Setti
 
 ## Visualization types
 
-Specify one of these as the `type:` field in your code block. The gallery below shows each renderer with a short description; see `examples/visualization-reference.md` for complete argument tables, defaults, and copy/paste examples.
+Specify one of these as the `type:` field in your code block. The gallery below shows each renderer with a short description; start at `examples/visualization-reference.md` for the category-specific argument tables, defaults, and copy/paste examples.
 
 <table>
 <tr>
@@ -208,7 +208,7 @@ All canvas chart types support hover tooltips. Click behavior is configurable: k
 
 Starter dashboards live in the `examples/` folder — copy any of them into your vault to see the code blocks render:
 
-- `examples/visualization-reference.md` — comprehensive reference for every visualization, including supported arguments, defaults, metric values, and copy/paste blocks.
+- `examples/visualization-reference.md` — landing page for category-specific visualization references, shared arguments, the full type index, and copy/paste templates.
 - `examples/apple-dashboard.md` — full Apple Health-style summary using the Apple-inspired visualizations (summary cards, activity rings, heart range, bar chart, sleep schedule, mood trend, weekday average, oxygen range, trend tiles).
 - `examples/daily-dashboard.md` — single-day overview for daily notes.
 - `examples/weekly-overview.md` — rolling week-at-a-glance across activity, heart, respiratory, sleep, mood, mobility, and workouts.
@@ -240,7 +240,7 @@ height: 400
 | `last` | number | — | Number of calendar days back to include. |
 | `clickAction` | `pin`, `source`, `daily` | from settings | Optional per-chart override for data point clicks: pin tooltip, open source data file, or open matching Daily Note. |
 
-Individual visualization types may accept additional keys — see `examples/visualization-reference.md` for every supported renderer-specific argument, default, and accepted value.
+Individual visualization types may accept additional keys — start at `examples/visualization-reference.md` for links to every category-specific renderer argument, default, and accepted value.
 
 ## Filtering by date or date+time
 
