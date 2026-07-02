@@ -14869,9 +14869,9 @@ function formatElapsed(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor(seconds % 3600 / 60);
   const s = Math.floor(seconds % 60);
-  const pad = (n) => n.toString().padStart(2, "0");
-  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
-  return `${m}:${pad(s)}`;
+  const pad3 = (n) => n.toString().padStart(2, "0");
+  if (h > 0) return `${h}:${pad3(m)}:${pad3(s)}`;
+  return `${m}:${pad3(s)}`;
 }
 function drawEmptyState(ctx, w, h, bg, muted, message) {
   ctx.fillStyle = bg;
@@ -19460,6 +19460,176 @@ var HTML_VISUALIZATIONS = {
   "medication-dose-events": renderMedicationRecentDoseEvents
 };
 
+// src/date-variables.ts
+var DEFAULT_DYNAMIC_DATE_FORMAT = "YYYY-MM-DD";
+var DYNAMIC_DATE_VARIABLE = /^\{\{\s*([A-Za-z][A-Za-z0-9_-]*)\s*(?::\s*([^{}]*?)\s*)?\}\}$/;
+var FRONTMATTER_VARIABLE = /^(?:\{([^{}]+)\}|\$\{([^{}]+)\})$/;
+var WEEKDAY_TO_ISO_DAY = {
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+  sunday: 7
+};
+var DYNAMIC_DATE_VARIABLE_HELP = "today, now, yesterday, tomorrow, monday-sunday, week-start/week-end, month-start/month-end, or year-start/year-end";
+function cloneDate(date) {
+  return new Date(date.getTime());
+}
+function validDate(date) {
+  return Number.isFinite(date.getTime());
+}
+function startOfDay(date) {
+  const out = cloneDate(date);
+  out.setHours(0, 0, 0, 0);
+  return out;
+}
+function endOfDay(date) {
+  const out = cloneDate(date);
+  out.setHours(23, 59, 59, 999);
+  return out;
+}
+function addDays2(date, days) {
+  const out = cloneDate(date);
+  out.setDate(out.getDate() + days);
+  return out;
+}
+function startOfIsoWeek(date) {
+  const out = startOfDay(date);
+  const day = out.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  return addDays2(out, diffToMonday);
+}
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+function endOfMonth(date) {
+  return endOfDay(new Date(date.getFullYear(), date.getMonth() + 1, 0));
+}
+function startOfYear(date) {
+  return new Date(date.getFullYear(), 0, 1);
+}
+function endOfYear(date) {
+  return endOfDay(new Date(date.getFullYear(), 11, 31));
+}
+function resolveDateVariableDate(name, now) {
+  const normalized = name.trim().toLowerCase().replace(/_/g, "-");
+  const weekday = WEEKDAY_TO_ISO_DAY[normalized];
+  if (weekday !== void 0) return addDays2(startOfIsoWeek(now), weekday - 1);
+  switch (normalized) {
+    case "now":
+      return cloneDate(now);
+    case "today":
+      return startOfDay(now);
+    case "yesterday":
+      return addDays2(startOfDay(now), -1);
+    case "tomorrow":
+      return addDays2(startOfDay(now), 1);
+    case "week-start":
+    case "current-week-start":
+    case "start-of-week":
+    case "start-of-current-week":
+      return startOfIsoWeek(now);
+    case "week-end":
+    case "current-week-end":
+    case "end-of-week":
+    case "end-of-current-week":
+      return endOfDay(addDays2(startOfIsoWeek(now), 6));
+    case "month-start":
+    case "current-month-start":
+    case "start-of-month":
+    case "start-of-current-month":
+      return startOfMonth(now);
+    case "month-end":
+    case "current-month-end":
+    case "end-of-month":
+    case "end-of-current-month":
+      return endOfMonth(now);
+    case "year-start":
+    case "current-year-start":
+    case "start-of-year":
+    case "start-of-current-year":
+      return startOfYear(now);
+    case "year-end":
+    case "current-year-end":
+    case "end-of-year":
+    case "end-of-current-year":
+      return endOfYear(now);
+    default:
+      return null;
+  }
+}
+function pad(value, length = 2) {
+  return String(value).padStart(length, "0");
+}
+function timezoneOffset(date) {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMinutes);
+  return `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}
+function formatDynamicDate(date, format) {
+  return format.replace(/YYYY|YY|MM|M|DD|D|HH|H|mm|m|ss|s|Z/g, (token) => {
+    switch (token) {
+      case "YYYY":
+        return String(date.getFullYear());
+      case "YY":
+        return pad(date.getFullYear() % 100);
+      case "MM":
+        return pad(date.getMonth() + 1);
+      case "M":
+        return String(date.getMonth() + 1);
+      case "DD":
+        return pad(date.getDate());
+      case "D":
+        return String(date.getDate());
+      case "HH":
+        return pad(date.getHours());
+      case "H":
+        return String(date.getHours());
+      case "mm":
+        return pad(date.getMinutes());
+      case "m":
+        return String(date.getMinutes());
+      case "ss":
+        return pad(date.getSeconds());
+      case "s":
+        return String(date.getSeconds());
+      case "Z":
+        return timezoneOffset(date);
+      default:
+        return token;
+    }
+  });
+}
+function resolveDynamicDateVariable(raw, now = /* @__PURE__ */ new Date()) {
+  var _a;
+  const match = DYNAMIC_DATE_VARIABLE.exec(raw.trim());
+  if (!match) return { matched: false };
+  const referenceDate = cloneDate(now);
+  if (!validDate(referenceDate)) {
+    return { matched: true, error: "Invalid reference date for dynamic date variable." };
+  }
+  const name = match[1];
+  const date = resolveDateVariableDate(name, referenceDate);
+  if (!date) {
+    return {
+      matched: true,
+      error: `Unknown dynamic date variable "${name}". Use ${DYNAMIC_DATE_VARIABLE_HELP}.`
+    };
+  }
+  const format = ((_a = match[2]) == null ? void 0 : _a.trim()) || DEFAULT_DYNAMIC_DATE_FORMAT;
+  return { matched: true, value: formatDynamicDate(date, format) };
+}
+function parseFrontmatterVariableReference(raw) {
+  var _a, _b;
+  const match = FRONTMATTER_VARIABLE.exec(raw.trim());
+  if (!match) return null;
+  const variable = ((_b = (_a = match[1]) != null ? _a : match[2]) != null ? _b : "").trim();
+  return variable || null;
+}
+
 // src/renderer.ts
 function noHealthDataMessage(plugin) {
   var _a, _b;
@@ -19481,8 +19651,7 @@ function parseConfig(source) {
   }
   return config;
 }
-var FRONTMATTER_DATE_VARIABLE_KEYS = ["from", "to", "date"];
-var FRONTMATTER_VARIABLE = /^\{([^{}]+)\}$/;
+var DATE_VARIABLE_KEYS = ["from", "to", "date"];
 function frontmatterDateValueToString(value, key) {
   if (value instanceof Date) {
     const ms = value.getTime();
@@ -19536,17 +19705,25 @@ async function getFrontmatterForContext(plugin, ctx) {
   if (parsed && isRecord5(cached)) return { ...parsed, ...cached };
   return cached != null ? cached : parsed;
 }
-function resolveFrontmatterDateVariables(config, frontmatter) {
+function resolveDateVariables(config, frontmatter) {
   const resolved = { ...config };
-  for (const key of FRONTMATTER_DATE_VARIABLE_KEYS) {
+  for (const key of DATE_VARIABLE_KEYS) {
     const raw = config[key];
     if (typeof raw !== "string") continue;
-    const match = FRONTMATTER_VARIABLE.exec(raw.trim());
-    if (!match) continue;
-    const variable = match[1].trim();
-    if (!variable) {
-      return { error: `Invalid frontmatter variable in "${key}".` };
+    const dynamic = resolveDynamicDateVariable(raw);
+    if (dynamic.matched) {
+      if ("error" in dynamic) return { error: dynamic.error };
+      if (key === "date") {
+        const parsed = parseBoundary(dynamic.value, key);
+        if ("error" in parsed) return { error: parsed.error };
+        resolved[key] = parsed.date;
+        continue;
+      }
+      resolved[key] = dynamic.value;
+      continue;
     }
+    const variable = parseFrontmatterVariableReference(raw);
+    if (!variable) continue;
     if (!isRecord5(frontmatter) || !Object.prototype.hasOwnProperty.call(frontmatter, variable)) {
       return {
         error: `Missing frontmatter variable "${variable}" for "${key}". Add "${variable}" to this note's frontmatter or use a literal date.`
@@ -20077,7 +20254,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     return;
   }
   const frontmatter = await getFrontmatterForContext(plugin, ctx);
-  const configResolution = resolveFrontmatterDateVariables(parsedConfig, frontmatter);
+  const configResolution = resolveDateVariables(parsedConfig, frontmatter);
   if ("error" in configResolution) {
     el.createEl("p", { text: configResolution.error, cls: "health-md-error" });
     return;

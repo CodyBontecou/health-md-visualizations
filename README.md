@@ -235,8 +235,8 @@ height: 400
 | `type` | string | *(required)* | Visualization type — see the gallery above. |
 | `width` | number | from settings | Canvas width in pixels (chart shrinks to container width). |
 | `height` | number | from settings | Canvas height in pixels. |
-| `from` | date, datetime, or frontmatter variable | — | Start of the data window (inclusive). |
-| `to` | date, datetime, or frontmatter variable | — | End of the data window (inclusive). |
+| `from` | date, datetime, dynamic variable, or frontmatter variable | — | Start of the data window (inclusive). |
+| `to` | date, datetime, dynamic variable, or frontmatter variable | — | End of the data window (inclusive). |
 | `last` | number | — | Number of calendar days back to include. |
 | `clickAction` | `pin`, `source`, `daily` | from settings | Optional per-chart override for data point clicks: pin tooltip, open source data file, or open matching Daily Note. |
 
@@ -267,9 +267,33 @@ from: 2026-04-01
 ```
 ````
 
+### Dynamic date variables
+
+`from`, `to`, and chart-specific `date` fields can use built-in variables. They are resolved by Health.md when the chart renders, so they do not depend on Templater or Dataview.
+
+````markdown
+```health-viz
+type: workout-log
+from: {{monday:YYYY-MM-DD}}
+to: {{today:YYYY-MM-DD}}
+```
+````
+
+The format is optional and defaults to `YYYY-MM-DD`:
+
+````markdown
+```health-viz
+type: step-spiral
+from: {{month-start}}
+to: {{month-end}}
+```
+````
+
+Supported variables include `today`, `now`, `yesterday`, `tomorrow`, weekdays (`monday` through `sunday`, using the current Monday-start week), `week-start`, `week-end`, `month-start`, `month-end`, `year-start`, and `year-end`. Supported format tokens are `YYYY`, `YY`, `MM`, `M`, `DD`, `D`, `HH`, `H`, `mm`, `m`, `ss`, `s`, and `Z`.
+
 ### Frontmatter date variables
 
-`from`, `to`, and chart-specific `date` fields can also reference top-level frontmatter properties from the current note using `{property-name}`. This is useful for weekly or monthly journal templates that should stay pinned to the journal's dates instead of moving with `last`.
+`from`, `to`, and chart-specific `date` fields can also reference top-level frontmatter properties from the current note using `{property-name}` or `${property-name}`. This is useful for weekly or monthly journal templates that should stay pinned to the journal's dates instead of moving with `last`.
 
 ````markdown
 ---
@@ -279,8 +303,8 @@ journal-end: 2026-06-07
 
 ```health-viz
 type: step-spiral
-from: {journal-start}
-to: {journal-end}
+from: ${journal-start}
+to: ${journal-end}
 ```
 ````
 
@@ -381,6 +405,7 @@ Apple Health exports `activity.steps`, `activity.activeCalories`, `activity.exer
 The plugin validates the date range up front and renders an inline error if something is off:
 
 - `Invalid "from" value: ... Use YYYY-MM-DD or YYYY-MM-DDTHH:MM[:SS].`
+- `Unknown dynamic date variable "..."...`
 - `Missing frontmatter variable "journal-start" for "from"...`
 - `Invalid "last": ... Use a positive number of days.`
 - `"from" (...) is after "to" (...).`

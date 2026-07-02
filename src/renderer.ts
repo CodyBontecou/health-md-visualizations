@@ -12,6 +12,10 @@ import { DataPointClickAction, HealthDay, HitRegion, HitRegistry, VizConfig } fr
 import { setupCanvas, resolveTheme, formatDuration } from "./canvas-utils";
 import { doseStatusKind } from "./medication-utils";
 import { HTML_VISUALIZATIONS, VISUALIZATIONS } from "./visualizations";
+import {
+	parseFrontmatterVariableReference,
+	resolveDynamicDateVariable,
+} from "./date-variables";
 
 function noHealthDataMessage(plugin: HealthMdPlugin): string {
 	const summary = plugin.dataLoader.getLastLoadSummary?.();
@@ -34,12 +38,12 @@ function parseConfig(source: string): VizConfig {
 	return config;
 }
 
-const FRONTMATTER_DATE_VARIABLE_KEYS = ["from", "to", "date"] as const;
-const FRONTMATTER_VARIABLE = /^\{([^{}]+)\}$/;
+const DATE_VARIABLE_KEYS = ["from", "to", "date"] as const;
+type DateVariableKey = typeof DATE_VARIABLE_KEYS[number];
 
 function frontmatterDateValueToString(
 	value: unknown,
-	key: typeof FRONTMATTER_DATE_VARIABLE_KEYS[number]
+	key: DateVariableKey
 ): string | null {
 	if (value instanceof Date) {
 		const ms = value.getTime();
@@ -112,21 +116,31 @@ async function getFrontmatterForContext(
 	return cached ?? parsed;
 }
 
-function resolveFrontmatterDateVariables(
+function resolveDateVariables(
 	config: VizConfig,
 	frontmatter: unknown
 ): { config: VizConfig } | { error: string } {
 	const resolved: VizConfig = { ...config };
-	for (const key of FRONTMATTER_DATE_VARIABLE_KEYS) {
+	for (const key of DATE_VARIABLE_KEYS) {
 		const raw = config[key];
 		if (typeof raw !== "string") continue;
-		const match = FRONTMATTER_VARIABLE.exec(raw.trim());
-		if (!match) continue;
 
-		const variable = match[1].trim();
-		if (!variable) {
-			return { error: `Invalid frontmatter variable in "${key}".` };
+		const dynamic = resolveDynamicDateVariable(raw);
+		if (dynamic.matched) {
+			if ("error" in dynamic) return { error: dynamic.error };
+			if (key === "date") {
+				const parsed = parseBoundary(dynamic.value, key);
+				if ("error" in parsed) return { error: parsed.error };
+				resolved[key] = parsed.date;
+				continue;
+			}
+			resolved[key] = dynamic.value;
+			continue;
 		}
+
+		const variable = parseFrontmatterVariableReference(raw);
+		if (!variable) continue;
+
 		if (
 			!isRecord(frontmatter) ||
 			!Object.prototype.hasOwnProperty.call(frontmatter, variable)
@@ -839,7 +853,7 @@ export async function renderCodeBlock(
 	}
 
 	const frontmatter = await getFrontmatterForContext(plugin, ctx);
-	const configResolution = resolveFrontmatterDateVariables(parsedConfig, frontmatter);
+	const configResolution = resolveDateVariables(parsedConfig, frontmatter);
 	if ("error" in configResolution) {
 		el.createEl("p", { text: configResolution.error, cls: "health-md-error" });
 		return;
