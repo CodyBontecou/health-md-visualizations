@@ -8,6 +8,24 @@ Supported data formats: **JSON**, **CSV**, **Markdown frontmatter**, and **Obsid
 
 Download [Health.md](https://apps.apple.com/us/app/health-md/id6757763969) on the app store to easily export and get access to your Apple Health data.
 
+## Visualization gallery
+
+A quick preview of the latest bundled visualization screenshots. Click any image to open the full-size version.
+
+<p align="center">
+  <a href="examples/images/visualizations/summary-card.png"><img src="examples/images/visualizations/summary-card.png" alt="Summary card visualization" width="31%"></a>
+  <a href="examples/images/visualizations/activity-rings.png"><img src="examples/images/visualizations/activity-rings.png" alt="Activity rings visualization" width="31%"></a>
+  <a href="examples/images/visualizations/heart-range.png"><img src="examples/images/visualizations/heart-range.png" alt="Heart range visualization" width="31%"></a>
+  <a href="examples/images/visualizations/sleep-schedule.png"><img src="examples/images/visualizations/sleep-schedule.png" alt="Sleep schedule visualization" width="31%"></a>
+  <a href="examples/images/visualizations/oxygen-range.png"><img src="examples/images/visualizations/oxygen-range.png" alt="Oxygen range visualization" width="31%"></a>
+  <a href="examples/images/visualizations/workout-map.png"><img src="examples/images/visualizations/workout-map.png" alt="Workout map visualization" width="31%"></a>
+  <a href="examples/images/visualizations/activity-heatmap.png"><img src="examples/images/visualizations/activity-heatmap.png" alt="Activity heatmap visualization" width="31%"></a>
+  <a href="examples/images/visualizations/step-spiral.png"><img src="examples/images/visualizations/step-spiral.png" alt="Step spiral visualization" width="31%"></a>
+  <a href="examples/images/visualizations/workout-log.png"><img src="examples/images/visualizations/workout-log.png" alt="Workout log visualization" width="31%"></a>
+</p>
+
+See the full per-type gallery in [Visualization types](#visualization-types).
+
 ## Installation
 
 Install Health.md from the Obsidian Community Plugins directory:
@@ -175,12 +193,78 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 <td><p><strong><code>sleep-polar</code></strong></p><p>Polar clock view of sleep stages per night.</p><p><strong>Extra arguments:</strong> none.</p></td>
 </tr>
 <tr>
-<td><em>Screenshot coming soon.</em></td>
-<td><p><strong><code>mood-trend</code></strong> and mood insights</p><p>State of Mind / mood valence over time plus calendar, sleep scatter, day timeline, association breakdown, label cloud, volatility, kind split, circadian clock, recovery tile, and association matrix views.</p><p><strong>Extra arguments:</strong> <code>showContext</code>, <code>limit</code>, <code>maxDays</code>, <code>metric</code> depending on chart.</p></td>
+<td colspan="2"><h3>Mindfulness &amp; mood visualizations</h3><p>These charts render HealthKit State of Mind entries, Health.md mood summaries, and compatible daily-note mood frontmatter.</p></td>
 </tr>
 <tr>
-<td><em>Screenshot coming soon.</em></td>
-<td><p><strong><code>medication-overview</code></strong> (aliases: <code>medications</code>, <code>medication-adherence</code>)</p><p>Schema v2 medication inventory, taken/skipped adherence summary, per-medication breakdown, trend, and recent dose-event table. Each section is also available as <code>medication-inventory</code>, <code>medication-adherence-summary</code>, <code>medication-dose-status</code>, <code>medication-adherence-trend</code>, and <code>medication-recent-dose-events</code>.</p><p><strong>Extra arguments:</strong> <code>trend</code>, <code>limit</code>.</p></td>
+<td><a href="examples/images/visualizations/mood-trend.png"><img src="examples/images/visualizations/mood-trend.png" alt="mood-trend visualization" width="420"></a></td>
+<td><p><strong><code>mood-trend</code></strong> (alias: <code>state-of-mind</code>)</p><p>State of Mind / mood valence over time on a -1 to +1 scale, with optional sleep and exercise context columns behind the trend.</p><p><strong>Extra arguments:</strong> <code>showContext</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-calendar-heatmap.png"><img src="examples/images/visualizations/mood-calendar-heatmap.png" alt="mood-calendar-heatmap visualization" width="420"></a></td>
+<td><p><strong><code>mood-calendar-heatmap</code></strong></p><p>Month-style calendar cells colored by each day's average mood valence.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-sleep-scatter.png"><img src="examples/images/visualizations/mood-sleep-scatter.png" alt="mood-sleep-scatter visualization" width="420"></a></td>
+<td><p><strong><code>mood-sleep-scatter</code></strong></p><p>Scatterplot comparing sleep duration with mood valence; exercise adds a contextual ring around each day.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-day-timeline.png"><img src="examples/images/visualizations/mood-day-timeline.png" alt="mood-day-timeline visualization" width="420"></a></td>
+<td><p><strong><code>mood-day-timeline</code></strong></p><p>One row per day with mood entries placed by time of day and sleep spans shown behind the entries.</p><p><strong>Extra arguments:</strong> <code>maxDays</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-association-breakdown.png"><img src="examples/images/visualizations/mood-association-breakdown.png" alt="mood-association-breakdown visualization" width="420"></a></td>
+<td><p><strong><code>mood-association-breakdown</code></strong></p><p>Horizontal bars showing average mood valence by State of Mind association such as Work, Fitness, Leisure, or Family.</p><p><strong>Extra arguments:</strong> <code>limit</code>, <code>sort</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-label-cloud.png"><img src="examples/images/visualizations/mood-label-cloud.png" alt="mood-label-cloud visualization" width="420"></a></td>
+<td><p><strong><code>mood-label-cloud</code></strong></p><p>Emotion labels sized by frequency and colored by their average mood valence.</p><p><strong>Extra arguments:</strong> <code>limit</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-volatility.png"><img src="examples/images/visualizations/mood-volatility.png" alt="mood-volatility visualization" width="420"></a></td>
+<td><p><strong><code>mood-volatility</code></strong></p><p>Daily average mood trend with bars showing the intraday range between lowest and highest entries.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-kind-split.png"><img src="examples/images/visualizations/mood-kind-split.png" alt="mood-kind-split visualization" width="420"></a></td>
+<td><p><strong><code>mood-kind-split</code></strong></p><p>Compares Daily Mood entries with Momentary Emotion entries over time.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-circadian-clock.png"><img src="examples/images/visualizations/mood-circadian-clock.png" alt="mood-circadian-clock visualization" width="420"></a></td>
+<td><p><strong><code>mood-circadian-clock</code></strong></p><p>Radial 24-hour clock showing when mood entries happen and how pleasant or unpleasant they are.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-recovery-tile.png"><img src="examples/images/visualizations/mood-recovery-tile.png" alt="mood-recovery-tile visualization" width="420"></a></td>
+<td><p><strong><code>mood-recovery-tile</code></strong></p><p>Recovery and mindset card combining latest mood, sleep, HRV, and exercise context into a single score.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/mood-association-matrix.png"><img src="examples/images/visualizations/mood-association-matrix.png" alt="mood-association-matrix visualization" width="420"></a></td>
+<td><p><strong><code>mood-association-matrix</code></strong></p><p>Emotion label × association grid; cells can show average valence or entry counts.</p><p><strong>Extra arguments:</strong> <code>metric</code>, <code>labels</code>, <code>associations</code>.</p></td>
+</tr>
+<tr>
+<td colspan="2"><h3>Medication visualizations</h3><p>These HTML components use Health.md schema v2 medication inventory, dose counts, and dose-event exports. The overview aliases are <code>medications</code> and <code>medication-adherence</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/medication-overview.png"><img src="examples/images/visualizations/medication-overview.png" alt="medication-overview visualization" width="420"></a></td>
+<td><p><strong><code>medication-overview</code></strong></p><p>Full medication dashboard with inventory totals, adherence summary, per-medication dose status, trend bars, and recent dose events.</p><p><strong>Extra arguments:</strong> <code>trend</code>, <code>limit</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/medication-inventory.png"><img src="examples/images/visualizations/medication-inventory.png" alt="medication-inventory visualization" width="420"></a></td>
+<td><p><strong><code>medication-inventory</code></strong></p><p>Standalone inventory totals with active, archived, scheduled, and unscheduled medication rows.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/medication-adherence-summary.png"><img src="examples/images/visualizations/medication-adherence-summary.png" alt="medication-adherence-summary visualization" width="420"></a></td>
+<td><p><strong><code>medication-adherence-summary</code></strong></p><p>Taken, skipped, and other dose counts with a stacked adherence bar and adherence percentage.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/medication-dose-status.png"><img src="examples/images/visualizations/medication-dose-status.png" alt="medication-dose-status visualization" width="420"></a></td>
+<td><p><strong><code>medication-dose-status</code></strong> (alias: <code>per-medication-dose-status</code>)</p><p>Per-medication adherence bars and dose counts for taken, skipped, and other statuses.</p><p><strong>Extra arguments:</strong> none.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/medication-adherence-trend.png"><img src="examples/images/visualizations/medication-adherence-trend.png" alt="medication-adherence-trend visualization" width="420"></a></td>
+<td><p><strong><code>medication-adherence-trend</code></strong> (alias: <code>medication-daily-adherence-trend</code>)</p><p>Daily, weekly, or monthly adherence trend bars grouped by dose status.</p><p><strong>Extra arguments:</strong> <code>trend</code>.</p></td>
+</tr>
+<tr>
+<td><a href="examples/images/visualizations/medication-recent-dose-events.png"><img src="examples/images/visualizations/medication-recent-dose-events.png" alt="medication-recent-dose-events visualization" width="420"></a></td>
+<td><p><strong><code>medication-recent-dose-events</code></strong> (alias: <code>medication-dose-events</code>)</p><p>Standalone table of the most recent medication dose events in the selected date range.</p><p><strong>Extra arguments:</strong> <code>limit</code>.</p></td>
 </tr>
 <tr>
 <td><a href="examples/images/visualizations/walking-symmetry.png"><img src="examples/images/visualizations/walking-symmetry.png" alt="walking-symmetry visualization" width="420"></a></td>
