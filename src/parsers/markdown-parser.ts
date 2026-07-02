@@ -91,13 +91,91 @@ function splitInlineArray(inner: string): string[] {
 	return parts;
 }
 
-function parseYamlScalar(raw: string): unknown {
+function countChar(value: string, char: string): number {
+	return value.split(char).length - 1;
+}
+
+function normalizeGroupedInteger(value: string, separator: "," | "."): string | undefined {
+	const groups = value.split(separator);
+	if (groups.length <= 1) return /^\d+$/.test(value) ? value : undefined;
+	if (!/^\d{1,3}$/.test(groups[0])) return undefined;
+	for (const group of groups.slice(1)) {
+		if (!/^\d{3}$/.test(group)) return undefined;
+	}
+	return groups.join("");
+}
+
+function prefersThousandsForSingleComma(key?: string): boolean {
+	if (!key) return false;
+	const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+	return (
+		normalized === "steps" ||
+		normalized.endsWith("steps") ||
+		normalized.includes("stepcount") ||
+		normalized.endsWith("count") ||
+		normalized.endsWith("version")
+	);
+}
+
+function normalizeLocaleNumberToken(raw: string, preferThousandsForSingleComma = false): string | undefined {
+	const token = raw.trim();
+	const match = /^([-+]?)(\d[\d.,]*\d|\d|[.,]\d+)([eE][-+]?\d+)?$/.exec(token);
+	if (!match) return undefined;
+
+	const sign = match[1];
+	const body = match[2];
+	const exponent = match[3] ?? "";
+	const commaCount = countChar(body, ",");
+	const dotCount = countChar(body, ".");
+
+	if (commaCount > 0 && dotCount > 0) {
+		const decimalSeparator = body.lastIndexOf(",") > body.lastIndexOf(".") ? "," : ".";
+		const groupingSeparator = decimalSeparator === "," ? "." : ",";
+		const decimalIndex = body.lastIndexOf(decimalSeparator);
+		const integerPart = body.slice(0, decimalIndex);
+		const fractionalPart = body.slice(decimalIndex + 1);
+		if (!/^\d+$/.test(fractionalPart)) return undefined;
+		const integerDigits = integerPart ? normalizeGroupedInteger(integerPart, groupingSeparator) : "0";
+		if (integerDigits === undefined) return undefined;
+		return `${sign}${integerDigits}.${fractionalPart}${exponent}`;
+	}
+
+	if (commaCount > 0) {
+		if (commaCount > 1) {
+			const grouped = normalizeGroupedInteger(body, ",");
+			return grouped ? `${sign}${grouped}${exponent}` : undefined;
+		}
+
+		const [integerPart, fractionalPart] = body.split(",");
+		if (!/^\d*$/.test(integerPart) || !/^\d+$/.test(fractionalPart)) return undefined;
+		if (preferThousandsForSingleComma && integerPart && /^\d{1,3}$/.test(integerPart) && fractionalPart.length === 3) {
+			return `${sign}${integerPart}${fractionalPart}${exponent}`;
+		}
+		return `${sign}${integerPart || "0"}.${fractionalPart}${exponent}`;
+	}
+
+	if (dotCount > 1) {
+		const grouped = normalizeGroupedInteger(body, ".");
+		return grouped ? `${sign}${grouped}${exponent}` : undefined;
+	}
+
+	return `${sign}${body.startsWith(".") ? `0${body}` : body}${exponent}`;
+}
+
+function parseLocaleNumberToken(raw: string, key?: string): number | undefined {
+	const normalized = normalizeLocaleNumberToken(raw, prefersThousandsForSingleComma(key));
+	if (normalized === undefined) return undefined;
+	const num = Number(normalized);
+	return Number.isFinite(num) ? num : undefined;
+}
+
+function parseYamlScalar(raw: string, key?: string): unknown {
 	let val = stripInlineComment(raw.trim());
 	if (!val) return null;
 
 	if (val.startsWith("[") && val.endsWith("]")) {
 		const inner = val.slice(1, -1);
-		return splitInlineArray(inner).map(parseYamlScalar);
+		return splitInlineArray(inner).map((item) => parseYamlScalar(item, key));
 	}
 
 	if (
@@ -113,8 +191,8 @@ function parseYamlScalar(raw: string): unknown {
 	if (lower === "false") return false;
 	if (lower === "null" || lower === "~") return null;
 
-	const num = Number(val.replace(/,/g, ""));
-	if (!isNaN(num) && val !== "") return num;
+	const num = parseLocaleNumberToken(val, key);
+	if (num !== undefined) return num;
 
 	return val;
 }
@@ -149,7 +227,7 @@ function parseYamlBlock(lines: YamlLine[], start: number, indent: number): { val
 				const [key, rawValue] = keyValue;
 				const item: Record<string, unknown> = {};
 				if (rawValue) {
-					item[key] = parseYamlScalar(rawValue);
+					item[key] = parseYamlScalar(rawValue, key);
 					i++;
 				} else {
 					const parsed = parseYamlBlock(lines, i + 1, indent + 2);
@@ -163,7 +241,7 @@ function parseYamlBlock(lines: YamlLine[], start: number, indent: number): { val
 					if (!nested) break;
 					const [nestedKey, nestedValue] = nested;
 					if (nestedValue) {
-						item[nestedKey] = parseYamlScalar(nestedValue);
+						item[nestedKey] = parseYamlScalar(nestedValue, nestedKey);
 						i++;
 					} else {
 						const parsed = parseYamlBlock(lines, i + 1, lines[i].indent + 2);
@@ -194,7 +272,7 @@ function parseYamlBlock(lines: YamlLine[], start: number, indent: number): { val
 		}
 		const [key, rawValue] = keyValue;
 		if (rawValue) {
-			obj[key] = parseYamlScalar(rawValue);
+			obj[key] = parseYamlScalar(rawValue, key);
 			i++;
 			continue;
 		}
@@ -240,18 +318,16 @@ function normalizeLabel(value: string): string {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function parseNumberValue(value: unknown): number | undefined {
+function parseNumberValue(value: unknown, key?: string): number | undefined {
 	if (typeof value === "number") return value;
 	if (typeof value !== "string") return undefined;
-	const normalized = value.trim().replace(/,/g, "");
-	const match = /^[-+]?\d*\.?\d+(?:e[-+]?\d+)?/i.exec(normalized);
+	const match = /^[-+]?(?:(?:\d[\d.,]*\d)|\d|[.,]\d+)(?:e[-+]?\d+)?/i.exec(value.trim());
 	if (!match) return undefined;
-	const num = Number(match[0]);
-	return isNaN(num) ? undefined : num;
+	return parseLocaleNumberToken(match[0], key);
 }
 
 function getNum(fm: Record<string, unknown>, key: string): number | undefined {
-	return parseNumberValue(fm[key]);
+	return parseNumberValue(fm[key], key);
 }
 
 function getStr(fm: Record<string, unknown>, key: string): string | undefined {
@@ -873,7 +949,7 @@ function recordStr(record: Record<string, unknown>, key: string): string | undef
 }
 
 function recordNum(record: Record<string, unknown>, key: string): number | undefined {
-	return parseNumberValue(record[key]);
+	return parseNumberValue(record[key], key);
 }
 
 function cleanDisplayValue(value: string | undefined): string | undefined {

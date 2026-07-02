@@ -11274,12 +11274,74 @@ function splitInlineArray2(inner) {
   if (current.trim()) parts.push(current.trim());
   return parts;
 }
-function parseYamlScalar(raw) {
+function countChar(value, char) {
+  return value.split(char).length - 1;
+}
+function normalizeGroupedInteger(value, separator) {
+  const groups = value.split(separator);
+  if (groups.length <= 1) return /^\d+$/.test(value) ? value : void 0;
+  if (!/^\d{1,3}$/.test(groups[0])) return void 0;
+  for (const group of groups.slice(1)) {
+    if (!/^\d{3}$/.test(group)) return void 0;
+  }
+  return groups.join("");
+}
+function prefersThousandsForSingleComma(key) {
+  if (!key) return false;
+  const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return normalized === "steps" || normalized.endsWith("steps") || normalized.includes("stepcount") || normalized.endsWith("count") || normalized.endsWith("version");
+}
+function normalizeLocaleNumberToken(raw, preferThousandsForSingleComma = false) {
+  var _a;
+  const token = raw.trim();
+  const match = /^([-+]?)(\d[\d.,]*\d|\d|[.,]\d+)([eE][-+]?\d+)?$/.exec(token);
+  if (!match) return void 0;
+  const sign = match[1];
+  const body = match[2];
+  const exponent = (_a = match[3]) != null ? _a : "";
+  const commaCount = countChar(body, ",");
+  const dotCount = countChar(body, ".");
+  if (commaCount > 0 && dotCount > 0) {
+    const decimalSeparator = body.lastIndexOf(",") > body.lastIndexOf(".") ? "," : ".";
+    const groupingSeparator = decimalSeparator === "," ? "." : ",";
+    const decimalIndex = body.lastIndexOf(decimalSeparator);
+    const integerPart = body.slice(0, decimalIndex);
+    const fractionalPart = body.slice(decimalIndex + 1);
+    if (!/^\d+$/.test(fractionalPart)) return void 0;
+    const integerDigits = integerPart ? normalizeGroupedInteger(integerPart, groupingSeparator) : "0";
+    if (integerDigits === void 0) return void 0;
+    return `${sign}${integerDigits}.${fractionalPart}${exponent}`;
+  }
+  if (commaCount > 0) {
+    if (commaCount > 1) {
+      const grouped = normalizeGroupedInteger(body, ",");
+      return grouped ? `${sign}${grouped}${exponent}` : void 0;
+    }
+    const [integerPart, fractionalPart] = body.split(",");
+    if (!/^\d*$/.test(integerPart) || !/^\d+$/.test(fractionalPart)) return void 0;
+    if (preferThousandsForSingleComma && integerPart && /^\d{1,3}$/.test(integerPart) && fractionalPart.length === 3) {
+      return `${sign}${integerPart}${fractionalPart}${exponent}`;
+    }
+    return `${sign}${integerPart || "0"}.${fractionalPart}${exponent}`;
+  }
+  if (dotCount > 1) {
+    const grouped = normalizeGroupedInteger(body, ".");
+    return grouped ? `${sign}${grouped}${exponent}` : void 0;
+  }
+  return `${sign}${body.startsWith(".") ? `0${body}` : body}${exponent}`;
+}
+function parseLocaleNumberToken(raw, key) {
+  const normalized = normalizeLocaleNumberToken(raw, prefersThousandsForSingleComma(key));
+  if (normalized === void 0) return void 0;
+  const num = Number(normalized);
+  return Number.isFinite(num) ? num : void 0;
+}
+function parseYamlScalar(raw, key) {
   let val = stripInlineComment(raw.trim());
   if (!val) return null;
   if (val.startsWith("[") && val.endsWith("]")) {
     const inner = val.slice(1, -1);
-    return splitInlineArray2(inner).map(parseYamlScalar);
+    return splitInlineArray2(inner).map((item) => parseYamlScalar(item, key));
   }
   if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
     val = val.slice(1, -1);
@@ -11289,8 +11351,8 @@ function parseYamlScalar(raw) {
   if (lower === "true") return true;
   if (lower === "false") return false;
   if (lower === "null" || lower === "~") return null;
-  const num = Number(val.replace(/,/g, ""));
-  if (!isNaN(num) && val !== "") return num;
+  const num = parseLocaleNumberToken(val, key);
+  if (num !== void 0) return num;
   return val;
 }
 function splitYamlKeyValue2(text) {
@@ -11320,7 +11382,7 @@ function parseYamlBlock(lines, start, indent) {
         const [key, rawValue] = keyValue;
         const item = {};
         if (rawValue) {
-          item[key] = parseYamlScalar(rawValue);
+          item[key] = parseYamlScalar(rawValue, key);
           i2++;
         } else {
           const parsed = parseYamlBlock(lines, i2 + 1, indent + 2);
@@ -11333,7 +11395,7 @@ function parseYamlBlock(lines, start, indent) {
           if (!nested) break;
           const [nestedKey, nestedValue] = nested;
           if (nestedValue) {
-            item[nestedKey] = parseYamlScalar(nestedValue);
+            item[nestedKey] = parseYamlScalar(nestedValue, nestedKey);
             i2++;
           } else {
             const parsed = parseYamlBlock(lines, i2 + 1, lines[i2].indent + 2);
@@ -11361,7 +11423,7 @@ function parseYamlBlock(lines, start, indent) {
     }
     const [key, rawValue] = keyValue;
     if (rawValue) {
-      obj[key] = parseYamlScalar(rawValue);
+      obj[key] = parseYamlScalar(rawValue, key);
       i++;
       continue;
     }
@@ -11390,17 +11452,15 @@ function parseFrontmatter(content) {
 function normalizeLabel2(value) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
-function parseNumberValue2(value) {
+function parseNumberValue2(value, key) {
   if (typeof value === "number") return value;
   if (typeof value !== "string") return void 0;
-  const normalized = value.trim().replace(/,/g, "");
-  const match = /^[-+]?\d*\.?\d+(?:e[-+]?\d+)?/i.exec(normalized);
+  const match = /^[-+]?(?:(?:\d[\d.,]*\d)|\d|[.,]\d+)(?:e[-+]?\d+)?/i.exec(value.trim());
   if (!match) return void 0;
-  const num = Number(match[0]);
-  return isNaN(num) ? void 0 : num;
+  return parseLocaleNumberToken(match[0], key);
 }
 function getNum2(fm, key) {
-  return parseNumberValue2(fm[key]);
+  return parseNumberValue2(fm[key], key);
 }
 function getStr(fm, key) {
   const v = fm[key];
@@ -11896,7 +11956,7 @@ function recordStr(record, key) {
   return void 0;
 }
 function recordNum(record, key) {
-  return parseNumberValue2(record[key]);
+  return parseNumberValue2(record[key], key);
 }
 function cleanDisplayValue(value) {
   if (!value) return void 0;

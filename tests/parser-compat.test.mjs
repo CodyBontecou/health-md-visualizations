@@ -617,6 +617,32 @@ workouts: [running]
 	assert.equal(day.hearing?.headphoneAudioLevel, 64.5);
 });
 
+test("Markdown parser reads comma decimal frontmatter values", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const markdown = `---
+date: 2026-06-29
+type: health-data
+sleep_total_hours: 7,23
+hrv_ms: 11,8
+walking_running_km: 2,18
+respiratory_rate: 16,4
+walking_speed: 0,68
+steps: 1,993
+---
+`;
+
+	const day = parseMarkdown(markdown);
+
+	assert.ok(day);
+	assert.equal(day.sleep?.totalDuration, 26028);
+	assert.equal(day.heart?.hrv, 11.8);
+	assert.equal(day.activity?.walkingRunningDistanceKm, 2.18);
+	assert.equal(day.activity?.walkingRunningDistance, 2180);
+	assert.equal(day.activity?.steps, 1993);
+	assert.equal(day.vitals?.respiratoryRate, 16.4);
+	assert.equal(day.mobility?.walkingSpeed, 0.68);
+});
+
 test("Markdown parser reads mood/state-of-mind frontmatter", async () => {
 	const { parseMarkdown } = await loadParsers();
 	const markdown = `---
