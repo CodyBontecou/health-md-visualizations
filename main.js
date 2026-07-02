@@ -13539,8 +13539,18 @@ function resolveTheme(settings, config) {
 var import_obsidian2 = require("obsidian");
 
 // src/dom-utils.ts
+function resetStatLayoutClasses(statsEl) {
+  statsEl.classList.remove(
+    "health-md-stats-boxes",
+    "health-md-stats-many-boxes",
+    "health-md-stats-inline"
+  );
+}
 function renderStatBoxes(statsEl, boxes) {
   statsEl.empty();
+  resetStatLayoutClasses(statsEl);
+  statsEl.classList.add("health-md-stats-boxes");
+  if (boxes.length >= 4) statsEl.classList.add("health-md-stats-many-boxes");
   boxes.forEach(({ value, label, color }) => {
     const box = statsEl.createDiv({ cls: "health-md-stat-box" });
     const valueEl = box.createDiv({
@@ -13555,6 +13565,8 @@ function renderStatBoxes(statsEl, boxes) {
 }
 function renderInlineStats(statsEl, stats) {
   statsEl.empty();
+  resetStatLayoutClasses(statsEl);
+  statsEl.classList.add("health-md-stats-inline");
   stats.forEach((parts) => {
     const row = statsEl.createSpan();
     parts.forEach((part) => {
@@ -20206,8 +20218,11 @@ function formatDailyNoteDate(date, format) {
     return (_a = literals[Number(index)]) != null ? _a : "";
   });
 }
+function isUnknownArray(value) {
+  return Array.isArray(value);
+}
 function isRecord5(value) {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function normalizeDataPointClickAction(value) {
   if (typeof value !== "string") return null;
@@ -20236,18 +20251,20 @@ function collectPayloadNavigation(payload, dates, sourcePaths) {
     if (ISO_DATE.test(payload)) dates.add(payload);
     return;
   }
-  if (Array.isArray(payload)) {
-    payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
+  if (isUnknownArray(payload)) {
+    for (const item of payload) {
+      collectPayloadNavigation(item, dates, sourcePaths);
+    }
     return;
   }
   if (!isRecord5(payload)) return;
   const date = payload.date;
   if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
   const paths = payload.sourcePaths;
-  if (Array.isArray(paths)) {
-    paths.forEach((path) => {
+  if (isUnknownArray(paths)) {
+    for (const path of paths) {
       if (typeof path === "string" && path) sourcePaths.add(path);
-    });
+    }
   }
   if ("day" in payload) {
     collectPayloadNavigation(payload.day, dates, sourcePaths);

@@ -707,8 +707,12 @@ function formatDailyNoteDate(date: IsoDateParts, format: string): string {
 	return formatted.replace(/@@(\d+)@@/g, (_match: string, index: string): string => literals[Number(index)] ?? "");
 }
 
+function isUnknownArray(value: unknown): value is unknown[] {
+	return Array.isArray(value);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeDataPointClickAction(value: unknown): DataPointClickAction | null {
@@ -744,8 +748,10 @@ function collectPayloadNavigation(
 		return;
 	}
 
-	if (Array.isArray(payload)) {
-		payload.forEach((item) => collectPayloadNavigation(item, dates, sourcePaths));
+	if (isUnknownArray(payload)) {
+		for (const item of payload) {
+			collectPayloadNavigation(item, dates, sourcePaths);
+		}
 		return;
 	}
 
@@ -755,10 +761,10 @@ function collectPayloadNavigation(
 	if (typeof date === "string" && ISO_DATE.test(date)) dates.add(date);
 
 	const paths = payload.sourcePaths;
-	if (Array.isArray(paths)) {
-		paths.forEach((path) => {
+	if (isUnknownArray(paths)) {
+		for (const path of paths) {
 			if (typeof path === "string" && path) sourcePaths.add(path);
-		});
+		}
 	}
 
 	// Some chart regions wrap the HealthDay in a parent object so they can keep

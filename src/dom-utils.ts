@@ -9,8 +9,19 @@ export interface InlineStatPart {
 	strong?: boolean;
 }
 
+function resetStatLayoutClasses(statsEl: HTMLElement): void {
+	statsEl.classList.remove(
+		"health-md-stats-boxes",
+		"health-md-stats-many-boxes",
+		"health-md-stats-inline"
+	);
+}
+
 export function renderStatBoxes(statsEl: HTMLElement, boxes: StatBox[]): void {
 	statsEl.empty();
+	resetStatLayoutClasses(statsEl);
+	statsEl.classList.add("health-md-stats-boxes");
+	if (boxes.length >= 4) statsEl.classList.add("health-md-stats-many-boxes");
 	boxes.forEach(({ value, label, color }) => {
 		const box = statsEl.createDiv({ cls: "health-md-stat-box" });
 		const valueEl = box.createDiv({
@@ -29,6 +40,8 @@ export function renderInlineStats(
 	stats: InlineStatPart[][]
 ): void {
 	statsEl.empty();
+	resetStatLayoutClasses(statsEl);
+	statsEl.classList.add("health-md-stats-inline");
 	stats.forEach((parts) => {
 		const row = statsEl.createSpan();
 		parts.forEach((part) => {

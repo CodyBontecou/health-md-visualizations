@@ -84,7 +84,7 @@
 	margin-block: 0;
 }
 
-.health-md-stat-box {
+.health-md-container .health-md-stats > .health-md-stat-box {
 	/* Keep stats in the same row when the container is narrow. Without an
 	   explicit flex basis, long labels (for example “EXERCISE / 45”) inflate
 	   their item's intrinsic width and can push neighboring stats onto a
@@ -93,30 +93,30 @@
 	min-width: 72px;
 	max-width: 150px;
 	text-align: center;
-	margin-block: 0 !important;
+	margin-block: 0;
 }
 
-.health-md-stat-value {
+.health-md-container .health-md-stats .health-md-stat-value {
 	font-size: 1.3em;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
-	margin-block: 0 !important;
+	margin-block: 0;
 }
 
-.health-md-stat-label {
+.health-md-container .health-md-stats .health-md-stat-label {
 	font-size: 0.75em;
 	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
-	margin-block: 0 !important;
+	margin-block: 0;
 }
 
-.health-md-stats:not(:has(.health-md-stat-box:nth-child(4))) .health-md-stat-label {
+.health-md-stats-boxes:not(.health-md-stats-many-boxes) .health-md-stat-label {
 	white-space: nowrap;
 }
 
 @container (max-width: 360px) {
-	.health-md-stats:has(.health-md-stat-box:nth-child(4)) .health-md-stat-box {
+	.health-md-container .health-md-stats-many-boxes > .health-md-stat-box {
 		flex-basis: calc(50% - 8px);
 		max-width: calc(50% - 8px);
 	}
