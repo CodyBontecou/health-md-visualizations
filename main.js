@@ -20146,6 +20146,66 @@ function renderTooltipContent(tooltipEl, region) {
   });
 }
 var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+var DATE_FORMAT_TOKEN = /YYYY|MMMM|dddd|MMM|ddd|YY|MM|DD|dd|M|D|d/g;
+var WEEKDAY_SHORT = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+function parseIsoDateParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
+  }
+  return { year, month, day, date };
+}
+function padDatePart(value) {
+  return String(value).padStart(2, "0");
+}
+function formatDailyNoteDate(date, format) {
+  const literals = [];
+  const formatWithPlaceholders = format.replace(/\[([^\]]*)\]/g, (_match, literal) => {
+    const placeholder = `@@${literals.length}@@`;
+    literals.push(literal);
+    return placeholder;
+  });
+  const formatted = formatWithPlaceholders.replace(DATE_FORMAT_TOKEN, (token) => {
+    const weekday = date.date.getUTCDay();
+    switch (token) {
+      case "YYYY":
+        return String(date.year);
+      case "YY":
+        return padDatePart(date.year % 100);
+      case "MMMM":
+        return date.date.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" });
+      case "MMM":
+        return date.date.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+      case "MM":
+        return padDatePart(date.month);
+      case "M":
+        return String(date.month);
+      case "DD":
+        return padDatePart(date.day);
+      case "D":
+        return String(date.day);
+      case "dddd":
+        return date.date.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+      case "ddd":
+        return date.date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+      case "dd":
+        return WEEKDAY_SHORT[weekday];
+      case "d":
+        return String(weekday);
+      default:
+        return token;
+    }
+  });
+  return formatted.replace(/@@(\d+)@@/g, (_match, index) => {
+    var _a;
+    return (_a = literals[Number(index)]) != null ? _a : "";
+  });
+}
 function isRecord5(value) {
   return typeof value === "object" && value !== null;
 }
@@ -20230,10 +20290,10 @@ function getDailyNotesOptions(app) {
   };
 }
 function getDailyNotePath(app, date) {
-  const dailyDate = (0, import_obsidian2.moment)(date, "YYYY-MM-DD", true);
-  if (!dailyDate.isValid()) return null;
+  const dailyDate = parseIsoDateParts(date);
+  if (!dailyDate) return null;
   const { folder, format } = getDailyNotesOptions(app);
-  let notePath = dailyDate.format(format || "YYYY-MM-DD");
+  let notePath = formatDailyNoteDate(dailyDate, format || "YYYY-MM-DD");
   if (!notePath.toLowerCase().endsWith(".md")) notePath += ".md";
   return (0, import_obsidian2.normalizePath)(folder ? `${folder}/${notePath}` : notePath);
 }
