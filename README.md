@@ -289,7 +289,9 @@ to: {{month-end}}
 ```
 ````
 
-Supported variables include `today`, `now`, `yesterday`, `tomorrow`, weekdays (`monday` through `sunday`, using the current Monday-start week), `week-start`, `week-end`, `month-start`, `month-end`, `year-start`, and `year-end`. Supported format tokens are `YYYY`, `YY`, `MM`, `M`, `DD`, `D`, `HH`, `H`, `mm`, `m`, `ss`, `s`, and `Z`.
+Supported variables include `today`, `now`, `yesterday`, `tomorrow`, weekdays (`monday` through `sunday`, using the current Monday-start week), `week-start`, `week-end`, `month-start`, `month-end`, `year-start`, and `year-end`. Underscore aliases such as `month_start` also work. Supported format tokens are `YYYY`, `YY`, `MM`, `M`, `DD`, `D`, `HH`, `H`, `mm`, `m`, `ss`, `s`, and `Z`.
+
+> **Templater/Dataview note:** Do not put raw Templater (`<% ... %>`) or Dataview expressions inside a `health-viz` block. Obsidian code block processors run in their own lifecycle, so Health.md may see those expressions before another plugin replaces them. Use the built-in variables above, or write Templater output into note frontmatter and reference it with `${property-name}`.
 
 ### Frontmatter date variables
 

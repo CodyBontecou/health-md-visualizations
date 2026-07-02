@@ -41,8 +41,8 @@ Lines beginning with `#` are comments and are ignored by the plugin.
 | `type` | all | required | Visualization id, for example `heart-terrain` or `summary-card`. |
 | `width` | all canvas charts; `workout-map` fallback map | plugin setting | Maximum render width in pixels. Canvas charts shrink to the note width. |
 | `height` | all canvas charts; `workout-map` | plugin setting | Render height in pixels. Some charts, such as `sleep-schedule`, may expand vertically to fit rows. |
-| `from` | all | none | Start date or datetime, inclusive. Accepts `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM`, or `YYYY-MM-DDTHH:MM:SS` with optional timezone. |
-| `to` | all | none | End date or datetime, inclusive. Also anchors `last`. |
+| `from` | all | none | Start date or datetime, inclusive. Accepts literal ISO dates/datetimes, dynamic date variables, or note frontmatter references. |
+| `to` | all | none | End date or datetime, inclusive. Accepts the same values as `from` and also anchors `last`. |
 | `last` | all | none | Number of calendar days ending at `to` when present, otherwise ending today. |
 | `theme` | all | plugin setting | `auto`, `dark`, or `light`. `auto` follows the active Obsidian theme. |
 | `colorScheme` / `palette` | all | plugin setting | `theme`, `default`, `ocean`, `forest`, `sunset`, `aurora`, or `monochrome`. |
@@ -56,6 +56,13 @@ Notes:
 - For `showAverage`, use `false` or `0` to disable the line.
 - Date filtering happens before a renderer-specific argument like `date` selects
   a workout, so make sure the selected workout is inside the filtered window.
+- Dynamic date variables are resolved by Health.md at render time. Use
+  `{{monday:YYYY-MM-DD}}` / `{{today:YYYY-MM-DD}}` for current-week reports,
+  `{{month-start}}` / `{{month-end}}` for current-month reports, or frontmatter
+  references such as `${report_start}` when a periodic note stores fixed dates
+  in its Properties.
+- Avoid raw Templater or Dataview expressions inside `health-viz` code blocks;
+  write those values to frontmatter first, then reference them from the block.
 - Appearance overrides are optional; most users can use Settings → Health.md
   Visualizations → Theme / Color scheme to match their vault or website style.
 
