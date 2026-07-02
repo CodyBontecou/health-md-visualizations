@@ -11,7 +11,7 @@
 		"importHelpers": true,
 		"isolatedModules": true,
 		"strictNullChecks": true,
-		"lib": ["DOM", "ES6", "ES2015.Promise", "ScriptHost"]
+		"lib": ["DOM", "ES2019", "ScriptHost"]
 	},
 	"include": ["src/**/*.ts"]
 }

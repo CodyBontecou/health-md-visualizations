@@ -259,7 +259,7 @@ export const renderBarChart: RenderFn = (
 			ctx.fillText(ch, cx, plotTop + plotH + 4);
 		}
 	} else {
-		const maxLabels = Math.max(2, Math.floor(plotW / 72));
+		const maxLabels = Math.max(2, Math.floor(chartW / 72));
 		const labelStep = Math.max(1, Math.ceil(n / maxLabels));
 		for (let i = 0; i < n; i++) {
 			if (i % labelStep !== 0 && i !== n - 1) continue;

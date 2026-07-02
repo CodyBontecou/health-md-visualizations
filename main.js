@@ -14486,7 +14486,7 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   );
   if (!days.length) return;
   const padL = 36, padR = 16, padT = 16, padB = 28;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const values = days.map((d) => {
     var _a;
@@ -14499,7 +14499,7 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const minVal = Math.min(...values);
   const maxVal = Math.max(...values);
   const range = maxVal - minVal || 1;
-  const xFor = (i) => padL + i / (days.length - 1 || 1) * plotW2;
+  const xFor = (i) => padL + i / (days.length - 1 || 1) * plotW;
   const yFor = (v) => padT + plotH - (v - minVal) / range * plotH;
   const gridCount = 4;
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -14716,10 +14716,10 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   const days = data.filter((d) => d.sleep && d.sleep.totalDuration > 0);
   if (!days.length) return;
   const padL = 40, padR = 16, padT = 20, padB = 28;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const maxTotal = Math.max(...days.map((d) => d.sleep.totalDuration));
-  const barW = plotW2 / days.length;
+  const barW = plotW / days.length;
   const gap = Math.max(1, barW * 0.15);
   const maxHours = Math.ceil(maxTotal / 3600);
   const gridStep = maxHours <= 8 ? 2 : 4;
@@ -15005,7 +15005,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     return;
   }
   const padL = 40, padR = 16, padT = 12, padB = 8;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const maxDuration = Math.max(...entries.map((e) => e.duration));
   const rowH = 28;
   const hasOverflow = entries.length * rowH > H - padT - padB;
@@ -15026,7 +15026,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   ctx.font = "8px sans-serif";
   ctx.textAlign = "center";
   for (let t = 0; t <= maxMin; t += tickStep) {
-    const x = padL + t / maxMin * plotW2;
+    const x = padL + t / maxMin * plotW;
     ctx.beginPath();
     ctx.moveTo(x, padT);
     ctx.lineTo(x, padT + visible.length * rowH);
@@ -15036,7 +15036,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   visible.forEach((entry, i) => {
     var _a, _b;
     const y = padT + i * rowH + gap;
-    const barW = entry.duration / (maxMin * 60) * plotW2;
+    const barW = entry.duration / (maxMin * 60) * plotW;
     const ci = typeColorIndex(entry.type);
     const hue = HUE_OFFSETS[ci];
     const barColor = `hsl(${hue},60%,${theme.isDark ? 55 : 42}%)`;
@@ -15859,24 +15859,24 @@ function renderRangeChart(ctx, data, W, H, theme, statsEl, hits, spec) {
   }
   const padL = (_a = spec.padL) != null ? _a : 36;
   const padR = 16, padT = 14, padB = 24;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const observedMin = Math.min(...present.map((p) => p.min));
   const observedMax = Math.max(...present.map((p) => p.max));
   const { yMin, yMax, gridStep } = spec.yAxis({ min: observedMin, max: observedMax });
   const yRange = yMax - yMin || 1;
   const n = points.length;
-  const xFor = (i) => padL + (n === 1 ? plotW2 / 2 : i / (n - 1) * plotW2);
+  const xFor = (i) => padL + (n === 1 ? plotW / 2 : i / (n - 1) * plotW);
   const yFor = (v) => padT + plotH - (v - yMin) / yRange * plotH;
   if (spec.warn) {
     ctx.fillStyle = hexToRgba(spec.warn.color, theme.isDark ? 0.12 : 0.08);
     if (spec.warn.lo != null) {
       const yThreshold = yFor(spec.warn.lo);
-      ctx.fillRect(padL, yThreshold, plotW2, padT + plotH - yThreshold);
+      ctx.fillRect(padL, yThreshold, plotW, padT + plotH - yThreshold);
     }
     if (spec.warn.hi != null) {
       const yThreshold = yFor(spec.warn.hi);
-      ctx.fillRect(padL, padT, plotW2, yThreshold - padT);
+      ctx.fillRect(padL, padT, plotW, yThreshold - padT);
     }
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -15916,7 +15916,7 @@ function renderRangeChart(ctx, data, W, H, theme, statsEl, hits, spec) {
   if (spec.overlays) {
     spec.overlays({ ctx, data, yFor, yMin, yMax, padL, padR, W });
   }
-  const capW = Math.max(4, Math.min(10, plotW2 / Math.max(1, n) * 0.45));
+  const capW = Math.max(4, Math.min(10, plotW / Math.max(1, n) * 0.45));
   const capRadius = capW / 2;
   const avgDotInnerLight = (_c = spec.avgDotInnerLightFill) != null ? _c : "#000";
   points.forEach((p, i) => {
@@ -16288,7 +16288,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
       ctx.fillText(ch, cx, plotTop + plotH + 4);
     }
   } else {
-    const maxLabels = Math.max(2, Math.floor(plotW / 72));
+    const maxLabels = Math.max(2, Math.floor(chartW / 72));
     const labelStep = Math.max(1, Math.ceil(n / maxLabels));
     for (let i = 0; i < n; i++) {
       if (i % labelStep !== 0 && i !== n - 1) continue;
@@ -17203,7 +17203,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   const padR = 18;
   const padT = 46;
   const padB = 34;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = Math.max(24, H - padT - padB);
   const axisY = padT + plotH * 0.58;
   let xMin = Math.max(0, Math.floor(Math.min(...values) - 8));
@@ -17213,7 +17213,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
     xMax = Math.max(xMax, Math.ceil(maxHr));
   }
   if (xMax - xMin < 20) xMax = xMin + 20;
-  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW2;
+  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW;
   ctx.fillStyle = theme.fg;
   ctx.font = "600 13px sans-serif";
   ctx.textAlign = "left";
@@ -17259,7 +17259,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(padL, axisY);
-  ctx.lineTo(padL + plotW2, axisY);
+  ctx.lineTo(padL + plotW, axisY);
   ctx.stroke();
   if (stats.lo != null && stats.hi != null) {
     ctx.strokeStyle = hexToRgba(theme.colors.heart, 0.72);
@@ -17366,9 +17366,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   const padR = 14;
   const padT = 14;
   const padB = 22;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const xFor = (t) => padL + (t - tMin) / (tMax - tMin || 1) * plotW2;
+  const xFor = (t) => padL + (t - tMin) / (tMax - tMin || 1) * plotW;
   const yFor = (v) => padT + (1 - (v - yMin) / (yMax - yMin || 1)) * plotH;
   if (maxHr) {
     for (const z of ZONES) {
@@ -17378,12 +17378,12 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       const yTop = yFor(Math.min(hi2, yMax));
       const yBot = yFor(Math.max(lo2, yMin));
       ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 40 : 70}%,0.13)`;
-      ctx.fillRect(padL, yTop, plotW2, yBot - yTop);
+      ctx.fillRect(padL, yTop, plotW, yBot - yTop);
       ctx.fillStyle = `hsla(${z.hue},70%,${theme.isDark ? 70 : 40}%,0.6)`;
       ctx.font = "9px sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
-      ctx.fillText(z.label, padL + plotW2 - 3, (yTop + yBot) / 2);
+      ctx.fillText(z.label, padL + plotW - 3, (yTop + yBot) / 2);
     }
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.07);
@@ -17399,7 +17399,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     const y = yFor(v);
     ctx.beginPath();
     ctx.moveTo(padL, y);
-    ctx.lineTo(padL + plotW2, y);
+    ctx.lineTo(padL + plotW, y);
     ctx.stroke();
     ctx.fillText(String(v), padL - 4, y);
   }
@@ -17445,8 +17445,8 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     }
   }
   const STRIDE = 4;
-  for (let x = padL; x < padL + plotW2; x += STRIDE) {
-    const tCenter = tMin + (x + STRIDE / 2 - padL) / plotW2 * (tMax - tMin);
+  for (let x = padL; x < padL + plotW; x += STRIDE) {
+    const tCenter = tMin + (x + STRIDE / 2 - padL) / plotW * (tMax - tMin);
     let bestIdx = 0;
     let bestDist = Infinity;
     for (let i = 0; i < pts.length; i++) {
@@ -17941,12 +17941,12 @@ function renderCanvasPolyline(host, route, colorBy, hrSamples, theme, width, hei
   const midLat = (minLat + maxLat) / 2;
   const lonScale = Math.cos(midLat * Math.PI / 180);
   const padding = 14;
-  const plotW2 = width - padding * 2;
+  const plotW = width - padding * 2;
   const plotH = height - padding * 2;
   const lonSpan = (maxLon - minLon) * lonScale || 1e-6;
   const latSpan = maxLat - minLat || 1e-6;
-  const scale = Math.min(plotW2 / lonSpan, plotH / latSpan);
-  const offX = padding + (plotW2 - lonSpan * scale) / 2;
+  const scale = Math.min(plotW / lonSpan, plotH / latSpan);
+  const offX = padding + (plotW - lonSpan * scale) / 2;
   const offY = padding + (plotH - latSpan * scale) / 2;
   const project = (p) => [
     offX + (p.longitude - minLon) * lonScale * scale,
@@ -18333,9 +18333,9 @@ var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const padR = 16;
   const padT = showContext ? 72 : 56;
   const padB = 34;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const slot = plotW2 / Math.max(points.length, 1);
+  const slot = plotW / Math.max(points.length, 1);
   const values = moodPoints.map((point) => point.valence).filter(Number.isFinite);
   const avg4 = values.reduce((sum, value) => sum + value, 0) / values.length;
   const firstDate = points[0].date;
@@ -18589,7 +18589,7 @@ var renderMoodSleepScatter = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   const padL = 52, padR = 18, padT = 58, padB = 42;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const sleepHours = days.map((day) => {
     var _a2;
@@ -18598,14 +18598,14 @@ var renderMoodSleepScatter = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   const maxSleep = Math.max(9, Math.ceil(Math.max(...sleepHours)));
   const avgMood = (_a = average3(days.map((day) => day.averageValence))) != null ? _a : 0;
   drawTitle(ctx, theme, "Mood \xD7 sleep", `${days.length} days \u2022 color = mood, ring = exercise`);
-  drawValenceGrid(ctx, theme, padL, padT, plotW2, plotH);
+  drawValenceGrid(ctx, theme, padL, padT, plotW, plotH);
   ctx.strokeStyle = hexToRgba(theme.fg, 0.18);
   ctx.beginPath();
   ctx.moveTo(padL, padT + plotH);
-  ctx.lineTo(padL + plotW2, padT + plotH);
+  ctx.lineTo(padL + plotW, padT + plotH);
   ctx.stroke();
   for (let h = 0; h <= maxSleep; h += 2) {
-    const x = padL + h / maxSleep * plotW2;
+    const x = padL + h / maxSleep * plotW;
     ctx.strokeStyle = hexToRgba(theme.fg, 0.06);
     ctx.beginPath();
     ctx.moveTo(x, padT);
@@ -18618,7 +18618,7 @@ var renderMoodSleepScatter = (ctx, data, W, H, _config, theme, statsEl, hits) =>
     ctx.fillText(`${h}h`, x, padT + plotH + 8);
   }
   for (const day of days) {
-    const x = padL + ((_b = day.sleepSeconds) != null ? _b : 0) / 3600 / maxSleep * plotW2;
+    const x = padL + ((_b = day.sleepSeconds) != null ? _b : 0) / 3600 / maxSleep * plotW;
     const y = yForValence(day.averageValence, padT, plotH);
     const r = clamp(4 + day.entries.length * 1.2, 4, 9);
     if (day.exerciseMinutes > 0) {
@@ -18660,11 +18660,11 @@ var renderMoodDayTimeline = (ctx, data, W, H, config, theme, statsEl, hits) => {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   const padL = 72, padR = 18, padT = 58, padB = 30;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const rowH = (H - padT - padB) / days.length;
   drawTitle(ctx, theme, "Mood day timeline", `${days.length} days \u2022 entries placed by time of day`);
   for (const hour of [0, 6, 12, 18, 24]) {
-    const x = padL + hour / 24 * plotW2;
+    const x = padL + hour / 24 * plotW;
     ctx.strokeStyle = hexToRgba(theme.fg, hour === 12 ? 0.16 : 0.08);
     ctx.beginPath();
     ctx.moveTo(x, padT);
@@ -18682,7 +18682,7 @@ var renderMoodDayTimeline = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
     ctx.beginPath();
     ctx.moveTo(padL, y);
-    ctx.lineTo(padL + plotW2, y);
+    ctx.lineTo(padL + plotW, y);
     ctx.stroke();
     ctx.fillStyle = theme.muted;
     ctx.font = "9px sans-serif";
@@ -18693,8 +18693,8 @@ var renderMoodDayTimeline = (ctx, data, W, H, config, theme, statsEl, hits) => {
     const wake = parseHour((_f = (_d = day.day.sleep) == null ? void 0 : _d.wakeTime) != null ? _f : (_e = day.day.sleep) == null ? void 0 : _e.wakeTimeISO, day.date);
     if (bedtime !== void 0 && wake !== void 0) {
       const drawSpan = (start, end) => {
-        const x = padL + start / 24 * plotW2;
-        const w = Math.max(1, (end - start) / 24 * plotW2);
+        const x = padL + start / 24 * plotW;
+        const w = Math.max(1, (end - start) / 24 * plotW);
         ctx.fillStyle = hexToRgba(theme.colors.sleep.core, 0.14);
         ctx.fillRect(x, y - Math.max(2, rowH * 0.18), w, Math.max(4, rowH * 0.36));
       };
@@ -18706,7 +18706,7 @@ var renderMoodDayTimeline = (ctx, data, W, H, config, theme, statsEl, hits) => {
     }
     for (const entry of day.entries) {
       const hour = (_h = parseHour((_g = entry.timestamp) != null ? _g : entry.startDate, day.date)) != null ? _h : 12;
-      const x = padL + hour / 24 * plotW2;
+      const x = padL + hour / 24 * plotW;
       const valence = entry.valence;
       const offset = valence !== void 0 ? -valence * Math.min(rowH * 0.28, 8) : 0;
       ctx.fillStyle = moodRgba(valence, theme, 0.85);
@@ -18741,9 +18741,9 @@ var renderMoodAssociationBreakdown = (ctx, data, W, H, config, theme, statsEl, h
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   const padL = 120, padR = 26, padT = 60, padB = 24;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const rowH = (H - padT - padB) / shown.length;
-  const mid = padL + plotW2 / 2;
+  const mid = padL + plotW / 2;
   drawTitle(ctx, theme, "Mood by association", `${shown.length} associations \u2022 centered at neutral`);
   ctx.strokeStyle = hexToRgba(theme.fg, 0.18);
   ctx.beginPath();
@@ -18754,7 +18754,7 @@ var renderMoodAssociationBreakdown = (ctx, data, W, H, config, theme, statsEl, h
     var _a2;
     const avg4 = (_a2 = bucketAverage(bucket)) != null ? _a2 : 0;
     const y = padT + i * rowH + rowH / 2;
-    const barW = Math.abs(avg4) * (plotW2 / 2);
+    const barW = Math.abs(avg4) * (plotW / 2);
     const x = avg4 >= 0 ? mid : mid - barW;
     ctx.fillStyle = moodRgba(avg4, theme, 0.75);
     ctx.beginPath();
@@ -18768,7 +18768,7 @@ var renderMoodAssociationBreakdown = (ctx, data, W, H, config, theme, statsEl, h
     ctx.textAlign = avg4 >= 0 ? "left" : "right";
     ctx.fillStyle = theme.muted;
     ctx.fillText(`${formatMoodValence(avg4)} \u2022 ${bucket.count}`, avg4 >= 0 ? x + barW + 6 : x - 6, y);
-    hits.add({ shape: "rect", x: padL, y: y - rowH / 2, w: plotW2, h: rowH, title: bucket.key, details: [{ label: "Avg mood", value: `${moodLabelForValence(avg4)} (${formatMoodValence(avg4)})` }, { label: "Entries", value: String(bucket.count) }] });
+    hits.add({ shape: "rect", x: padL, y: y - rowH / 2, w: plotW, h: rowH, title: bucket.key, details: [{ label: "Avg mood", value: `${moodLabelForValence(avg4)} (${formatMoodValence(avg4)})` }, { label: "Entries", value: String(bucket.count) }] });
   });
   const avgAll = (_a = average3(entries.map((entry) => entry.valence).filter(Number.isFinite))) != null ? _a : 0;
   renderInlineStats(statsEl, [[{ text: "Avg mood " }, { text: `${moodLabelForValence(avgAll)} ${formatMoodValence(avgAll)}`, strong: true }], [{ text: "Associations " }, { text: String(buckets.length), strong: true }]]);
@@ -18820,14 +18820,14 @@ var renderMoodVolatility = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   const padL = 48, padR = 16, padT = 58, padB = 34;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const slot = plotW2 / Math.max(days.length, 1);
+  const slot = plotW / Math.max(days.length, 1);
   const volatilities = days.map((day) => day.minValence !== void 0 && day.maxValence !== void 0 ? day.maxValence - day.minValence : 0);
   const maxVol = Math.max(0.25, ...volatilities);
   const avgMood = (_a = average3(days.map((day) => day.averageValence))) != null ? _a : 0;
   drawTitle(ctx, theme, "Mood volatility", "Bars = intraday range, line = daily average mood");
-  drawValenceGrid(ctx, theme, padL, padT, plotW2, plotH);
+  drawValenceGrid(ctx, theme, padL, padT, plotW, plotH);
   days.forEach((day, i) => {
     const x = padL + i * slot + slot / 2;
     const vol = volatilities[i];
@@ -18875,11 +18875,11 @@ var renderMoodKindSplit = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   const padL = 50, padR = 18, padT = 64, padB = 34;
-  const plotW2 = W - padL - padR;
+  const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const slot = plotW2 / Math.max(days.length, 1);
+  const slot = plotW / Math.max(days.length, 1);
   drawTitle(ctx, theme, "Daily mood vs momentary emotions", `${days.length} days with State of Mind entries`);
-  drawValenceGrid(ctx, theme, padL, padT, plotW2, plotH);
+  drawValenceGrid(ctx, theme, padL, padT, plotW, plotH);
   const drawSeries = (key, color) => {
     ctx.strokeStyle = hexToRgba(color, 0.8);
     ctx.lineWidth = 2;
