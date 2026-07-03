@@ -111,6 +111,61 @@ Health.md roll-up files (`schema: healthmd.rollup_summary`, `schema_version: 1`,
 
 If charts look incomplete after changing Health.md export settings, open **Settings → Health.md Visualizations → Health.md schema compatibility** and click **Scan now**. For the cleanest historical charts, update the plugin before enabling roll-ups or format folders in Health.md, then re-export older date ranges if you want all historical files to use the same canonical units.
 
+## Platform support
+
+For Health.md app exports, visualization support depends on whether the underlying data exists in both Apple HealthKit and Android Health Connect.
+
+### iOS and Android
+
+These visualizations map to shared HealthKit / Health Connect export fields:
+
+| Category | Visualization types |
+| --- | --- |
+| Overview | `intro-stats`, `summary-card`, `trend-tile` |
+| Activity | `activity-rings`, `vitals-rings`, `bar-chart`, `activity-heatmap`, `step-spiral`, `weekday-average` |
+| Heart | `heart-terrain`, `heart-range`, `hrv-trend` |
+| Respiratory and vitals | `oxygen-river`, `oxygen-range`, `breathing-wave` |
+| Sleep | `sleep-schedule`, `sleep-quality-bars`, `sleep-architecture`, `sleep-polar` |
+| Mobility | `walking-symmetry`* |
+| Workouts | `workout-log`, `workout-heart-rate`, `workout-zones`, `workout-trends`, `workout-intervals`, `workout-map` |
+
+Notes:
+
+- `walking-symmetry` is partial on Android: Android has walking speed, but not Apple-only asymmetry or double-support details.
+- `activity-rings` is partial on Android for Stand: the plugin falls back to a steps-derived stand proxy when `standHours` is missing.
+- Workout route and sample charts require granular workout data and route permission/consent.
+
+### iOS-only
+
+HealthKit State of Mind / mood visualizations:
+
+- `mood-trend` / `state-of-mind`
+- `mood-calendar-heatmap`
+- `mood-sleep-scatter`
+- `mood-day-timeline`
+- `mood-association-breakdown`
+- `mood-label-cloud`
+- `mood-volatility`
+- `mood-kind-split`
+- `mood-circadian-clock`
+- `mood-recovery-tile`
+- `mood-association-matrix`
+
+Medication catalog / dose-event visualizations:
+
+- `medication-overview` / `medications` / `medication-adherence`
+- `medication-inventory`
+- `medication-adherence-summary`
+- `medication-dose-status` / `per-medication-dose-status`
+- `medication-adherence-trend` / `medication-daily-adherence-trend`
+- `medication-recent-dose-events` / `medication-dose-events`
+
+Android Health Connect does not expose equivalent HealthKit State of Mind records or HealthKit-style medication catalog / dose-event records.
+
+### Android-only
+
+None in the current plugin visualization registry. Android does export Android-native data such as PHR/FHIR resources, planned workouts, and activity intensity, but no current visualization type targets those fields yet.
+
 ## Visualization types
 
 Specify one of these as the `type:` field in your code block. The gallery below shows each renderer with a short description; start at `examples/visualization-reference.md` for the category-specific argument tables, defaults, and copy/paste examples.
