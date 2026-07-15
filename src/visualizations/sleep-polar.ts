@@ -1,5 +1,6 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { formatDate, formatDuration } from "../canvas-utils";
+import { formatClockTime } from "../time-utils";
 
 type SleepStage = NonNullable<HealthDay["sleep"]>["sleepStages"][number];
 
@@ -160,6 +161,8 @@ export const renderSleepPolar: RenderFn = (
 		}
 
 		const sleep = night.sleep!;
+		const bedtime = formatClockTime(sleep.bedtime) ?? formatClockTime(sleep.bedtimeISO);
+		const wakeTime = formatClockTime(sleep.wakeTime) ?? formatClockTime(sleep.wakeTimeISO);
 		hits.add({
 			shape: "circle",
 			cx,
@@ -174,21 +177,8 @@ export const renderSleepPolar: RenderFn = (
 				...(sleep.awakeTime
 					? [{ label: "Awake", value: formatDuration(sleep.awakeTime) }]
 					: []),
-				{
-					label: "Bedtime",
-					value: /^\d{1,2}:\d{2}$/.test(sleep.bedtime)
-						? sleep.bedtime
-						: new Date(sleep.bedtime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-				},
-				{
-					label: "Wake",
-					value: /^\d{1,2}:\d{2}$/.test(sleep.wakeTime)
-						? sleep.wakeTime
-						: new Date(sleep.wakeTime).toLocaleTimeString("en-US", {
-						hour: "numeric",
-						minute: "2-digit",
-					}),
-				},
+				...(bedtime ? [{ label: "Bedtime", value: bedtime }] : []),
+				...(wakeTime ? [{ label: "Wake", value: wakeTime }] : []),
 			],
 			payload: night,
 		});

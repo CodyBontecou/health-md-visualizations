@@ -13727,6 +13727,40 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   ]);
 };
 
+// src/time-utils.ts
+function parseHour(timestamp, fallbackDate) {
+  var _a, _b, _c;
+  if (!timestamp) return void 0;
+  const trimmed = timestamp.trim();
+  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
+  const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
+  const match = dateTime != null ? dateTime : timeOnly;
+  if (!match) {
+    if (fallbackDate && trimmed === fallbackDate) return 12;
+    return void 0;
+  }
+  let h = Number(match[1]);
+  const m = Number(match[2]);
+  const s = Number((_a = match[3]) != null ? _a : 0);
+  const meridiem = match === timeOnly ? (_c = (_b = /\s+([ap])\.?m\.?\s*$/i.exec(trimmed)) == null ? void 0 : _b[1]) == null ? void 0 : _c.toLowerCase() : void 0;
+  if (meridiem) {
+    if (h < 1 || h > 12) return void 0;
+    h = h % 12 + (meridiem === "p" ? 12 : 0);
+  }
+  if (h > 23 || m > 59 || s > 59) return void 0;
+  return h + m / 60 + s / 3600;
+}
+function formatClockTime(timestamp) {
+  const hour = parseHour(timestamp);
+  if (hour === void 0) return void 0;
+  const totalMinutes = Math.floor(hour * 60 + 1e-7);
+  const date = new Date(2e3, 0, 1, Math.floor(totalMinutes / 60), totalMinutes % 60);
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
 // src/visualizations/sleep-polar.ts
 function buildSyntheticStages(night) {
   var _a, _b, _c, _d;
@@ -13804,6 +13838,7 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, actualH < H ? actualH : H);
   nights.forEach((night, idx) => {
+    var _a, _b;
     const row = Math.floor(idx / cols);
     const col = idx % cols;
     const offsetX = col * (cellSize + 6);
@@ -13851,6 +13886,8 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
       );
     }
     const sleep = night.sleep;
+    const bedtime = (_a = formatClockTime(sleep.bedtime)) != null ? _a : formatClockTime(sleep.bedtimeISO);
+    const wakeTime = (_b = formatClockTime(sleep.wakeTime)) != null ? _b : formatClockTime(sleep.wakeTimeISO);
     hits.add({
       shape: "circle",
       cx,
@@ -13863,17 +13900,8 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
         { label: "REM", value: formatDuration(sleep.remSleep) },
         { label: "Core", value: formatDuration(sleep.coreSleep) },
         ...sleep.awakeTime ? [{ label: "Awake", value: formatDuration(sleep.awakeTime) }] : [],
-        {
-          label: "Bedtime",
-          value: /^\d{1,2}:\d{2}$/.test(sleep.bedtime) ? sleep.bedtime : new Date(sleep.bedtime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-        },
-        {
-          label: "Wake",
-          value: /^\d{1,2}:\d{2}$/.test(sleep.wakeTime) ? sleep.wakeTime : new Date(sleep.wakeTime).toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit"
-          })
-        }
+        ...bedtime ? [{ label: "Bedtime", value: bedtime }] : [],
+        ...wakeTime ? [{ label: "Wake", value: wakeTime }] : []
       ],
       payload: night
     });
@@ -14766,6 +14794,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   }
   const dateLabelStep = days.length <= 14 ? 1 : Math.max(1, Math.ceil(days.length / 6));
   days.forEach((day, i) => {
+    var _a;
     const sl = day.sleep;
     const x = padL + i * barW + gap / 2;
     const bw = barW - gap;
@@ -14805,6 +14834,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
       ctx.fillText(lbl, x + bw / 2, H - 6);
     }
     const barTop = padT + plotH - sl.totalDuration / maxTotal * plotH;
+    const bedtime = (_a = formatClockTime(sl.bedtime)) != null ? _a : formatClockTime(sl.bedtimeISO);
     hits.add({
       shape: "rect",
       x,
@@ -14818,13 +14848,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
         ...sl.remSleep ? [{ label: "REM", value: formatDuration(sl.remSleep) }] : [],
         ...sl.coreSleep ? [{ label: "Core", value: formatDuration(sl.coreSleep) }] : [],
         ...sl.awakeTime ? [{ label: "Awake", value: formatDuration(sl.awakeTime) }] : [],
-        ...sl.bedtime ? [{
-          label: "Bedtime",
-          value: new Date(sl.bedtime).toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit"
-          })
-        }] : []
+        ...bedtime ? [{ label: "Bedtime", value: bedtime }] : []
       ],
       payload: day
     });
@@ -18160,23 +18184,6 @@ function dayExerciseMinutes(day) {
 function shortDate(iso) {
   const d = /* @__PURE__ */ new Date(iso + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-function parseHour(timestamp, fallbackDate) {
-  var _a;
-  if (!timestamp) return void 0;
-  const trimmed = timestamp.trim();
-  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
-  const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
-  const match = dateTime != null ? dateTime : timeOnly;
-  if (!match) {
-    if (fallbackDate && trimmed === fallbackDate) return 12;
-    return void 0;
-  }
-  const h = Number(match[1]);
-  const m = Number(match[2]);
-  const s = Number((_a = match[3]) != null ? _a : 0);
-  if (h > 23 || m > 59 || s > 59) return void 0;
-  return h + m / 60 + s / 3600;
 }
 function normalizeKind(kind) {
   const normalized = (kind != null ? kind : "").replace(/[_-]+/g, " ").toLowerCase();

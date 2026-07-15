@@ -1,6 +1,7 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate, formatDuration } from "../canvas-utils";
 import { renderInlineStats } from "../dom-utils";
+import { formatClockTime } from "../time-utils";
 
 export const renderSleepQualityBars: RenderFn = (
 	ctx: CanvasRenderingContext2D,
@@ -115,6 +116,7 @@ export const renderSleepQualityBars: RenderFn = (
 
 		// Hit region
 		const barTop = padT + plotH - (sl.totalDuration / maxTotal) * plotH;
+		const bedtime = formatClockTime(sl.bedtime) ?? formatClockTime(sl.bedtimeISO);
 		hits.add({
 			shape: "rect",
 			x,
@@ -128,14 +130,7 @@ export const renderSleepQualityBars: RenderFn = (
 				...(sl.remSleep ? [{ label: "REM", value: formatDuration(sl.remSleep) }] : []),
 				...(sl.coreSleep ? [{ label: "Core", value: formatDuration(sl.coreSleep) }] : []),
 				...(sl.awakeTime ? [{ label: "Awake", value: formatDuration(sl.awakeTime) }] : []),
-				...(sl.bedtime
-					? [{
-						label: "Bedtime",
-						value: new Date(sl.bedtime).toLocaleTimeString("en-US", {
-							hour: "numeric", minute: "2-digit",
-						}),
-					  }]
-					: []),
+				...(bedtime ? [{ label: "Bedtime", value: bedtime }] : []),
 			],
 			payload: day,
 		});

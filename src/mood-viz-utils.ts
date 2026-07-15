@@ -1,6 +1,9 @@
 import { HealthDay, MoodEntry, ResolvedTheme } from "./types";
 import { hexToRgba } from "./canvas-utils";
 import { formatMoodValence, getMoodDaySummary, moodLabelForValence } from "./mood-utils";
+import { parseHour } from "./time-utils";
+
+export { parseHour };
 
 export interface MoodVizDay {
 	day: HealthDay;
@@ -95,23 +98,6 @@ export function dayExerciseMinutes(day: HealthDay): number {
 export function shortDate(iso: string): string {
 	const d = new Date(iso + "T00:00:00");
 	return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-export function parseHour(timestamp: string | undefined, fallbackDate?: string): number | undefined {
-	if (!timestamp) return undefined;
-	const trimmed = timestamp.trim();
-	const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
-	const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
-	const match = dateTime ?? timeOnly;
-	if (!match) {
-		if (fallbackDate && trimmed === fallbackDate) return 12;
-		return undefined;
-	}
-	const h = Number(match[1]);
-	const m = Number(match[2]);
-	const s = Number(match[3] ?? 0);
-	if (h > 23 || m > 59 || s > 59) return undefined;
-	return h + m / 60 + s / 3600;
 }
 
 export function normalizeKind(kind: string | undefined): "daily" | "momentary" | "other" {
