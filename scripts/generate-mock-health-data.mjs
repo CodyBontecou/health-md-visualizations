@@ -893,6 +893,175 @@ function buildDay(dateIso, dayIndex, totalDays) {
 	return day;
 }
 
+function isoWeekDescriptor(dateIso) {
+	const date = dateFromIso(dateIso);
+	const weekdayFromMonday = (date.getUTCDay() + 6) % 7;
+	const monday = new Date(date);
+	monday.setUTCDate(date.getUTCDate() - weekdayFromMonday);
+	const thursday = new Date(monday);
+	thursday.setUTCDate(monday.getUTCDate() + 3);
+	const isoYear = thursday.getUTCFullYear();
+	const firstThursday = new Date(Date.UTC(isoYear, 0, 4));
+	const firstMonday = new Date(firstThursday);
+	firstMonday.setUTCDate(firstThursday.getUTCDate() - ((firstThursday.getUTCDay() + 6) % 7));
+	const week = Math.floor((monday.getTime() - firstMonday.getTime()) / (7 * DAY_MS)) + 1;
+	const startDate = isoDate(monday);
+	return {
+		periodId: `${isoYear}-W${String(week).padStart(2, "0")}`,
+		startDate,
+		endDate: addDays(startDate, 6),
+		daysExpected: 7,
+	};
+}
+
+function periodDescriptor(dateIso, period) {
+	if (period === "weekly") return isoWeekDescriptor(dateIso);
+	const date = dateFromIso(dateIso);
+	const year = date.getUTCFullYear();
+	if (period === "monthly") {
+		const month = date.getUTCMonth();
+		const periodId = `${year}-${String(month + 1).padStart(2, "0")}`;
+		const daysExpected = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+		return {
+			periodId,
+			startDate: `${periodId}-01`,
+			endDate: `${periodId}-${String(daysExpected).padStart(2, "0")}`,
+			daysExpected,
+		};
+	}
+	const daysExpected = Math.round((Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / DAY_MS);
+	return {
+		periodId: String(year),
+		startDate: `${year}-01-01`,
+		endDate: `${year}-12-31`,
+		daysExpected,
+	};
+}
+
+const ROLLUP_METRICS = [
+	{
+		key: "vo2_max",
+		category: "Activity",
+		displayName: "Cardio Fitness",
+		unit: "mL/kg/min",
+		rule: "latest",
+		value: (day) => day.activity?.vo2Max,
+		notes: "Use the latest daily value as the headline period value, with min/max/average for trend context.",
+	},
+	{
+		key: "steps",
+		category: "Activity",
+		displayName: "Steps",
+		unit: "count",
+		rule: "sum",
+		value: (day) => day.activity?.steps,
+		notes: "Sum the daily values in the period. Daily averages divide by days with data.",
+	},
+	{
+		key: "weight_kg",
+		category: "Body Measurements",
+		displayName: "Weight",
+		unit: "kg",
+		rule: "latest",
+		value: (day) => day.body?.weight,
+		notes: "Use the latest daily measurement as the headline period value.",
+	},
+	{
+		key: "blood_glucose_avg",
+		category: "Vitals",
+		displayName: "Blood Glucose Average",
+		unit: "mg/dL",
+		rule: "daily_average",
+		value: (day) => day.vitals?.bloodGlucoseAvg,
+		notes: "Average the daily summary values captured during the period.",
+	},
+];
+
+function buildRollupMetric(definition, days) {
+	const values = days.map(definition.value).filter((value) => Number.isFinite(value));
+	if (!values.length) return undefined;
+	const sum = values.reduce((total, value) => total + value, 0);
+	const average = round(sum / values.length, 2);
+	const latest = values.at(-1);
+	const statistics = definition.rule === "sum"
+		? [
+			{ name: "sum", value: round(sum, 2) },
+			{ name: "daily_average", value: average },
+			{ name: "minimum_daily_value", value: Math.min(...values) },
+			{ name: "maximum_daily_value", value: Math.max(...values) },
+			{ name: "days_counted", value: values.length },
+		]
+		: [
+			{ name: "latest", value: latest },
+			{ name: "minimum_daily_value", value: Math.min(...values) },
+			{ name: "maximum_daily_value", value: Math.max(...values) },
+			{ name: "average_of_daily_values", value: average },
+			{ name: "days_counted", value: values.length },
+		];
+	const primaryValue = definition.rule === "sum" ? round(sum, 2) : definition.rule === "latest" ? latest : average;
+	return {
+		key: definition.key,
+		canonical_key: definition.key,
+		category: definition.category,
+		display_name: definition.displayName,
+		primary_value: primaryValue,
+		unit: definition.unit,
+		rule: definition.rule,
+		days_counted: values.length,
+		statistics,
+		notes: definition.notes,
+	};
+}
+
+function buildRollup(period, descriptor, days) {
+	const metrics = {};
+	for (const definition of ROLLUP_METRICS) {
+		const metric = buildRollupMetric(definition, days);
+		if (metric) metrics[definition.key] = metric;
+	}
+	return {
+		type: "health_rollup",
+		schema: "healthmd.rollup_summary",
+		schema_version: 7,
+		rollup_period: period,
+		period_id: descriptor.periodId,
+		start_date: descriptor.startDate,
+		end_date: descriptor.endDate,
+		days_expected: descriptor.daysExpected,
+		days_counted: days.length,
+		coverage_percent: round(days.length / descriptor.daysExpected * 100, 2),
+		source_schema: "healthmd.health_data",
+		source_schema_version: 7,
+		rollup_rules_version: 7,
+		generated_at: `${descriptor.endDate}T23:59:59Z`,
+		source_dates: days.map((day) => day.date),
+		units: Object.fromEntries(ROLLUP_METRICS.map((definition) => [definition.key, definition.unit])),
+		rollup_metrics: metrics,
+	};
+}
+
+async function writeMockRollups(days) {
+	const rollupsRoot = path.join(OUT_DIR, "Rollups");
+	let count = 0;
+	for (const period of ["weekly", "monthly", "yearly"]) {
+		const grouped = new Map();
+		for (const day of days) {
+			const descriptor = periodDescriptor(day.date, period);
+			const existing = grouped.get(descriptor.periodId) ?? { descriptor, days: [] };
+			existing.days.push(day);
+			grouped.set(descriptor.periodId, existing);
+		}
+		const folder = path.join(rollupsRoot, `${period[0].toUpperCase()}${period.slice(1)}`);
+		await mkdir(folder, { recursive: true });
+		for (const { descriptor, days: periodDays } of grouped.values()) {
+			const rollup = buildRollup(period, descriptor, periodDays);
+			await writeFile(path.join(folder, `${descriptor.periodId}.json`), `${JSON.stringify(rollup)}\n`);
+			count++;
+		}
+	}
+	return count;
+}
+
 async function cleanOutputDir() {
 	await mkdir(OUT_DIR, { recursive: true });
 	const files = await readdir(OUT_DIR);
@@ -901,21 +1070,23 @@ async function cleanOutputDir() {
 			.filter((file) => file.endsWith(".json"))
 			.map((file) => rm(path.join(OUT_DIR, file), { force: true }))
 	);
+	await rm(path.join(OUT_DIR, "Rollups"), { recursive: true, force: true });
 }
 
 async function main() {
 	const dates = enumerateDates(START_DATE, END_DATE);
+	const days = dates.map((date, index) => buildDay(date, index, dates.length));
 	await cleanOutputDir();
 
-	for (let i = 0; i < dates.length; i++) {
-		const day = buildDay(dates[i], i, dates.length);
-		await writeFile(path.join(OUT_DIR, `${dates[i]}.json`), `${JSON.stringify(day)}\n`);
+	for (const day of days) {
+		await writeFile(path.join(OUT_DIR, `${day.date}.json`), `${JSON.stringify(day)}\n`);
 	}
+	const rollupCount = await writeMockRollups(days);
 
-	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, blood pressure, glucose, body composition, nutrition, symptoms, cycle summaries, hearing, running/cycling summaries, mood / State of Mind entries under \`mindfulness.stateOfMindEntries\`, schema v7 medication inventory/dose events, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
+	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day, plus weekly/monthly/yearly summaries under \`Rollups/\`\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, blood pressure, glucose, body composition, nutrition, symptoms, cycle summaries, hearing, running/cycling summaries, mood / State of Mind entries under \`mindfulness.stateOfMindEntries\`, schema v7 medication inventory/dose events, sample workouts, capture status, and roll-up statistics\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
 	await writeFile(path.join(OUT_DIR, "README.md"), readme);
 
-	console.log(`Wrote ${dates.length} mock Health.md JSON files to ${path.relative(REPO_ROOT, OUT_DIR)}`);
+	console.log(`Wrote ${days.length} mock Health.md JSON files and ${rollupCount} roll-ups to ${path.relative(REPO_ROOT, OUT_DIR)}`);
 }
 
 main().catch((error) => {

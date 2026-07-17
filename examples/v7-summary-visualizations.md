@@ -20,7 +20,7 @@ last: 180
 type: rollup-explorer
 period: monthly
 metric: vo2_max
-limit: 12
+limit: 1
 ```
 
 ```health-viz
