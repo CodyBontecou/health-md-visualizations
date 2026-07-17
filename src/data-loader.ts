@@ -7,6 +7,7 @@ import {
 	DetectedSchema,
 	HEALTHMD_DATA_DICTIONARY_FILENAME,
 	ParsedHealthMetricDataDictionary,
+	SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION,
 	SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION,
 	SUPPORTED_HEALTHMD_SCHEMA_VERSION,
 	detectCsvSchema,
@@ -20,6 +21,8 @@ import {
 	HealthMdSettings,
 	DataFormat,
 	DataFolderGranularity,
+	HealthMdCaptureSummary,
+	HealthRollupMetric,
 	HealthRollupSummary,
 	MedicationDoseEvent,
 	MedicationInventoryItem,
@@ -42,7 +45,12 @@ export interface DataLoaderLoadReport {
 	loadedDays: number;
 	loadedRollups: number;
 	rollupPeriods: string[];
+	/** Daily schema versions. Roll-ups and archives advance independently. */
 	schemaVersions: number[];
+	rollupSchemaVersions: number[];
+	archiveSchemaVersions: number[];
+	captureStatuses: Record<string, number>;
+	captureIssueDays: number;
 	skippedFiles: DataLoaderSkippedFile[];
 	warnings: string[];
 	dictionaryLoaded: boolean;
@@ -55,6 +63,10 @@ function emptyLoadReport(): DataLoaderLoadReport {
 		loadedRollups: 0,
 		rollupPeriods: [],
 		schemaVersions: [],
+		rollupSchemaVersions: [],
+		archiveSchemaVersions: [],
+		captureStatuses: {},
+		captureIssueDays: 0,
 		skippedFiles: [],
 		warnings: [],
 		dictionaryLoaded: false,
@@ -110,6 +122,7 @@ export class DataLoader {
 		const days: HealthDay[] = [];
 		const rollups: HealthRollupSummary[] = [];
 		const schemaVersions = new Set<number>();
+		const rollupSchemaVersions = new Set<number>();
 		for (const file of files) {
 			if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) {
 				report.skippedFiles.push({
@@ -134,7 +147,7 @@ export class DataLoader {
 						break;
 					}
 					case "csv": {
-						parsedDays.push(...parseCSV(content));
+						parsedDays.push(...parseCSV(content, dictionaryLoad.dictionary));
 						break;
 					}
 					case "markdown":
@@ -175,7 +188,7 @@ export class DataLoader {
 				const rollup = parseRollupByFormat(content, format, cachedFrontmatter);
 				if (rollup) {
 					const version = schemaVersionOf(rollup);
-					schemaVersions.add(version);
+					rollupSchemaVersions.add(version);
 					if (version > SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION) {
 						report.warnings.push(`${file.path} uses Health.md roll-up schema v${version}; parsing best-effort with v${SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION} support.`);
 					}
@@ -206,10 +219,27 @@ export class DataLoader {
 			a.date.localeCompare(b.date)
 		);
 		this.rollupCache = dedupeRollups(rollups);
+		for (const day of this.cache) {
+			const capture = day.rawCapture;
+			if (!capture) continue;
+			report.captureStatuses[capture.status] = (report.captureStatuses[capture.status] ?? 0) + 1;
+			if (capture.archiveVersion !== undefined) {
+				if (!report.archiveSchemaVersions.includes(capture.archiveVersion)) report.archiveSchemaVersions.push(capture.archiveVersion);
+				if (capture.archiveVersion > SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION) {
+					report.warnings.push(`${day.date} uses source-record archive v${capture.archiveVersion}; compact diagnostics are best-effort.`);
+				}
+			}
+			if (capture.validationIssues?.length) {
+				report.captureIssueDays++;
+				report.warnings.push(...capture.validationIssues.map((issue) => `${day.date}: ${issue}`));
+			}
+		}
+		report.archiveSchemaVersions.sort((a, b) => a - b);
 		report.loadedDays = this.cache.length;
 		report.loadedRollups = this.rollupCache.length;
 		report.rollupPeriods = Array.from(new Set(this.rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
 		report.schemaVersions = Array.from(schemaVersions).sort((a, b) => a - b);
+		report.rollupSchemaVersions = Array.from(rollupSchemaVersions).sort((a, b) => a - b);
 		this.lastReport = report;
 		this.lastLoad = Date.now();
 		return this.cache;
@@ -241,11 +271,18 @@ export class DataLoader {
 			? `; skipped ${report.skippedFiles.length} non-daily/unsupported file${report.skippedFiles.length === 1 ? "" : "s"}`
 			: "";
 		const dictionary = report.dictionaryLoaded ? `; data dictionary loaded (${report.dictionaryEntries} entries)` : "";
+		const rollupVersions = report.rollupSchemaVersions.length
+			? `; roll-up schemas ${report.rollupSchemaVersions.map((version) => version ? `v${version}` : "unversioned CSV").join(", ")}`
+			: "";
 		const rollups = report.loadedRollups
-			? `; indexed ${report.loadedRollups} roll-up${report.loadedRollups === 1 ? "" : "s"}${report.rollupPeriods.length ? ` (${report.rollupPeriods.join(", ")})` : ""}`
+			? `; indexed ${report.loadedRollups} roll-up${report.loadedRollups === 1 ? "" : "s"}${report.rollupPeriods.length ? ` (${report.rollupPeriods.join(", ")})` : ""}${rollupVersions}`
+			: "";
+		const captureStatuses = Object.entries(report.captureStatuses);
+		const capture = captureStatuses.length
+			? `; lossless capture ${captureStatuses.map(([status, count]) => `${status}: ${count}`).join(", ")}${report.archiveSchemaVersions.length ? ` (archive ${report.archiveSchemaVersions.map((version) => `v${version}`).join(", ")})` : ""}`
 			: "";
 		const warnings = report.warnings.length ? `; ${report.warnings.length} warning${report.warnings.length === 1 ? "" : "s"}` : "";
-		return `Loaded ${report.loadedDays} health day${report.loadedDays === 1 ? "" : "s"} from Health.md schemas ${versions}${skipped}${dictionary}${rollups}${warnings}.`;
+		return `Loaded ${report.loadedDays} health day${report.loadedDays === 1 ? "" : "s"} from Health.md schemas ${versions}${skipped}${dictionary}${rollups}${capture}${warnings}.`;
 	}
 
 	private async loadDataDictionaryAliases(files: TFile[]): Promise<{ dictionary: ParsedHealthMetricDataDictionary; loaded: boolean; warnings: string[] }> {
@@ -550,26 +587,55 @@ function rollupKey(rollup: HealthRollupSummary): string {
 }
 
 function rollupDetailScore(rollup: HealthRollupSummary): number {
-	return schemaVersionOf(rollup) * 1000 + Object.values(rollup).filter((value) => {
+	const currentVo2RuleBonus = rollup.metrics?.vo2_max?.rule === "latest" ? 1_000_000 : 0;
+	return currentVo2RuleBonus + schemaVersionOf(rollup) * 1000 + Object.values(rollup).filter((value) => {
 		if (Array.isArray(value)) return value.length > 0;
 		if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
 		return value !== undefined && value !== null && value !== "";
 	}).length;
 }
 
+function mergeRollupMetrics(
+	fallback: Record<string, HealthRollupMetric> | undefined,
+	preferred: Record<string, HealthRollupMetric> | undefined
+): Record<string, HealthRollupMetric> | undefined {
+	const keys = new Set([...Object.keys(fallback ?? {}), ...Object.keys(preferred ?? {})]);
+	if (!keys.size) return undefined;
+	const merged: Record<string, HealthRollupMetric> = {};
+	for (const key of keys) {
+		const fallbackMetric = fallback?.[key];
+		const preferredMetric = preferred?.[key];
+		if (!fallbackMetric) {
+			if (preferredMetric) merged[key] = preferredMetric;
+			continue;
+		}
+		if (!preferredMetric) {
+			merged[key] = fallbackMetric;
+			continue;
+		}
+		// v7 corrected VO2 Max from a period maximum to the latest value. The
+		// self-described rule wins even when its CSV container is unversioned.
+		if (key === "vo2_max" && fallbackMetric.rule === "latest" && preferredMetric.rule !== "latest") {
+			merged[key] = fallbackMetric;
+			continue;
+		}
+		merged[key] = preferredMetric;
+	}
+	return merged;
+}
+
 function mergeRollups(a: HealthRollupSummary, b: HealthRollupSummary): HealthRollupSummary {
 	const preferred = rollupDetailScore(b) >= rollupDetailScore(a) ? b : a;
 	const fallback = preferred === b ? a : b;
-	const schemaVersion = Math.max(schemaVersionOf(a), schemaVersionOf(b));
+	const preferredSchemaVersion = schemaVersionOf(preferred);
 	return {
 		...fallback,
 		...preferred,
-		schemaVersion: schemaVersion || undefined,
-		schema_version: schemaVersion || undefined,
-		metrics: {
-			...(fallback.metrics ?? {}),
-			...(preferred.metrics ?? {}),
-		},
+		// An unversioned CSV remains unversioned; do not relabel it with a stale
+		// schema number from another representation of the same period.
+		schemaVersion: preferredSchemaVersion || undefined,
+		schema_version: preferredSchemaVersion || undefined,
+		metrics: mergeRollupMetrics(fallback.metrics, preferred.metrics),
 		sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths),
 	};
 }
@@ -720,8 +786,21 @@ function objectDetailScore(value: unknown): number {
 	return score;
 }
 
+function dayFormatPriority(day: HealthDay): number {
+	let priority = 0;
+	for (const path of day.sourcePaths ?? []) {
+		const normalized = path.toLowerCase();
+		if (normalized.endsWith(".json") || normalized.includes("/json/")) priority = Math.max(priority, 4);
+		else if (normalized.includes("/bases/")) priority = Math.max(priority, 3);
+		else if (normalized.endsWith(".md") || normalized.includes("/markdown/")) priority = Math.max(priority, 2);
+		else if (normalized.endsWith(".csv") || normalized.includes("/csv/")) priority = Math.max(priority, 1);
+	}
+	return priority;
+}
+
 function dayDetailScore(day: HealthDay): number {
-	return schemaVersionOf(day) * 1000 +
+	return schemaVersionOf(day) * 1_000_000 +
+		dayFormatPriority(day) * 10_000 +
 		objectDetailScore(day.activity) +
 		objectDetailScore(day.heart) +
 		objectDetailScore(day.vitals) +
@@ -730,6 +809,7 @@ function dayDetailScore(day: HealthDay): number {
 		objectDetailScore(day.mood) +
 		objectDetailScore(day.mindfulness) +
 		objectDetailScore(day.hearing) +
+		Math.min(500, Object.keys(day.canonicalMetrics ?? {}).length) +
 		objectDetailScore({
 			medicationCount: day.medicationCount ?? day.medication_count,
 			activeMedicationCount: day.activeMedicationCount ?? day.active_medication_count,
@@ -747,8 +827,63 @@ function dayDetailScore(day: HealthDay): number {
 function preferMeaningfulValue(fallback: unknown, preferred: unknown): unknown {
 	if (preferred === undefined || preferred === null || preferred === "") return fallback;
 	if (Array.isArray(preferred) && preferred.length === 0 && Array.isArray(fallback) && fallback.length > 0) return fallback;
-	if (typeof preferred === "number" && preferred === 0 && typeof fallback === "number" && fallback !== 0) return fallback;
+	// Zero and false are explicit values, not missing data.
 	return preferred;
+}
+
+function captureDetailScore(capture: HealthMdCaptureSummary | undefined): number {
+	if (!capture) return 0;
+	return [
+		capture.archiveSchema,
+		capture.archiveVersion,
+		capture.recordCount,
+		capture.externalRecordCount,
+		capture.queryFailureCount,
+		capture.warningCount,
+		capture.partialFailureCount,
+		capture.queryStatusCounts,
+	].filter((value) => value !== undefined).length;
+}
+
+function mergeCaptureSummaries(
+	preferred: HealthMdCaptureSummary | undefined,
+	fallback: HealthMdCaptureSummary | undefined,
+	preferredSchemaVersion: number,
+	fallbackSchemaVersion: number
+): HealthMdCaptureSummary | undefined {
+	if (!preferred) {
+		// Do not attach stale archive diagnostics from an older daily contract.
+		return preferredSchemaVersion === fallbackSchemaVersion ? fallback : undefined;
+	}
+	if (!fallback) return preferred;
+
+	const sameContract = preferredSchemaVersion === fallbackSchemaVersion;
+	const sameCapture = preferred.status === fallback.status &&
+		preferred.archiveSchema === fallback.archiveSchema &&
+		preferred.archiveVersion === fallback.archiveVersion;
+	if (!sameContract || !sameCapture) {
+		const conflict = `Conflicting duplicate export capture metadata was ignored (${fallback.status} versus ${preferred.status}).`;
+		return {
+			...preferred,
+			validationIssues: Array.from(new Set([...(preferred.validationIssues ?? []), conflict])),
+		};
+	}
+
+	const richer = captureDetailScore(fallback) > captureDetailScore(preferred) ? fallback : preferred;
+	const other = richer === preferred ? fallback : preferred;
+	const validationIssues = Array.from(new Set([
+		...(preferred.validationIssues ?? []),
+		...(fallback.validationIssues ?? []),
+	]));
+	return {
+		...other,
+		...richer,
+		// Status and archive identity always follow the preferred daily record.
+		status: preferred.status,
+		archiveSchema: preferred.archiveSchema,
+		archiveVersion: preferred.archiveVersion,
+		validationIssues: validationIssues.length ? validationIssues : undefined,
+	};
 }
 
 function mergeSection<T extends object>(
@@ -771,8 +906,19 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 	const fallback = preferred === b ? a : b;
 	const schemaVersion = Math.max(schemaVersionOf(a), schemaVersionOf(b));
 	const unitSystem = preferred.unitSystem ?? preferred.unit_system ?? fallback.unitSystem ?? fallback.unit_system;
+	const rawCapture = mergeCaptureSummaries(
+		preferred.rawCapture,
+		fallback.rawCapture,
+		schemaVersionOf(preferred),
+		schemaVersionOf(fallback)
+	);
+	const timeContext = preferred.timeContext ?? preferred.time_context ?? fallback.timeContext ?? fallback.time_context;
 
 	return {
+		// Preserve versioned summary sections that do not yet have dedicated
+		// visualizations. Parsers remove canonical archive payloads before merge.
+		...fallback,
+		...preferred,
 		type: "health-data",
 		date: a.date,
 		schema: preferred.schema ?? fallback.schema,
@@ -782,6 +928,10 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		units: preferred.units ?? fallback.units,
 		unitSystem,
 		unit_system: unitSystem,
+		timeContext,
+		time_context: timeContext,
+		rawCapture,
+		raw_capture_status: rawCapture?.status,
 		activity: mergeSection(fallback.activity, preferred.activity),
 		heart: mergeSection(fallback.heart, preferred.heart),
 		vitals: mergeSection(fallback.vitals, preferred.vitals),
@@ -808,5 +958,6 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		medicationDoseEvents: mergeMedicationDoseEvents(fallback.medicationDoseEvents ?? fallback.medication_dose_events, preferred.medicationDoseEvents ?? preferred.medication_dose_events),
 		medication_dose_events: mergeMedicationDoseEvents(fallback.medication_dose_events ?? fallback.medicationDoseEvents, preferred.medication_dose_events ?? preferred.medicationDoseEvents),
 		hearing: mergeSection(fallback.hearing, preferred.hearing),
+		canonicalMetrics: mergeSection(fallback.canonicalMetrics, preferred.canonicalMetrics),
 	};
 }

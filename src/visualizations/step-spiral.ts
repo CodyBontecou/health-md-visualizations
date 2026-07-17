@@ -2,6 +2,10 @@ import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../t
 import { lerp, hexToRgba, formatDate } from "../canvas-utils";
 import { renderStatBoxes } from "../dom-utils";
 
+type StepDay = HealthDay & {
+	activity: NonNullable<HealthDay["activity"]> & { steps: number };
+};
+
 export const renderStepSpiral: RenderFn = (
 	ctx: CanvasRenderingContext2D,
 	data: HealthDay[],
@@ -20,28 +24,30 @@ export const renderStepSpiral: RenderFn = (
 	const rx = W / 2 - 24;
 	const ry = H / 2 - 24;
 
-	const days = data.filter((d) => d.activity?.steps);
+	const days = data.filter((d): d is StepDay =>
+		typeof d.activity?.steps === "number" && Number.isFinite(d.activity.steps) && d.activity.steps >= 0
+	);
 	if (!days.length) return;
 
-	const maxSteps = Math.max(...days.map((d) => d.activity!.steps));
+	const maxSteps = Math.max(...days.map((d) => d.activity.steps));
 	const maxDist = Math.max(
-		...days.map((d) => d.activity!.walkingRunningDistanceKm || 0)
+		...days.map((d) => d.activity.walkingRunningDistanceKm || 0)
 	);
 	let totalSteps = 0;
 	let bestDay = days[0];
 
 	days.forEach((day, i) => {
-		totalSteps += day.activity!.steps;
-		if (day.activity!.steps > bestDay.activity!.steps) bestDay = day;
+		totalSteps += day.activity.steps;
+		if (day.activity.steps > bestDay.activity.steps) bestDay = day;
 
 		const t = i / days.length;
 		const angle = t * Math.PI * 3.5 - Math.PI / 2;
 		const spiralT = 0.15 + t * 0.85;
 		const x = cx + Math.cos(angle) * rx * spiralT;
 		const y = cy + Math.sin(angle) * ry * spiralT;
-		const steps = day.activity!.steps;
-		const dist = day.activity!.walkingRunningDistanceKm || 0;
-		const dotSize = 10 + (steps / maxSteps) * 30;
+		const steps = day.activity.steps;
+		const dist = day.activity.walkingRunningDistanceKm || 0;
+		const dotSize = 10 + (maxSteps > 0 ? steps / maxSteps : 0) * 30;
 		const distT = maxDist > 0 ? dist / maxDist : 0;
 		const dotAlpha = lerp(0.35, 0.9, distT);
 
@@ -87,27 +93,27 @@ export const renderStepSpiral: RenderFn = (
 			details: [
 				{ label: "Steps", value: steps.toLocaleString() },
 				{ label: "Distance", value: `${dist.toFixed(2)} km` },
-				...(day.activity!.activeCalories
+				...(day.activity.activeCalories
 					? [
 							{
 								label: "Calories",
-								value: `${Math.round(day.activity!.activeCalories)} kcal`,
+								value: `${Math.round(day.activity.activeCalories)} kcal`,
 							},
 					  ]
 					: []),
-				...(day.activity!.exerciseMinutes
+				...(day.activity.exerciseMinutes
 					? [
 							{
 								label: "Exercise",
-								value: `${day.activity!.exerciseMinutes} min`,
+								value: `${day.activity.exerciseMinutes} min`,
 							},
 					  ]
 					: []),
-				...(day.activity!.flightsClimbed
+				...(day.activity.flightsClimbed
 					? [
 							{
 								label: "Flights",
-								value: `${day.activity!.flightsClimbed}`,
+								value: `${day.activity.flightsClimbed}`,
 							},
 					  ]
 					: []),
@@ -124,7 +130,7 @@ export const renderStepSpiral: RenderFn = (
 			color: theme.colors.accent,
 		},
 		{
-			value: bestDay.activity!.steps.toLocaleString(),
+			value: bestDay.activity.steps.toLocaleString(),
 			label: "Best day",
 			color: theme.colors.accent,
 		},

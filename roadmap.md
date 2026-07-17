@@ -5,7 +5,8 @@ This roadmap catalogs the visualization plugin's current renderers and the next 
 Source of truth checked in the app codebase:
 
 - Daily export schema: `healthmd.health_data`
-- Current daily schema version: `2`
+- Current daily schema version: `7`
+- Current source-record archive: `healthmd.healthkit_records` v1
 - App schema source: `/Users/codybontecou/projects/health-md/app/HealthMd/Shared/Export/HealthMetricsDictionary.swift`
 - Plugin visualization registry / wizard: `src/visualizations/` and `src/insert-wizard.ts`
 
@@ -21,20 +22,21 @@ Source of truth checked in the app codebase:
 
 ### Built
 
-- **Schema compatibility detection** — plugin recognizes `healthmd.health_data` daily exports, legacy/unversioned exports, rollups, and data dictionary files.
-- **Data dictionary support** — plugin reads `_healthmd_data_dictionary.json` for canonical aliases and units.
-- **Multi-format loading** — supports JSON, CSV, Markdown, and Obsidian Bases-style frontmatter.
-- **Rollup awareness** — skips/indexes `healthmd.rollup_summary` files separately from daily records.
-- **Source-file navigation** — charts can link back to JSON/CSV/Markdown source data.
+- **Schema compatibility detection**: recognizes legacy/unversioned exports, `healthmd.health_data` v1 through v7, `healthmd.healthkit_records` v1, roll-ups, and data dictionary files.
+- **Lossless archive isolation**: retains compact capture diagnostics while skipping canonical record payloads so source records are not double counted as daily summary metrics.
+- **Data dictionary support**: reads `_healthmd_data_dictionary.json` for canonical aliases, units, metric IDs, and metric types.
+- **Multi-format loading**: supports JSON, RFC 4180 CSV, Markdown, and Obsidian Bases frontmatter.
+- **Roll-up support**: indexes v7 JSON, CSV, Markdown, and Bases summaries separately from daily records and preserves all exported statistics.
+- **Mixed-version loading**: keeps v5, v6, and v7 semantics distinct and preserves explicit zero values when duplicate formats are merged.
+- **Bounded source previews**: large JSON/CSV lossless files show compact metadata rather than rendering full binary and canonical payloads.
+- **Source-file navigation**: charts can link back to JSON/CSV/Markdown source data.
+- **Canonical summary metric layer**: scalar v7 summary values from JSON, CSV, Markdown, and Bases are normalized by canonical key while lossless source payloads remain excluded.
+- **Generic metric trend renderer**: `metric-trend` resolves labels, units, aliases, explicit zero values, optional rolling averages, and user-provided reference lines.
+- **Roll-up visualization context**: renderers can consume filtered weekly/monthly/yearly roll-ups and dictionary metadata without mixing them into daily records.
+- **Export coverage visualization**: `capture-coverage-calendar` uses compact status/count diagnostics only.
 
 ### Gaps / candidates
 
-- **Generic schema-aware metric accessor**
-  - Use `_healthmd_data_dictionary.json` to expose any exported metric key to generic charts.
-  - Should support numeric, categorical, list, and object/list-of-object fields.
-- **Generic metric trend renderer**
-  - `type: metric-trend`
-  - Args: `metric`, `stat`, `goal`, `thresholds`, `aggregation`.
 - **Generic metric bar renderer**
   - Broaden the current `bar-chart` beyond a fixed set of activity/sleep fields.
 - **Generic calendar heatmap renderer**
@@ -51,6 +53,9 @@ Source of truth checked in the app codebase:
 - `intro-stats` — dataset summary with totals, averages, sleep, and vitals.
 - `summary-card` — Apple-style KPI card with sparkline and prior-period comparison.
 - `trend-tile` — Trends-tab style comparison card.
+- `metric-trend` — generic numeric trend by canonical Health.md summary key.
+- `rollup-explorer` — exporter-authored period rules, coverage, and statistics.
+- `capture-coverage-calendar` — compact lossless-export completeness status.
 
 ### Gaps / candidates
 
@@ -75,13 +80,12 @@ Exported data includes steps, active calories, basal calories, exercise minutes,
 - `activity-heatmap` — calendar-style activity intensity.
 - `step-spiral` — radial step-count history.
 - `weekday-average` — average a metric by weekday.
+- `cardio-fitness-freshness` — VO₂ Max trend with v7 measured/carried-forward provenance.
 
 ### Gaps / candidates
 
 - **Activity load dashboard**
   - Steps, active calories, exercise minutes, stand hours, and physical effort in one view.
-- **VO₂ max trend**
-  - Long-term cardio fitness trend with annotations.
 - **Move vs exercise vs stand consistency chart**
   - Calendar grid or stacked daily bars.
 - **Distance mix chart**
@@ -169,14 +173,12 @@ Exported data includes body temperature, blood pressure systolic/diastolic, bloo
 
 ### Built
 
-- Partial support through generic summary/trend components only; no dedicated vitals suite beyond oxygen/respiratory.
+- `blood-pressure-bands` — paired systolic/diastolic min-average-max summaries without inferred diagnostic thresholds.
+- `glucose-range` — daily glucose min-average-max with optional user-provided references.
+- Any scalar vital can also use `metric-trend`.
 
 ### Gaps / candidates
 
-- **Blood pressure range chart**
-  - Systolic/diastolic bands with normal/elevated/hypertension thresholds.
-- **Blood glucose range chart**
-  - Avg/min/max trend with target bands.
 - **Temperature trend chart**
   - Body, basal, and wrist temperature deviations.
 - **Wrist temperature recovery tile**
@@ -194,12 +196,11 @@ Exported data includes weight, height, BMI, body fat percentage, lean body mass,
 
 ### Built
 
-- None dedicated.
+- `body-composition` — small multiples for weight, BMI, body fat, lean mass, and waist.
+- `metric-trend` — individual body measurement trends.
 
 ### Gaps / candidates
 
-- **Body composition dashboard**
-  - Weight, BMI, body fat, lean mass, waist.
 - **Weight trend**
   - Rolling average, goal line, weekly delta.
 - **BMI category chart**
@@ -217,6 +218,7 @@ Exported data includes walking speed, step length, double support, walking asymm
 ### Built
 
 - `walking-symmetry` — walking speed and asymmetry trend.
+- `running-form` — speed, power, stride length, ground contact, and vertical oscillation small multiples.
 
 ### Gaps / candidates
 
@@ -226,8 +228,6 @@ Exported data includes walking speed, step length, double support, walking asymm
 - **Six-minute walk trend**
 - **Stair mobility chart**
   - Ascent/descent speeds.
-- **Running form dashboard**
-  - Speed, stride length, ground contact, vertical oscillation, running power.
 - **Mobility risk / improvement tile**
 
 ---
@@ -244,6 +244,7 @@ Exported data includes workout count, minutes, calories, distance, workout types
 - `workout-trends` — duration, distance, calories, average HR, and power trends.
 - `workout-intervals` — detailed workout laps/splits table.
 - `workout-map` — GPS route map.
+- `cycling-performance` — power, FTP, cadence, speed, and distance summary trends.
 
 ### Gaps / candidates
 
@@ -259,8 +260,6 @@ Exported data includes workout count, minutes, calories, distance, workout types
 - **Power curve / best efforts**
 - **Running form over workouts**
   - Cadence, stride, ground contact, vertical oscillation.
-- **Cycling performance dashboard**
-  - Cadence, power, FTP, speed.
 
 ---
 
@@ -305,15 +304,13 @@ Schema v2 exports medication inventory, active/archived counts, dose event count
 - `medication-dose-status` — per-medication dose-status breakdown.
 - `medication-adherence-trend` — daily/weekly/monthly adherence bars.
 - `medication-recent-dose-events` — recent dose-event table.
+- `medication-schedule-timeline` — scheduled versus logged timing for top-level dose events.
+- `medication-skip-reasons` — plain-text skipped-dose reason counts.
 
 ### Gaps / candidates
 
-- **Medication schedule timeline**
-  - Time-of-day schedule and actual taken/skipped/snoozed events.
 - **Medication adherence calendar**
   - Calendar heatmap by adherence percentage.
-- **Medication lateness chart**
-  - Difference between scheduled date and start date.
 - **Dose quantity trend**
   - For dose changes over time.
 - **Medication vs symptom/mood correlation**
@@ -327,12 +324,13 @@ Exported data includes dietary calories, protein, carbs, fat, saturated fat, mon
 
 ### Built
 
-- None dedicated.
+- `nutrition-grid` — per-row normalized daily grids for macros, vitamins, minerals, or all supported nutrition summaries.
+- `metric-trend` — individual nutrient trends using exported units.
 
 ### Gaps / candidates
 
 - **Nutrition dashboard**
-  - Calories, macros, water, caffeine.
+  - Combined calorie, macro, water, and caffeine cards.
 - **Macro split chart**
   - Protein/carbs/fat stacked bars or donut.
 - **Calories in vs active calories chart**
@@ -350,12 +348,10 @@ Exported data includes vitamins A/B6/B12/C/D/E/K, thiamin, riboflavin, niacin, f
 
 ### Built
 
-- None dedicated.
+- `nutrition-grid` with `preset: vitamins` or `preset: minerals` — micronutrient rows by day.
 
 ### Gaps / candidates
 
-- **Micronutrient heatmap**
-  - Rows = nutrients, columns = days/weeks.
 - **% RDA progress grid**
   - Requires configurable recommended daily values.
 - **Vitamin trend dashboard**
@@ -371,12 +367,10 @@ Exported data includes headphone audio level and environmental sound level.
 
 ### Built
 
-- Partial: hearing values may appear in summary stats when present, but there is no dedicated hearing visualization.
+- `hearing-exposure` — headphone and environmental dB trends with an optional user reference line.
 
 ### Gaps / candidates
 
-- **Hearing exposure trend**
-  - Headphone + environmental dB over time.
 - **Loud-day calendar**
 - **Threshold band chart**
   - Highlight days above safe exposure thresholds.
@@ -390,7 +384,7 @@ Exported data includes menstrual flow, sexual activity, ovulation test result, c
 
 ### Built
 
-- None dedicated.
+- `cycle-timeline` — private opt-in menstrual flow, cervical mucus, ovulation-test, and spotting lanes; sexual activity is excluded.
 
 ### Gaps / candidates
 
@@ -410,11 +404,10 @@ Exported data includes daily counts for symptoms such as headache, fatigue, naus
 
 ### Built
 
-- None dedicated.
+- `symptom-heatmap` — recorded daily symptom counts, with missing values distinct from explicit zero.
 
 ### Gaps / candidates
 
-- **Symptom calendar heatmap**
 - **Symptom frequency leaderboard**
 - **Symptom co-occurrence matrix**
 - **Symptom flare timeline**
@@ -446,30 +439,22 @@ Exported data includes UV exposure, time in daylight, number of falls, blood alc
 
 ---
 
-## Recommended Implementation Priority
+## Recommended Next Priority
 
-1. **Generic metric infrastructure**
-   - Parse/preserve all schema v2 flat fields into a generic metric store.
-   - Use the data dictionary for labels, units, category, aggregation, and HealthKit identifiers.
-2. **Generic metric trend/bar/heatmap renderers**
-   - Immediately unlock most exported fields without bespoke charts.
-3. **Vitals suite**
-   - Blood pressure, glucose, body/wrist temperature, respiratory function.
-4. **Body composition dashboard**
-   - High-value and straightforward numeric trends.
-5. **Nutrition dashboard**
-   - Macros, hydration, caffeine, sodium/sugar thresholds.
-6. **Symptoms suite**
-   - Heatmap, leaderboard, co-occurrence, correlations.
-7. **Cycle / reproductive health calendar**
-8. **Micronutrient heatmap / RDA grid**
-9. **Expanded mobility + running form dashboard**
-10. **Hearing and lifestyle/environment charts**
+The schema-v7 foundation, generic metric trend, roll-up explorer, compact capture calendar, blood-pressure/glucose ranges, body composition, running/cycling summaries, nutrition/micronutrient grid, symptom heatmap, cycle timeline, hearing trend, and medication timing/reason views are now built.
+
+Next candidates:
+
+1. Broaden the existing generic bar and calendar charts to accept any canonical metric key.
+2. Add temperature and respiratory-function presets on top of the canonical trend engine.
+3. Add symptom co-occurrence and opt-in correlation views without causal claims.
+4. Add an automatic dashboard layout based on observed summary fields.
+5. Add lifestyle/environment presets for daylight, UV, falls, hygiene, and diving summaries.
 
 ---
 
 ## Notes
 
 - The plugin already has strong coverage for activity, sleep, heart, respiratory/oxygen, mood, medications, and workouts.
-- The largest gap is not one missing chart; it is that the plugin lacks a generic schema-v2 metric layer that can ingest and visualize any exported field.
+- The largest gap is not one missing chart; it is that the plugin lacks a generic schema-v7 summary layer that can visualize any exported summary field without ingesting canonical source records.
 - Once generic metric support exists, many candidate visualizations can be delivered as configuration presets rather than one-off renderers.

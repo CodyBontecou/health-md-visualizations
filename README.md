@@ -105,11 +105,17 @@ Supported appearance keys are `theme` (`auto`, `dark`, `light`), `colorScheme`/`
 
 ### Health.md schema compatibility
 
-The plugin supports legacy/unversioned Health.md daily exports as schema `v0`, the first public versioned `healthmd.health_data` schema (`schema_version: 1`), and schema v2 medication fields (`medication_count`, `medication_details`, `medication_dose_events`, and related dose counts). Newer daily schemas are parsed best-effort and surfaced in the settings compatibility summary so you know when to update the plugin.
+The plugin supports legacy/unversioned Health.md daily exports as schema `v0` and all published `healthmd.health_data` versions through `schema_version: 7`. Versions 5 and 6 remain valid historical files. A mixed vault can load v0 through v7 without relabeling older exports, while versions newer than v7 are reported as best-effort.
 
-Health.md roll-up files (`schema: healthmd.rollup_summary`, `schema_version: 1`, or files under `Health/Rollups/`) are indexed separately from daily records so weekly/monthly/yearly summaries do not pollute day-level charts. The plugin also reads `_healthmd_data_dictionary.json` when present so custom frontmatter field names can be mapped back to stable canonical keys and units.
+Health.md v6 and v7 can include a `healthmd.healthkit_records` v1 source archive. The plugin reads only its compact capture status, schema version, record counts, query status counts, and warning counts. Canonical records, UUID relationships, routes, waveforms, clinical payloads, and binary data do not enter dashboard metric summaries or the in-memory day cache. This avoids double counting the daily summary layer and keeps large lossless exports usable.
 
-If charts look incomplete after changing Health.md export settings, open **Settings → Health.md Visualizations → Health.md schema compatibility** and click **Scan now**. For the cleanest historical charts, update the plugin before enabling roll-ups or format folders in Health.md, then re-export older date ranges if you want all historical files to use the same canonical units.
+Health.md roll-up files under `Health/Rollups/` are indexed separately from daily records. The plugin supports v7 JSON, Markdown, and Bases roll-ups, including every statistic and the v7 VO2 Max `latest` rule. Roll-up CSV is accepted as an unversioned structural format because its public header does not contain a schema-version column. The plugin also reads `_healthmd_data_dictionary.json` for canonical aliases, units, metric IDs, and metric types.
+
+The v7 visualization suite uses only ordinary daily summary fields, exported roll-up summaries, top-level medication dose events, and compact capture diagnostics. It does **not** require Apple's Health Records or Verifiable Health Records entitlement and never reads clinical/FHIR/CDA records from the lossless archive. Blood pressure, blood glucose, body composition, activity, nutrition, symptoms, reproductive summaries, and hearing levels are ordinary HealthKit summary data whose availability still depends on the user's selected metrics and authorization.
+
+Markdown without frontmatter can still provide supported granular tables, but it cannot declare a schema, canonical units, timezone context, or capture completeness. Large JSON and CSV files receive a bounded source preview instead of rendering every canonical record or base64 payload in Obsidian.
+
+If charts look incomplete after changing Health.md export settings, open **Settings → Health.md Visualizations → Health.md schema compatibility** and click **Scan now**. For consistent historical charts, update the plugin and re-export older dates only when you need corrected v7 summary or roll-up semantics.
 
 ## Platform support
 
@@ -121,16 +127,18 @@ These visualizations map to shared HealthKit / Health Connect export fields:
 
 | Category | Visualization types |
 | --- | --- |
-| Overview | `intro-stats`, `summary-card`, `trend-tile` |
+| Overview | `intro-stats`, `summary-card`, `trend-tile`, `metric-trend`, `rollup-explorer`, `capture-coverage-calendar` |
 | Activity | `activity-rings`, `vitals-rings`, `bar-chart`, `activity-heatmap`, `step-spiral`, `weekday-average` |
 | Heart | `heart-terrain`, `heart-range`, `hrv-trend` |
-| Respiratory and vitals | `oxygen-river`, `oxygen-range`, `breathing-wave` |
+| Respiratory and vitals | `oxygen-river`, `oxygen-range`, `breathing-wave`, `blood-pressure-bands`, `glucose-range` |
 | Sleep | `sleep-schedule`, `sleep-quality-bars`, `sleep-architecture`, `sleep-polar` |
-| Mobility | `walking-symmetry`* |
-| Workouts | `workout-log`, `workout-heart-rate`, `workout-zones`, `workout-trends`, `workout-intervals`, `workout-map` |
+| Mobility | `walking-symmetry`*, `running-form`* |
+| Workouts | `workout-log`, `workout-heart-rate`, `workout-zones`, `workout-trends`, `workout-intervals`, `workout-map`, `cycling-performance`* |
+| Body, nutrition, and hearing | `body-composition`, `nutrition-grid`*, `hearing-exposure`* |
 
 Notes:
 
+- A `*` marks summary fields whose availability differs between HealthKit and Health Connect; charts render only metrics actually present and never substitute zero for missing data.
 - `walking-symmetry` is partial on Android: Android has walking speed, but not Apple-only asymmetry or double-support details.
 - `activity-rings` is partial on Android for Stand: the plugin falls back to a steps-derived stand proxy when `standHours` is missing.
 - Workout route and sample charts require granular workout data and route permission/consent.
@@ -159,8 +167,24 @@ Medication catalog / dose-event visualizations:
 - `medication-dose-status` / `per-medication-dose-status`
 - `medication-adherence-trend` / `medication-daily-adherence-trend`
 - `medication-recent-dose-events` / `medication-dose-events`
+- `medication-schedule-timeline`
+- `medication-skip-reasons`
 
-Android Health Connect does not expose equivalent HealthKit State of Mind records or HealthKit-style medication catalog / dose-event records.
+Android Health Connect does not expose equivalent HealthKit State of Mind records or HealthKit-style medication catalog / dose-event records. `symptom-heatmap` and the private, opt-in `cycle-timeline` use Apple Health summary fields when available; `cycle-timeline` intentionally excludes sexual activity.
+
+### Schema v7 summary visualizations
+
+The following types are backed by the canonical summary metric layer and data dictionary:
+
+- `metric-trend` — any observed numeric canonical key, with optional rolling average and user reference line
+- `cardio-fitness-freshness` — VO₂ Max measured-vs-carried-forward provenance
+- `rollup-explorer` — exported weekly/monthly/yearly rules, coverage, and statistics
+- `capture-coverage-calendar` — compact export completeness only
+- `blood-pressure-bands`, `glucose-range`, and `body-composition`
+- `running-form`, `cycling-performance`, and `hearing-exposure`
+- `nutrition-grid`, `symptom-heatmap`, and private opt-in `cycle-timeline`
+
+No built-in medical target, diagnosis, nutrient recommendation, or safe/unsafe threshold is inferred. Reference lines are shown only when the code block explicitly supplies one. Copy/paste examples are available in [`examples/v7-summary-visualizations.md`](examples/v7-summary-visualizations.md).
 
 ### Android-only
 
@@ -295,7 +319,7 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 <td><p><strong><code>mood-association-matrix</code></strong></p><p>Emotion label × association grid; cells can show average valence or entry counts.</p><p><strong>Extra arguments:</strong> <code>metric</code>, <code>labels</code>, <code>associations</code>.</p></td>
 </tr>
 <tr>
-<td colspan="2"><h3>Medication visualizations</h3><p>These HTML components use Health.md schema v2 medication inventory, dose counts, and dose-event exports. The overview aliases are <code>medications</code> and <code>medication-adherence</code>.</p></td>
+<td colspan="2"><h3>Medication visualizations</h3><p>These HTML components support historical schema v2 medication fields and the nested medication inventory, dose counts, and dose events in schema v7. The overview aliases are <code>medications</code> and <code>medication-adherence</code>.</p></td>
 </tr>
 <tr>
 <td><a href="examples/images/visualizations/medication-overview.png"><img src="examples/images/visualizations/medication-overview.png" alt="medication-overview visualization" width="420"></a></td>
@@ -341,7 +365,7 @@ Specify one of these as the `type:` field in your code block. The gallery below 
 
 Detailed Health.md individual workout notes are discovered from `type: workout`, `metric: workouts`, or workout/healthmd tags. The plugin normalizes their frontmatter, heart-rate zones, laps, and splits for `workout-log`, `workout-heart-rate`, `workout-zones`, `workout-trends`, and the HTML `workout-intervals` table.
 
-All canvas chart types support hover tooltips. Click behavior is configurable: keep the default click-to-pin tooltip behavior, open the source health data file for a point, or open the matching Daily Note. JSON and CSV source files open in a built-in Health.md read-only viewer inside Obsidian, so source navigation does not launch your OS default editor. Aggregate canvas regions that cover multiple dates, such as `weekday-average` bars, navigate to the latest matching date in the rendered range. The `intro-stats`, `summary-card`, `trend-tile`, `medication-overview`, individual `medication-*` section components, `workout-map`, and `workout-intervals` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
+All canvas chart types support hover tooltips. Click behavior is configurable: keep the default click-to-pin tooltip behavior, open the source health data file for a point, or open the matching Daily Note. JSON and CSV source files open in a built-in Health.md read-only viewer inside Obsidian. Large lossless files show compact metadata and a bounded table preview instead of placing complete base64 or canonical JSON payloads in the DOM. Aggregate canvas regions that cover multiple dates, such as `weekday-average` bars, navigate to the latest matching date in the rendered range. The `intro-stats`, `summary-card`, `trend-tile`, `medication-overview`, individual `medication-*` section components, `workout-map`, and `workout-intervals` types are HTML/SVG/Leaflet renderers (no canvas tooltip layer) for sharper typography and interactive map rendering.
 
 ### Bundled examples
 
@@ -353,7 +377,7 @@ Starter dashboards live in the `examples/` folder — copy any of them into your
 - `examples/weekly-overview.md` — rolling week-at-a-glance across activity, heart, respiratory, sleep, mood, mobility, and workouts.
 - `examples/sleep-analysis.md` — sleep-focused drill-down.
 
-This repo also ships deterministic mock data in `examples/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31) including activity, heart, vitals, sleep, workouts, and Health.md-style mood / State of Mind entries under `mindfulness.stateOfMindEntries`. When the default `Health/` folder is empty or missing, the plugin falls back to this bundled dataset so cloned examples render immediately. You can also set **Settings → Health.md Visualizations → Data folder** to `examples/Health` explicitly.
+This repo also ships deterministic mock data in `examples/Health/` (one JSON file per day from 2025-11-19 through 2026-12-31) for the example dashboards. The generator now covers v7 body composition, nutrition, symptoms, reproductive summaries, hearing, running/cycling summaries, blood pressure, glucose, medication events, and VO₂ provenance in addition to the existing activity, heart, sleep, mood, and workout data. When the default `Health/` folder is empty or missing, the plugin falls back to the bundled dataset; run `npm run generate:mock-health` to refresh it with the latest schema coverage.
 
 ## Embedding charts in notes
 
@@ -569,9 +593,12 @@ Because `last` is anchored on today by default, each new daily note shows the mo
 
 The plugin auto-detects the data format from the file extension. Each file should represent **one day** of health data and live inside your configured data folder.
 
-- `.json` — A `HealthDay` object (see `src/types.ts` for the full shape).
-- `.csv` — Health.md row exports (`Date,Category,Metric,Value,Unit[,Timestamp]`). The parser accepts both historical plugin labels and current iOS/Android labels such as `Min Heart Rate`, `Cardio Fitness (VO2 Max)`, `Respiratory Rate Avg`, and granular sample rows. See `src/parsers/csv-parser.ts`.
-- `.md` — A markdown file with YAML frontmatter that uses fields like `average_heart_rate`, `sleep_deep_hours`, `steps`, schema v2 medication fields (`medication_count`, `medication_details`, `medication_dose_events`), etc. Optional Health.md granular tables (`Time | BPM`, `Time | SpO2`, `Start | End | Stage`, …) are parsed when present. Frontmatter is recommended for aggregate metrics; markdown without frontmatter needs an ISO date in the title/body. See `src/parsers/markdown-parser.ts`. This format is compatible with Obsidian Bases.
+- `.json`: A `healthmd.health_data` daily object. Summary sections feed charts. A v1 `healthkit_record_archive`, when present, contributes only compact capture diagnostics and is otherwise skipped during parsing.
+- `.csv`: Health.md row exports (`Date,Category,Metric,Value,Unit[,Timestamp]`). Parsing follows RFC 4180, including quoted JSON cells with commas, quotes, and embedded newlines. Canonical source-record rows are counted but not ingested as health metrics.
+- `.md`: Markdown with Health.md YAML frontmatter, or metadata-free Markdown containing supported granular tables and an ISO date. Schema v7 capture fields and timezone context are retained when present. Human-readable prose is not guessed into canonical units.
+- Obsidian Bases: YAML frontmatter using the same daily schema. The parser reads v7 `workout_details`, medication details, compact capture diagnostics, and canonical units.
+
+Weekly, monthly, and yearly `healthmd.rollup_summary` files under `Health/Rollups/` are indexed separately and never treated as daily chart points.
 
 The top-level `date` field on each day must be a `YYYY-MM-DD` ISO date — the date filter does fast lexicographic comparisons against this field.
 

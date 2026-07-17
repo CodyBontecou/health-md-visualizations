@@ -1,20 +1,27 @@
 import { App, Editor, Modal, Notice, Setting, SuggestModal } from "obsidian";
 import type { HealthMdSettings } from "./types";
 
-type VisualizationCategoryId =
+export type VisualizationCategoryId =
 	| "summary"
 	| "activity"
 	| "heart"
 	| "respiratory"
+	| "vitals"
+	| "body"
 	| "sleep"
 	| "mental"
 	| "medications"
 	| "mobility"
-	| "workouts";
+	| "workouts"
+	| "nutrition"
+	| "symptoms"
+	| "reproductive"
+	| "hearing"
+	| "data-quality";
 
-type CategoryFilterId = VisualizationCategoryId | "all";
+export type CategoryFilterId = VisualizationCategoryId | "all";
 
-type DateRangeMode = "last" | "single" | "custom" | "none";
+export type DateRangeMode = "last" | "single" | "custom" | "none";
 
 type TextValidation =
 	| "positive-number"
@@ -23,48 +30,48 @@ type TextValidation =
 	| "date"
 	| "time";
 
-interface SelectOption {
+export interface SelectOption {
 	value: string;
 	label: string;
 }
 
-interface BaseParamDefinition {
+export interface BaseParamDefinition {
 	key: string;
 	label: string;
 	desc: string;
 	optional?: boolean;
 }
 
-interface SelectParamDefinition extends BaseParamDefinition {
+export interface SelectParamDefinition extends BaseParamDefinition {
 	kind: "select";
 	options: SelectOption[];
 	defaultValue: string;
 }
 
-interface TextParamDefinition extends BaseParamDefinition {
+export interface TextParamDefinition extends BaseParamDefinition {
 	kind: "text";
 	placeholder?: string;
 	defaultValue?: string;
 	validation?: TextValidation;
 }
 
-interface ToggleParamDefinition extends BaseParamDefinition {
+export interface ToggleParamDefinition extends BaseParamDefinition {
 	kind: "toggle";
 	defaultValue: boolean;
 }
 
-type ParamDefinition =
+export type ParamDefinition =
 	| SelectParamDefinition
 	| TextParamDefinition
 	| ToggleParamDefinition;
 
-interface VisualizationCategory {
+export interface VisualizationCategory {
 	id: CategoryFilterId;
 	label: string;
 	description: string;
 }
 
-interface VisualizationOption {
+export interface VisualizationOption {
 	type: string;
 	label: string;
 	category: VisualizationCategoryId;
@@ -81,7 +88,7 @@ const TIME_INPUT = /^\d{1,2}:\d{2}$/;
 const DATE_PLACEHOLDER = "YYYY-MM-DD";
 const DATE_OR_DATETIME_PLACEHOLDER = "YYYY-MM-DD or YYYY-MM-DDTHH:MM";
 
-const CATEGORIES: VisualizationCategory[] = [
+export const VISUALIZATION_CATEGORIES: VisualizationCategory[] = [
 	{
 		id: "all",
 		label: "All visualizations",
@@ -108,6 +115,16 @@ const CATEGORIES: VisualizationCategory[] = [
 		description: "Blood oxygen and respiratory-rate charts.",
 	},
 	{
+		id: "vitals",
+		label: "Vitals & metabolism",
+		description: "Blood pressure, glucose, and other daily vital summaries.",
+	},
+	{
+		id: "body",
+		label: "Body composition",
+		description: "Weight, BMI, body fat, lean mass, and waist trends.",
+	},
+	{
 		id: "sleep",
 		label: "Sleep",
 		description: "Schedules, sleep stages, quality bars, and polar clocks.",
@@ -131,6 +148,31 @@ const CATEGORIES: VisualizationCategory[] = [
 		id: "workouts",
 		label: "Workouts",
 		description: "Workout logs, detailed zones, interval tables, trends, and GPS route maps.",
+	},
+	{
+		id: "nutrition",
+		label: "Nutrition",
+		description: "Macronutrient, vitamin, and mineral summary grids.",
+	},
+	{
+		id: "symptoms",
+		label: "Symptoms",
+		description: "Recorded symptom-count patterns over time.",
+	},
+	{
+		id: "reproductive",
+		label: "Reproductive health",
+		description: "Private, opt-in cycle summary timelines.",
+	},
+	{
+		id: "hearing",
+		label: "Hearing",
+		description: "Headphone and environmental audio-level trends.",
+	},
+	{
+		id: "data-quality",
+		label: "Export coverage",
+		description: "Lossless capture status and compact export diagnostics.",
 	},
 ];
 
@@ -198,7 +240,7 @@ const WORKOUT_TREND_METRICS: SelectOption[] = [
 	{ value: "power_avg", label: "Average power" },
 ];
 
-const VISUALIZATIONS: VisualizationOption[] = [
+export const VISUALIZATION_CATALOG: VisualizationOption[] = [
 	{
 		type: "intro-stats",
 		label: "Intro stats",
@@ -958,6 +1000,159 @@ const VISUALIZATIONS: VisualizationOption[] = [
 			},
 		],
 	},
+	{
+		type: "metric-trend",
+		label: "Canonical metric trend",
+		category: "summary",
+		description: "Trend any numeric Health.md summary using its canonical metric key and exported unit.",
+		defaultLast: 90,
+		defaultHeight: 260,
+		params: [
+			{ kind: "text", key: "metric", label: "Canonical metric", desc: "Health.md canonical key, for example weight_kg or blood_glucose_avg.", defaultValue: "steps" },
+			{ kind: "text", key: "rollingAverage", label: "Rolling average", desc: "Optional positive number of days for a rolling average.", optional: true, validation: "positive-integer" },
+			{ kind: "text", key: "goal", label: "Reference value", desc: "Optional user-provided reference line. No medical threshold is assumed.", optional: true, validation: "positive-number" },
+		],
+	},
+	{
+		type: "cardio-fitness-freshness",
+		label: "Cardio fitness freshness",
+		category: "activity",
+		description: "VO₂ Max trend that distinguishes measured and carried-forward values using v7 provenance.",
+		defaultLast: 180,
+		defaultHeight: 280,
+		params: [],
+	},
+	{
+		type: "rollup-explorer",
+		label: "Roll-up explorer",
+		category: "summary",
+		description: "Inspect exported weekly, monthly, and yearly primary values, rules, coverage, and statistics.",
+		defaultLast: 365,
+		params: [
+			{ kind: "select", key: "period", label: "Period", desc: "Choose which exported roll-up periods to show.", options: [{ value: "all", label: "All" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "yearly", label: "Yearly" }], defaultValue: "all" },
+			{ kind: "text", key: "metric", label: "Canonical metric", desc: "Optional canonical key to filter, such as vo2_max.", optional: true },
+			{ kind: "text", key: "statistic", label: "Highlight statistic", desc: "Optional exported statistic name, such as latest or daily_average.", optional: true },
+			{ kind: "text", key: "limit", label: "Maximum periods", desc: "Maximum number of period cards.", defaultValue: "12", validation: "positive-integer" },
+		],
+	},
+	{
+		type: "capture-coverage-calendar",
+		label: "Export coverage calendar",
+		category: "data-quality",
+		description: "Compact complete, partial, disabled, and legacy capture status without loading source records.",
+		defaultLast: 180,
+		defaultHeight: 220,
+		params: [],
+	},
+	{
+		type: "blood-pressure-bands",
+		label: "Blood pressure bands",
+		category: "vitals",
+		description: "Daily systolic and diastolic min, average, and max summaries with no diagnostic thresholds.",
+		defaultLast: 90,
+		defaultHeight: 300,
+		params: [],
+	},
+	{
+		type: "glucose-range",
+		label: "Blood glucose range",
+		category: "vitals",
+		description: "Daily blood glucose minimum, average, and maximum summaries.",
+		defaultLast: 90,
+		defaultHeight: 260,
+		params: [
+			{ kind: "text", key: "minReference", label: "Lower reference", desc: "Optional user-provided reference line.", optional: true, validation: "positive-number" },
+			{ kind: "text", key: "maxReference", label: "Upper reference", desc: "Optional user-provided reference line.", optional: true, validation: "positive-number" },
+		],
+	},
+	{
+		type: "body-composition",
+		label: "Body composition",
+		category: "body",
+		description: "Small-multiple trends for weight, BMI, body fat, lean mass, and waist circumference.",
+		defaultLast: 180,
+		defaultHeight: 520,
+		params: [{ kind: "text", key: "metrics", label: "Metrics", desc: "Optional comma-separated canonical keys.", optional: true }],
+	},
+	{
+		type: "running-form",
+		label: "Running form",
+		category: "mobility",
+		description: "Running speed, power, stride length, ground contact, and vertical oscillation summary trends.",
+		defaultLast: 90,
+		defaultHeight: 520,
+		params: [{ kind: "text", key: "metrics", label: "Metrics", desc: "Optional comma-separated canonical keys.", optional: true }],
+	},
+	{
+		type: "cycling-performance",
+		label: "Cycling performance",
+		category: "workouts",
+		description: "Cycling power, FTP, cadence, speed, and distance summaries without prescribed zones.",
+		defaultLast: 90,
+		defaultHeight: 520,
+		params: [{ kind: "text", key: "metrics", label: "Metrics", desc: "Optional comma-separated canonical keys.", optional: true }],
+	},
+	{
+		type: "hearing-exposure",
+		label: "Hearing exposure",
+		category: "hearing",
+		description: "Headphone and environmental sound-level trends with an optional user reference.",
+		defaultLast: 90,
+		defaultHeight: 300,
+		params: [{ kind: "text", key: "reference", label: "Reference level", desc: "Optional user-provided dB line; no safety threshold is assumed.", optional: true, validation: "positive-number" }],
+	},
+	{
+		type: "nutrition-grid",
+		label: "Nutrition grid",
+		category: "nutrition",
+		description: "Per-metric daily grid for macros, vitamins, or minerals using exported units.",
+		defaultLast: 30,
+		defaultHeight: 460,
+		params: [
+			{ kind: "select", key: "preset", label: "Preset", desc: "Choose the summary metrics to include.", options: [{ value: "macros", label: "Macronutrients" }, { value: "vitamins", label: "Vitamins" }, { value: "minerals", label: "Minerals" }, { value: "all", label: "All nutrition" }], defaultValue: "macros" },
+			{ kind: "text", key: "maxRows", label: "Maximum rows", desc: "Bound the number of metric rows shown.", defaultValue: "15", validation: "positive-integer" },
+		],
+	},
+	{
+		type: "symptom-heatmap",
+		label: "Symptom count heatmap",
+		category: "symptoms",
+		description: "Recorded symptom counts by day. Values are counts, not severity scores.",
+		defaultLast: 60,
+		defaultHeight: 480,
+		params: [
+			{ kind: "select", key: "sort", label: "Sort", desc: "Order symptom rows by total count or name.", options: [{ value: "total", label: "Total count" }, { value: "alphabetical", label: "Alphabetical" }], defaultValue: "total" },
+			{ kind: "text", key: "maxRows", label: "Maximum rows", desc: "Bound the number of symptom rows shown.", defaultValue: "15", validation: "positive-integer" },
+		],
+	},
+	{
+		type: "cycle-timeline",
+		label: "Cycle timeline (private)",
+		category: "reproductive",
+		description: "Opt-in menstrual flow, cervical mucus, ovulation test, and spotting summary lanes. Sexual activity is excluded.",
+		defaultLast: 90,
+		defaultHeight: 300,
+		params: [
+			{ kind: "toggle", key: "showSymptoms", label: "Show symptom overlay", desc: "Include a compact recorded-symptom overlay.", defaultValue: false },
+			{ kind: "toggle", key: "showMood", label: "Show mood overlay", desc: "Include daily mood context when available.", defaultValue: false },
+		],
+	},
+	{
+		type: "medication-schedule-timeline",
+		label: "Medication schedule timeline",
+		category: "medications",
+		description: "Scheduled versus logged dose timing grouped by scheduled and as-needed events.",
+		defaultLast: 30,
+		params: [{ kind: "text", key: "limit", label: "Maximum events", desc: "Maximum number of dose events to show.", defaultValue: "30", validation: "positive-integer" }],
+	},
+	{
+		type: "medication-skip-reasons",
+		label: "Medication skip reasons",
+		category: "medications",
+		description: "Counts plain-text reasons attached to skipped top-level dose events.",
+		defaultLast: 90,
+		params: [{ kind: "text", key: "limit", label: "Maximum reasons", desc: "Maximum number of reason labels to show.", defaultValue: "20", validation: "positive-integer" }],
+	},
 ];
 
 export function openInsertVisualizationWizard(
@@ -973,7 +1168,7 @@ export function openInsertVisualizationWizard(
 }
 
 function categoryLabel(categoryId: VisualizationCategoryId): string {
-	return CATEGORIES.find((category) => category.id === categoryId)?.label ?? categoryId;
+	return VISUALIZATION_CATEGORIES.find((category) => category.id === categoryId)?.label ?? categoryId;
 }
 
 function normalizeLineValue(value: string): string {
@@ -1012,8 +1207,8 @@ class VisualizationCategoryModal extends SuggestModal<VisualizationCategory> {
 
 	getSuggestions(query: string): VisualizationCategory[] {
 		const q = query.trim().toLowerCase();
-		if (!q) return CATEGORIES;
-		return CATEGORIES.filter((category) =>
+		if (!q) return VISUALIZATION_CATEGORIES;
+		return VISUALIZATION_CATEGORIES.filter((category) =>
 			`${category.label} ${category.description}`.toLowerCase().includes(q)
 		);
 	}
@@ -1041,7 +1236,7 @@ class VisualizationTypeModal extends SuggestModal<VisualizationOption> {
 		super(app);
 		this.categoryId = categoryId;
 		this.onPick = onPick;
-		const category = CATEGORIES.find((item) => item.id === categoryId);
+		const category = VISUALIZATION_CATEGORIES.find((item) => item.id === categoryId);
 		this.setPlaceholder(
 			categoryId === "all"
 				? "Choose a health visualization…"
@@ -1057,8 +1252,8 @@ class VisualizationTypeModal extends SuggestModal<VisualizationOption> {
 	getSuggestions(query: string): VisualizationOption[] {
 		const q = query.trim().toLowerCase();
 		const scoped = this.categoryId === "all"
-			? VISUALIZATIONS
-			: VISUALIZATIONS.filter((item) => item.category === this.categoryId);
+			? VISUALIZATION_CATALOG
+			: VISUALIZATION_CATALOG.filter((item) => item.category === this.categoryId);
 		if (!q) return scoped;
 		return scoped.filter((item) => {
 			const text = [

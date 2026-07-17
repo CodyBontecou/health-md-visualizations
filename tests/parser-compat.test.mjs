@@ -17,6 +17,7 @@ async function loadParsers() {
 		const csvOutfile = path.join(tempDir, "csv-parser.mjs");
 		const jsonOutfile = path.join(tempDir, "json-parser.mjs");
 		const markdownOutfile = path.join(tempDir, "markdown-parser.mjs");
+		const rollupOutfile = path.join(tempDir, "rollup-parser.mjs");
 		const schemaOutfile = path.join(tempDir, "healthmd-schema.mjs");
 
 		await Promise.all([
@@ -45,6 +46,14 @@ async function loadParsers() {
 				logLevel: "silent",
 			}),
 			esbuild.build({
+				entryPoints: [path.join(process.cwd(), "src/parsers/rollup-parser.ts")],
+				bundle: true,
+				platform: "node",
+				format: "esm",
+				outfile: rollupOutfile,
+				logLevel: "silent",
+			}),
+			esbuild.build({
 				entryPoints: [path.join(process.cwd(), "src/healthmd-schema.ts")],
 				bundle: true,
 				platform: "node",
@@ -54,10 +63,11 @@ async function loadParsers() {
 			}),
 		]);
 
-		const [csvModule, jsonModule, markdownModule, schemaModule] = await Promise.all([
+		const [csvModule, jsonModule, markdownModule, rollupModule, schemaModule] = await Promise.all([
 			import(pathToFileURL(csvOutfile).href),
 			import(pathToFileURL(jsonOutfile).href),
 			import(pathToFileURL(markdownOutfile).href),
+			import(pathToFileURL(rollupOutfile).href),
 			import(pathToFileURL(schemaOutfile).href),
 		]);
 
@@ -65,6 +75,9 @@ async function loadParsers() {
 			parseCSV: csvModule.parseCSV,
 			parseJSON: jsonModule.parseJSON,
 			parseMarkdown: markdownModule.parseMarkdown,
+			parseRollupJSON: rollupModule.parseRollupJSON,
+			parseRollupCSV: rollupModule.parseRollupCSV,
+			parseRollupMarkdown: rollupModule.parseRollupMarkdown,
 			detectJsonSchema: schemaModule.detectJsonSchema,
 			detectCsvSchema: schemaModule.detectCsvSchema,
 			detectFrontmatterSchema: schemaModule.detectFrontmatterSchema,
@@ -80,6 +93,10 @@ after(async () => {
 		await rm(tempDir, { recursive: true, force: true });
 	}
 });
+
+function readV7Fixture(name) {
+	return readFile(path.join(process.cwd(), "tests/fixtures/schema-v7", name), "utf8");
+}
 
 test("JSON parser preserves the complete HealthDay data structure", async () => {
 	const { parseJSON } = await loadParsers();
@@ -221,7 +238,12 @@ test("JSON parser preserves the complete HealthDay data structure", async () => 
 		},
 	};
 
-	assert.deepEqual(parseJSON(JSON.stringify(completeDay)), completeDay);
+	const parsedDay = parseJSON(JSON.stringify(completeDay));
+	assert.ok(parsedDay);
+	const { canonicalMetrics, ...legacyShape } = parsedDay;
+	assert.deepEqual(legacyShape, completeDay);
+	assert.equal(canonicalMetrics.steps, 14321);
+	assert.equal(canonicalMetrics.sleep_total_hours, 8);
 });
 
 test("JSON parser accepts Health.md schema v1 metadata and units map", async () => {
@@ -300,6 +322,27 @@ test("JSON parser reads Health.md mindfulness State of Mind entries", async () =
 	assert.equal(Math.round((day.mood?.averageValence ?? 0) * 100) / 100, 0.42);
 });
 
+test("JSON parser preserves historical schema v2 flat medication fields", async () => {
+	const { parseJSON } = await loadParsers();
+	const day = parseJSON(JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 2,
+		type: "health-data",
+		date: "2026-06-18",
+		medication_count: 1,
+		active_medication_count: 1,
+		medication_details: [{ name: "Aspirin", concept_identifier: "rx:1", is_archived: false }],
+		medications: ["Aspirin"],
+		medication_dose_count: 1,
+		medication_taken_count: 1,
+		medication_dose_events: [{ name: "Aspirin", status: "taken", id: "dose-1" }],
+	}));
+	assert.ok(day);
+	assert.equal(day.medicationCount, 1);
+	assert.equal(day.medicationDetails?.[0].conceptIdentifier, "rx:1");
+	assert.equal(day.medicationDoseEvents?.[0].status, "taken");
+});
+
 test("schema detection classifies legacy, daily, roll-up, dictionary, and future versions", async () => {
 	const {
 		detectJsonSchema,
@@ -332,6 +375,8 @@ test("schema detection classifies legacy, daily, roll-up, dictionary, and future
 			canonicalKey: "steps",
 			displayName: "Steps",
 			category: "Activity",
+			metricId: "step_count",
+			metricType: "quantity",
 			unit: "count",
 			dailyAggregation: "sum",
 			healthKitAggregation: "cumulativeSum",
@@ -346,6 +391,8 @@ test("schema detection classifies legacy, daily, roll-up, dictionary, and future
 			canonicalKey: "steps",
 			displayName: "Steps",
 			category: "Activity",
+			metricId: "step_count",
+			metricType: "quantity",
 			unit: "count",
 			dailyAggregation: "sum",
 			healthKitAggregation: "cumulativeSum",
@@ -1013,4 +1060,301 @@ test("Markdown parser reads granular Health.md tables and derives aggregates", a
 	assert.equal(day.vitals?.bloodOxygenAvg, 96.5);
 	assert.equal(day.vitals?.respiratoryRateSamples?.length, 2);
 	assert.equal(day.vitals?.respiratoryRateAvg, 15);
+});
+
+test("schema v7 lossless JSON stays compact and normalizes current summaries", async () => {
+	const { parseJSON, detectJsonSchema } = await loadParsers();
+	const content = await readV7Fixture("lossless-day.json");
+	const detected = detectJsonSchema(content);
+	assert.equal(detected.kind, "health-data");
+	assert.equal(detected.version, 7);
+	assert.equal(detected.isFutureVersion, false);
+
+	const day = parseJSON(content);
+	assert.ok(day);
+	assert.equal(day.schemaVersion, 7);
+	assert.equal(day.timeContext?.calendarTimezone, "UTC");
+	assert.equal(day.rawCapture?.status, "partial");
+	assert.equal(day.rawCapture?.archiveSchema, "healthmd.healthkit_records");
+	assert.equal(day.rawCapture?.archiveVersion, 1);
+	assert.equal(day.rawCapture?.recordCount, 20);
+	assert.equal(day.rawCapture?.externalRecordCount, 4);
+	assert.equal(day.rawCapture?.queryFailureCount, 2);
+	assert.equal(day.rawCapture?.warningCount, 2);
+	assert.equal(day.rawCapture?.partialFailureCount, 2);
+	assert.deepEqual(day.rawCapture?.queryStatusCounts, {
+		success: 2,
+		failure: 1,
+		cancelled: 1,
+		skipped: 1,
+		unsupported: 1,
+		other: 0,
+	});
+	assert.equal(day.rawCapture?.validationIssues, undefined);
+
+	assert.equal(day.medicationCount, 2);
+	assert.equal(day.medicationDetails?.length, 2);
+	assert.deepEqual(day.medicationDetails?.[0].rxnormCodes, ["617314"]);
+	assert.equal(day.medicationDoseEvents?.length, 2);
+	assert.equal(day.medicationDoseEvents?.[0].status, "taken");
+	assert.equal(day.medicationDoseEvents?.[0].name, "Thyroid");
+	assert.equal(day.vitals?.bloodOxygenAvg, 97.5);
+	assert.equal(day.vitals?.bloodOxygenMin, 94);
+	assert.equal(day.vitals?.bloodOxygenSamples?.[0].value, 97);
+	assert.equal(day.mobility?.walkingAsymmetryPercentage, 1.5);
+	assert.equal(day.mobility?.walkingDoubleSupportPercentage, 27);
+	assert.equal(day.activity?.vo2Max, 42.5);
+	assert.equal(day.activity?.vo2MaxCarriedForward, true);
+	assert.equal(day.canonicalMetrics?.weight_kg, 75);
+	assert.equal(day.canonicalMetrics?.blood_pressure_systolic_avg, 121);
+	assert.equal(day.canonicalMetrics?.blood_glucose_min, 82);
+	assert.equal(day.canonicalMetrics?.running_power_w, 278);
+	assert.equal(day.canonicalMetrics?.cycling_ftp_w, 260);
+	assert.equal(day.canonicalMetrics?.vitamin_d_ug, 20);
+	assert.equal(day.canonicalMetrics?.symptom_headache, 1);
+	assert.equal(day.canonicalMetrics?.menstrual_flow, "medium");
+
+	const cachedShape = JSON.stringify(day);
+	assert.ok(!cachedShape.includes("healthkit_record_archive"));
+	assert.ok(!cachedShape.includes("original_uuid"));
+	assert.ok(!cachedShape.includes("partial_failures"));
+});
+
+test("schema v7 lossless CSV handles multiline canonical JSON without ingesting it", async () => {
+	const { parseCSV, detectCsvSchema, parseHealthMetricDataDictionaryDetails } = await loadParsers();
+	const content = await readV7Fixture("lossless-day.csv");
+	const detected = detectCsvSchema(content);
+	assert.equal(detected.kind, "health-data");
+	assert.equal(detected.version, 7);
+	assert.equal(detected.isFutureVersion, false);
+
+	const days = parseCSV(content);
+	assert.equal(days.length, 1);
+	const day = days[0];
+	assert.equal(day.schemaVersion, 7);
+	assert.equal(day.activity?.steps, 12500);
+	assert.equal(day.timeContext?.timestampTimezone, "UTC");
+	assert.equal(day.rawCapture?.recordCount, 20);
+	assert.equal(day.rawCapture?.externalRecordCount, 4);
+	assert.equal(day.rawCapture?.queryFailureCount, 2);
+	assert.equal(day.rawCapture?.warningCount, 2);
+	assert.equal(day.rawCapture?.partialFailureCount, 2);
+	assert.equal(day.workouts?.length, 3);
+	assert.equal(day.workouts?.[0].type, "Running");
+	assert.equal(day.workouts?.[0].laps?.[0].distance, 5000);
+	assert.equal(day.medicationDetails?.length, 2);
+	assert.deepEqual(day.medicationDetails?.[0].relatedCodings, [{
+		system: "http://www.nlm.nih.gov/research/umls/rxnorm",
+		code: "617314",
+		version: "2026AA",
+	}]);
+	assert.equal(day.medicationDoseEvents?.length, 2);
+	assert.deepEqual(day.medicationDoseEvents?.[0].metadata, { with_food: "false" });
+	assert.deepEqual(day.medicationDoseEvents?.[1].metadata, { reason: "not available" });
+	assert.equal(day.medicationDoseEvents?.[1].scheduledDate, undefined, "as-needed event start must not be fabricated as a schedule time");
+	assert.equal(day.medicationDoseEvents?.[1].startDate, "2026-03-15T18:00:00Z");
+	assert.equal(day.canonicalMetrics?.weight_kg, 75);
+	assert.equal(day.canonicalMetrics?.vo2_max_age_seconds, 86400);
+	assert.equal(day.canonicalMetrics?.vo2_max_carried_forward, true);
+	assert.equal(day.canonicalMetrics?.blood_pressure_diastolic_max, 84);
+	assert.equal(day.canonicalMetrics?.cycling_power_w, 215);
+	assert.equal(day.canonicalMetrics?.vitamin_b12_ug, 2.4);
+	assert.equal(day.canonicalMetrics?.magnesium_mg, 420);
+	assert.equal(day.canonicalMetrics?.symptom_wheezing, 36);
+	assert.equal(day.canonicalMetrics?.ovulation_test, "positive");
+	assert.equal(day.canonicalMetrics?.sleep_deep_hours, 1.5);
+	assert.equal(day.canonicalMetrics?.sleep_core_hours, 4);
+	assert.equal(day.canonicalMetrics?.step_length_cm, 73);
+	assert.equal(day.canonicalMetrics?.downhill_snow_km, 2.3);
+	assert.equal(day.canonicalMetrics?.wheelchair_km, 1.25);
+	assert.equal(day.units?.sleep_deep_hours, "hours");
+	assert.equal(day.units?.step_length_cm, "cm");
+	assert.equal(day.units?.downhill_snow_km, "km");
+	assert.equal(day.units?.wheelchair_km, "km");
+	assert.equal(day.units?.archive_manifest, undefined);
+	assert.ok(!JSON.stringify(day).includes("original_uuid"));
+
+	const dictionary = parseHealthMetricDataDictionaryDetails(JSON.stringify([
+		{ schemaVersion: 7, category: "Mindfulness", displayName: "Average Mood Valence", key: "average_mood_percent", canonicalKey: "average_mood_percent", unit: "percent" },
+		{ schemaVersion: 7, category: "Mindfulness", displayName: "Average Mood Valence", key: "average_mood_valence", canonicalKey: "average_mood_valence", unit: "" },
+		{ schemaVersion: 7, category: "Sleep", displayName: "Deep Sleep", key: "sleep_deep_hours", canonicalKey: "sleep_deep_hours", unit: "hours" },
+		{ schemaVersion: 7, category: "Mobility", displayName: "Walking Step Length", key: "step_length_cm", canonicalKey: "step_length_cm", unit: "cm" },
+		{ schemaVersion: 7, category: "Activity", displayName: "Wheelchair Distance", key: "wheelchair_km", canonicalKey: "wheelchair_km", unit: "km" },
+		{ schemaVersion: 7, category: "Activity", displayName: "Wheelchair Distance", key: "wheelchair_mi", canonicalKey: "wheelchair_mi", unit: "mi" },
+	]));
+	const [dictionaryDay] = parseCSV(content, dictionary);
+	assert.equal(dictionaryDay.canonicalMetrics?.average_mood_valence, 0.13);
+	assert.equal(dictionaryDay.canonicalMetrics?.average_mood_percent, 56);
+	assert.equal(dictionaryDay.canonicalMetrics?.sleep_deep_hours, 1.5);
+	assert.equal(dictionaryDay.canonicalMetrics?.step_length_cm, 73);
+	assert.equal(dictionaryDay.canonicalMetrics?.wheelchair_km, 1.25);
+	assert.equal(dictionaryDay.units?.sleep_deep_hours, "hours");
+	assert.equal(dictionaryDay.units?.step_length_cm, "cm");
+	assert.equal(dictionaryDay.units?.wheelchair_km, "km");
+});
+
+test("CSV preserves already-scaled low mobility percentages", async () => {
+	const { parseCSV } = await loadParsers();
+	const [day] = parseCSV(`Date,Category,Metric,Value,Unit,Timestamp
+2026-07-16,Metadata,schema,healthmd.health_data,,
+2026-07-16,Metadata,schema_version,7,,
+2026-07-16,Mobility,Walking Speed,1.2,m/s,
+2026-07-16,Mobility,Walking Asymmetry Percentage,0.5,percent,
+2026-07-16,Mobility,Walking Double Support Percentage,1.0,percent,
+2026-07-16,Vitals,Blood Oxygen Avg,1.0,percent,`);
+	assert.equal(day.mobility?.walkingAsymmetryPercentage, 0.5);
+	assert.equal(day.mobility?.walkingDoubleSupportPercentage, 1);
+	assert.equal(day.vitals?.bloodOxygenAvg, 1);
+});
+
+test("complete capture status rejects non-success queries and partial failures", async () => {
+	const { parseJSON, parseCSV } = await loadParsers();
+	const archive = {
+		schema: "healthmd.healthkit_records",
+		schema_version: 1,
+		capture_status: "complete",
+		records: [],
+		external_records: [],
+		query_manifest: { results: [{ status: "unsupported" }] },
+		integrity_warnings: [],
+	};
+	const jsonDay = parseJSON(JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		type: "health-data",
+		date: "2026-07-16",
+		raw_capture_status: "complete",
+		healthkit_record_archive: archive,
+		diagnostics: { partial_failures: [{ error_description: "incomplete" }] },
+	}));
+	assert.ok(jsonDay?.rawCapture?.validationIssues?.some((issue) => issue.includes("marked complete")));
+
+	const manifestCell = `"${JSON.stringify(archive).replaceAll('"', '""')}"`;
+	const [csvDay] = parseCSV(`Date,Category,Metric,Value,Unit,Timestamp
+2026-07-16,Metadata,schema,healthmd.health_data,,
+2026-07-16,Metadata,schema_version,7,,
+2026-07-16,Raw HealthKit,Raw Capture Status,complete,status,
+2026-07-16,Raw HealthKit,Archive Manifest,${manifestCell},json,
+2026-07-16,Diagnostics,Partial Failure,"{}",json,`);
+	assert.ok(csvDay.rawCapture?.validationIssues?.some((issue) => issue.includes("marked complete")));
+});
+
+test("schema v7 Markdown and Bases retain compact capture metadata", async () => {
+	const { parseMarkdown } = await loadParsers();
+	const [basesContent, markdownContent] = await Promise.all([
+		readV7Fixture("lossless-day-bases.md"),
+		readV7Fixture("lossless-day.md"),
+	]);
+	const bases = parseMarkdown(basesContent);
+	const markdown = parseMarkdown(markdownContent);
+	assert.ok(bases);
+	assert.ok(markdown);
+
+	for (const day of [bases, markdown]) {
+		assert.equal(day.schemaVersion, 7);
+		assert.equal(day.rawCapture?.status, "partial");
+		assert.equal(day.rawCapture?.archiveSchema, "healthmd.healthkit_records");
+		assert.equal(day.rawCapture?.archiveVersion, 1);
+		assert.equal(day.rawCapture?.recordCount, 20);
+		assert.equal(day.rawCapture?.queryFailureCount, 2);
+		assert.equal(day.rawCapture?.warningCount, 2);
+		assert.equal(day.timeContext?.calendarTimezone, "UTC");
+		assert.equal(day.canonicalMetrics?.weight_kg, 75);
+		assert.equal(day.canonicalMetrics?.blood_glucose_avg, 102);
+		assert.equal(day.canonicalMetrics?.running_ground_contact_ms, 245);
+		assert.equal(day.canonicalMetrics?.environmental_sound_db, 54.2);
+		assert.equal(day.canonicalMetrics?.symptom_fatigue, 2);
+		assert.equal(day.canonicalMetrics?.cervical_mucus, "egg_white");
+	}
+	assert.equal(bases.workouts?.length, 3);
+	assert.equal(bases.workouts?.[0].laps?.[0].distance, 5000);
+	assert.equal(bases.medicationDetails?.length, 2);
+});
+
+test("schema v7 roll-up formats preserve latest VO2 and every statistic", async () => {
+	const {
+		parseRollupJSON,
+		parseRollupCSV,
+		parseRollupMarkdown,
+		detectCsvSchema,
+	} = await loadParsers();
+	const [jsonContent, csvContent, basesContent, markdownContent] = await Promise.all([
+		readV7Fixture("weekly.json"),
+		readV7Fixture("weekly.csv"),
+		readV7Fixture("weekly-bases.md"),
+		readV7Fixture("weekly.md"),
+	]);
+	const rollups = [
+		parseRollupJSON(jsonContent),
+		parseRollupCSV(csvContent),
+		parseRollupMarkdown(basesContent),
+		parseRollupMarkdown(markdownContent),
+	];
+	rollups.forEach((rollup) => assert.ok(rollup));
+
+	assert.equal(rollups[0].schemaVersion, 7);
+	assert.equal(rollups[1].schemaVersion, undefined);
+	assert.equal(detectCsvSchema(csvContent).version, 0, "roll-up CSV is structurally valid but unversioned");
+	assert.equal(rollups[2].schemaVersion, 7);
+	assert.equal(rollups[3].schemaVersion, 7);
+	for (const rollup of rollups) {
+		assert.equal(rollup.periodId, "2026-W28");
+		assert.equal(rollup.metrics?.vo2_max.primaryValue, 40.2);
+		assert.equal(rollup.metrics?.vo2_max.statistics.maximum_daily_value, 42.1);
+		assert.equal(rollup.metrics?.steps.primaryValue, 17500);
+	}
+	assert.deepEqual(rollups[0].sourceDates, ["2026-07-06", "2026-07-08", "2026-07-11"]);
+	assert.equal(rollups[0].rollupRulesVersion, 7);
+});
+
+test("high-record-count CSV archives collapse to compact counts", async () => {
+	const { parseCSV } = await loadParsers();
+	const manifest = JSON.stringify({
+		schema: "healthmd.healthkit_records",
+		schema_version: 1,
+		capture_status: "complete",
+		query_manifest: { results: [{ status: "success" }] },
+		integrity_warnings: [],
+	}).replaceAll('"', '""');
+	const rawRows = Array.from({ length: 10000 }, (_, index) =>
+		`2026-07-16,Raw HealthKit,Raw HealthKit Record,"{""original_uuid"":""${index}"",""payload"":""private-${index}""}",json,`
+	).join("\n");
+	const [day] = parseCSV(`Date,Category,Metric,Value,Unit,Timestamp
+2026-07-16,Metadata,schema,healthmd.health_data,,
+2026-07-16,Metadata,schema_version,7,,
+2026-07-16,Raw HealthKit,Raw Capture Status,complete,status,
+2026-07-16,Raw HealthKit,Archive Manifest,"${manifest}",json,
+${rawRows}`);
+	assert.equal(day.rawCapture?.recordCount, 10000);
+	assert.ok(JSON.stringify(day).length < 3000);
+	assert.ok(!JSON.stringify(day).includes("private-9999"));
+});
+
+test("large and future source-record archives never enter dashboard data", async () => {
+	const { parseJSON } = await loadParsers();
+	const marker = "private-payload-marker";
+	const day = parseJSON(JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		type: "health-data",
+		date: "2026-07-16",
+		raw_capture_status: "complete",
+		activity: { steps: 0, activeCalories: 0, exerciseMinutes: 0, walkingRunningDistanceKm: 0 },
+		healthkit_record_archive: {
+			schema: "healthmd.healthkit_records",
+			schema_version: 2,
+			capture_status: "complete",
+			records: [{ payload: marker.repeat(100000) }],
+			external_records: [],
+			query_manifest: { results: [] },
+			integrity_warnings: [],
+		},
+	}));
+	assert.ok(day);
+	assert.equal(day.activity?.steps, 0);
+	assert.equal(day.rawCapture?.recordCount, 1);
+	assert.ok(day.rawCapture?.validationIssues?.some((issue) => issue.includes("archive v2")));
+	const cached = JSON.stringify(day);
+	assert.ok(cached.length < 5000);
+	assert.ok(!cached.includes(marker));
 });

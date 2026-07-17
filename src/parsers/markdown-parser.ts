@@ -1,14 +1,17 @@
 import {
 	FrontmatterAliasMap,
 	HEALTHMD_HEALTH_DATA_SCHEMA,
+	HEALTHMD_RECORD_ARCHIVE_SCHEMA,
 	HEALTHMD_ROLLUP_SCHEMA,
 	HealthMdUnitMap,
+	SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION,
 	isUnitMap,
 	schemaVersionOf,
 } from "../healthmd-schema";
 import {
 	HealthDay,
 	MoodEntry,
+	RawCaptureStatus,
 	TimeSeriesSample,
 	WorkoutEntry,
 	WorkoutHeartRateZone,
@@ -21,6 +24,7 @@ import {
 	stringArrayFromUnknown,
 } from "../mood-utils";
 import { hasMedicationData, normalizeMedicationFields } from "../medication-utils";
+import { attachCanonicalMetrics, canonicalMetricsFromFlatRecord } from "../summary-metric-normalizer";
 
 interface ParsedFrontmatter {
 	frontmatter: Record<string, unknown> | null;
@@ -1055,6 +1059,34 @@ function parseHeartRateZones(fm: Record<string, unknown>): WorkoutHeartRateZone[
 	return zones;
 }
 
+function parseWorkoutIntervalRecords(value: unknown, kind: "lap" | "split"): WorkoutInterval[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((item, position): WorkoutInterval[] => {
+		if (!isRecord(item)) return [];
+		const index = recordNum(item, kind) ?? recordNum(item, "index") ?? position + 1;
+		const distance = recordNum(item, "distance_m") ?? recordNum(item, "distanceMeters");
+		const duration = recordNum(item, "time_sec") ?? recordNum(item, "duration_seconds") ??
+			parseWorkoutDurationSeconds(recordStr(item, "duration") ?? "") ?? 0;
+		return [{
+			index,
+			duration,
+			distance,
+			distanceFormatted: formatDistanceField(
+				distance,
+				recordNum(item, "distance_km"),
+				recordNum(item, "distance_mi")
+			),
+			paceFormatted: recordStr(item, "pace_per_km") ?? recordStr(item, "pace_per_mi") ?? recordStr(item, "rate"),
+			speedFormatted: recordStr(item, "speed_kmh_formatted") ?? recordStr(item, "speed_mph_formatted"),
+			avgHeartRate: recordNum(item, "hr_avg"),
+			maxHeartRate: recordNum(item, "hr_max"),
+			avgPower: recordNum(item, "power_avg_w"),
+			avgCadence: recordNum(item, "cadence_avg_spm") ?? recordNum(item, "cadence_avg_rpm"),
+			cadenceUnit: recordNum(item, "cadence_avg_rpm") !== undefined ? "rpm" : recordNum(item, "cadence_avg_spm") !== undefined ? "spm" : undefined,
+		}];
+	});
+}
+
 function parseWorkoutIntervals(body: string): { laps: WorkoutInterval[]; splits: WorkoutInterval[] } {
 	const laps: WorkoutInterval[] = [];
 	const splits: WorkoutInterval[] = [];
@@ -1122,11 +1154,11 @@ function parseWorkoutEntry(
 		(durationFromString ? parseWorkoutDurationSeconds(durationFromString) : undefined) ??
 		0;
 
-	const rawStart = getFirstStr(fm, "datetime", "start_datetime", "startTimeISO", "start_time_iso", "startTime");
+	const rawStart = getFirstStr(fm, "datetime", "start_datetime", "startTimeISO", "start_time_iso", "startTime", "start");
 	const startTimeISO = rawStart && absoluteDateMs(rawStart) !== undefined
 		? rawStart
 		: buildLocalDateTime(date, rawStart ?? getFirstStr(fm, "time", "start_time", "start"));
-	const endTimeISO = getFirstStr(fm, "end_datetime", "endTimeISO", "end_time_iso") ?? addSecondsToTimestamp(startTimeISO, duration);
+	const endTimeISO = getFirstStr(fm, "end_datetime", "endTimeISO", "end_time_iso", "end") ?? addSecondsToTimestamp(startTimeISO, duration);
 
 	const distanceKm = getFirstNum(fm, "distance_km", "distanceKm");
 	const distanceMi = getFirstNum(fm, "distance_mi", "distanceMi");
@@ -1137,7 +1169,11 @@ function parseWorkoutEntry(
 	const distanceFormatted = getFirstStr(fm, "distance_formatted", "distanceFormatted") ??
 		formatDistanceField(distanceMeters, distanceKm, distanceMi);
 
-	const { laps, splits } = parseWorkoutIntervals(body);
+	const bodyIntervals = parseWorkoutIntervals(body);
+	const recordLaps = parseWorkoutIntervalRecords(fm.laps, "lap");
+	const recordSplits = parseWorkoutIntervalRecords(fm.splits, "split");
+	const laps = recordLaps.length ? recordLaps : bodyIntervals.laps;
+	const splits = recordSplits.length ? recordSplits : bodyIntervals.splits;
 	const zones = parseHeartRateZones(fm);
 	const avgPaceFormatted = getFirstStr(
 		fm,
@@ -1182,9 +1218,9 @@ function parseWorkoutEntry(
 		minHeartRate: getFirstNum(fm, "hr_min", "min_heart_rate", "minHeartRate"),
 		avgRunningCadence: getFirstNum(fm, "cadence_avg_spm", "avg_running_cadence", "avgRunningCadence"),
 		avgCyclingCadence: getFirstNum(fm, "cadence_avg_rpm", "avg_cycling_cadence", "avgCyclingCadence"),
-		avgStrideLength: getFirstNum(fm, "avg_stride_length_m", "avgStrideLength"),
-		avgGroundContactTime: getFirstNum(fm, "avg_ground_contact_ms", "avgGroundContactTime"),
-		avgVerticalOscillation: getFirstNum(fm, "avg_vertical_oscillation_cm", "avgVerticalOscillation"),
+		avgStrideLength: getFirstNum(fm, "avg_stride_length_m", "stride_length_avg_m", "avgStrideLength"),
+		avgGroundContactTime: getFirstNum(fm, "avg_ground_contact_ms", "ground_contact_avg_ms", "avgGroundContactTime"),
+		avgVerticalOscillation: getFirstNum(fm, "avg_vertical_oscillation_cm", "vertical_oscillation_avg_cm", "avgVerticalOscillation"),
 		avgPower: getFirstNum(fm, "power_avg_w", "avg_power_w", "avgPower"),
 		maxPower: getFirstNum(fm, "power_max_w", "max_power_w", "maxPower"),
 		elevationGainMeters: getFirstNum(fm, "ascent_m", "elevation_gain_m", "elevationGainMeters"),
@@ -1195,6 +1231,38 @@ function parseWorkoutEntry(
 	};
 
 	return workout;
+}
+
+const CAPTURE_STATUSES = new Set<RawCaptureStatus>(["complete", "partial", "not_requested", "legacy_unavailable"]);
+
+function captureSummaryFromFrontmatter(fm: Record<string, unknown>) {
+	const rawStatus = getFirstStr(fm, "raw_capture_status");
+	if (!rawStatus || !CAPTURE_STATUSES.has(rawStatus as RawCaptureStatus)) return undefined;
+	const status = rawStatus as RawCaptureStatus;
+	const archiveSchema = getFirstStr(fm, "raw_record_schema");
+	const archiveVersion = getFirstNum(fm, "raw_record_schema_version");
+	const validationIssues: string[] = [];
+	if ((status === "complete" || status === "partial") && !archiveSchema) {
+		validationIssues.push(`Capture status ${status} has no source-record archive metadata.`);
+	}
+	if ((status === "not_requested" || status === "legacy_unavailable") && archiveSchema) {
+		validationIssues.push(`Capture status ${status} unexpectedly includes source-record archive metadata.`);
+	}
+	if (archiveSchema && archiveSchema !== HEALTHMD_RECORD_ARCHIVE_SCHEMA) {
+		validationIssues.push(`Unsupported source-record archive schema: ${archiveSchema}.`);
+	}
+	if (archiveVersion !== undefined && archiveVersion > SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION) {
+		validationIssues.push(`Source-record archive v${archiveVersion} is newer than supported v${SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION}.`);
+	}
+	return {
+		status,
+		archiveSchema,
+		archiveVersion,
+		recordCount: getFirstNum(fm, "raw_record_count"),
+		queryFailureCount: getFirstNum(fm, "raw_query_failure_count"),
+		warningCount: getFirstNum(fm, "raw_integrity_warning_count"),
+		validationIssues: validationIssues.length ? validationIssues : undefined,
+	};
 }
 
 /**
@@ -1233,6 +1301,16 @@ export function parseMarkdown(
 	const unitSystem = explicitUnitSystem ?? (schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : undefined);
 
 	const granular = parseGranularMarkdownData(parsed.body, date);
+	const rawTimeContext = isRecord(fm.time_context) ? fm.time_context : undefined;
+	const calendarTimezone = rawTimeContext ? getFirstStr(rawTimeContext, "calendar_timezone", "calendarTimezone") : undefined;
+	const timestampTimezone = rawTimeContext ? getFirstStr(rawTimeContext, "timestamp_timezone", "timestampTimezone") : undefined;
+	const timeContext = calendarTimezone || timestampTimezone ? {
+		calendarTimezone,
+		timestampTimezone,
+		calendar_timezone: calendarTimezone,
+		timestamp_timezone: timestampTimezone,
+	} : undefined;
+	const capture = captureSummaryFromFrontmatter(fm);
 
 	const day: HealthDay = {
 		type: "health-data",
@@ -1243,12 +1321,22 @@ export function parseMarkdown(
 		units: unitsMap ?? (typeof rawUnits === "string" ? rawUnits : unitSystem),
 		unitSystem,
 		unit_system: unitSystem,
+		timeContext,
+		time_context: timeContext,
+		rawCapture: capture,
+		raw_capture_status: capture?.status,
 	};
 
+	const workoutDetails = Array.isArray(fm.workout_details)
+		? fm.workout_details.flatMap((item): WorkoutEntry[] => {
+			if (!isRecord(item)) return [];
+			const workout = parseWorkoutEntry(item, "", date);
+			return workout ? [workout] : [];
+		})
+		: [];
 	const workout = parseWorkoutEntry(fm, parsed.body, date);
-	if (workout) {
-		day.workouts = [workout];
-	}
+	const workouts = workoutDetails.length ? workoutDetails : workout ? [workout] : [];
+	if (workouts.length) day.workouts = workouts;
 
 	Object.assign(day, normalizeMedicationFields(fm));
 
@@ -1293,11 +1381,11 @@ export function parseMarkdown(
 		flightsClimbed !== undefined
 	) {
 		day.activity = {
-			steps: steps ?? 0,
-			walkingRunningDistanceKm: walkingRunningDistanceKm ?? 0,
+			steps,
+			walkingRunningDistanceKm,
 			walkingRunningDistance: walkingRunningDistanceKm !== undefined ? walkingRunningDistanceKm * 1000 : undefined,
-			activeCalories: activeCalories ?? 0,
-			exerciseMinutes: exerciseMinutes ?? 0,
+			activeCalories,
+			exerciseMinutes,
 			vo2Max,
 			basalEnergyBurned,
 			standHours,
@@ -1514,8 +1602,8 @@ export function parseMarkdown(
 		walkingDoubleSupportPercentage !== undefined
 	) {
 		day.mobility = {
-			walkingSpeed: walkSpeed ?? 0,
-			walkingAsymmetryPercentage: walkingAsymmetryPercentage ?? 0,
+			walkingSpeed: walkSpeed,
+			walkingAsymmetryPercentage,
 			walkingStepLength,
 			walkingDoubleSupportPercentage,
 		};
@@ -1529,12 +1617,15 @@ export function parseMarkdown(
 
 	// --- Hearing ---
 	const headphone = getFirstNum(fm, "headphone_audio_level", "headphone_audio_db", "hearing_headphone_audio_level");
-	if (headphone !== undefined) {
-		day.hearing = { headphoneAudioLevel: headphone };
+	const environmentalSound = getFirstNum(fm, "environmental_sound_level", "environmental_sound_db", "hearing_environmental_sound_level");
+	if (headphone !== undefined || environmentalSound !== undefined) {
+		day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
 	}
+
+	attachCanonicalMetrics(day, canonicalMetricsFromFlatRecord(fm, unitsMap));
 
 	// Only return if we found at least some health data beyond just a date
 	const hasData =
-		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing;
+		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics;
 	return hasData ? day : null;
 }

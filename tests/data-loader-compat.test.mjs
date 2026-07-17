@@ -136,6 +136,38 @@ function createMockVault({ TFile, TFolder, contentsByPath }) {
 					exerciseMinutes: 0,
 				},
 			})),
+			file("Health/JSON/2026-06-18.json", JSON.stringify({
+				schema: "healthmd.health_data",
+				schema_version: 5,
+				type: "health-data",
+				date: "2026-06-18",
+				activity: { steps: 5000, walkingRunningDistanceKm: 4, activeCalories: 300, exerciseMinutes: 30 },
+			})),
+			file("Health/JSON/2026-06-19.json", JSON.stringify({
+				schema: "healthmd.health_data",
+				schema_version: 6,
+				type: "health-data",
+				date: "2026-06-19",
+				raw_capture_status: "partial",
+				activity: { steps: 6000, walkingRunningDistanceKm: 5, activeCalories: 400, exerciseMinutes: 40 },
+				healthkit_record_archive: {
+					schema: "healthmd.healthkit_records",
+					schema_version: 1,
+					capture_status: "partial",
+					records: [{ payload: "must-not-enter-loader-cache" }],
+					external_records: [],
+					query_manifest: { results: [{ status: "unsupported" }] },
+					integrity_warnings: [],
+				},
+			})),
+			file("Health/JSON/2026-06-20.json", JSON.stringify({
+				schema: "healthmd.health_data",
+				schema_version: 7,
+				type: "health-data",
+				date: "2026-06-20",
+				raw_capture_status: "not_requested",
+				activity: { steps: 0, walkingRunningDistanceKm: 0, activeCalories: 0, exerciseMinutes: 0 },
+			})),
 		]),
 		folder("Health/Bases", [
 			file("Health/Bases/2026-06-14.md", `---
@@ -148,6 +180,18 @@ mySteps: 12345
 myWalkingMiles: 6.21
 ---
 `),
+			file("Health/Bases/2026-06-20.md", `---
+schema: healthmd.health_data
+schema_version: 7
+date: 2026-06-20
+type: health-data
+raw_capture_status: not_requested
+steps: 999
+active_calories: 999
+exercise_minutes: 99
+walking_running_km: 9.9
+---
+`),
 		]),
 		folder("Health/CSV", [
 			file("Health/CSV/2026-06-15.csv", `Date,Category,Metric,Value,Unit,Timestamp
@@ -156,6 +200,13 @@ myWalkingMiles: 6.21
 2026-06-15,Metadata,unit_system,metric,,
 2026-06-15,Activity,Steps,22222,count,
 2026-06-15,Activity,Walking Running Distance,5,km,
+`),
+			file("Health/CSV/2026-06-20-stale.csv", `Date,Category,Metric,Value,Unit,Timestamp
+2026-06-20,Metadata,schema,healthmd.health_data,,
+2026-06-20,Metadata,schema_version,6,,
+2026-06-20,Raw HealthKit,Raw Capture Status,partial,status,
+2026-06-20,Raw HealthKit,Archive Manifest,"{""schema"":""healthmd.healthkit_records"",""schema_version"":1,""capture_status"":""partial"",""query_manifest"":{""results"":[{""status"":""unsupported""}]},""integrity_warnings"":[]}",json,
+2026-06-20,Activity,Steps,777,count,
 `),
 		]),
 		folder("Health/Markdown", [
@@ -173,7 +224,7 @@ walking_running_km: 6.7
 			folder("Health/Rollups/Weekly", [
 				file("Health/Rollups/Weekly/2026-W24.json", JSON.stringify({
 					schema: "healthmd.rollup_summary",
-					schema_version: 1,
+					schema_version: 6,
 					type: "health_rollup",
 					rollup_period: "weekly",
 					period_id: "2026-W24",
@@ -183,15 +234,23 @@ walking_running_km: 6.7
 					days_counted: 7,
 					coverage_percent: 100,
 					source_schema: "healthmd.health_data",
-					source_schema_version: 1,
-					rollup_metrics: { steps: { value: 70000, unit: "count" } },
+					source_schema_version: 6,
+					rollup_metrics: {
+						steps: { value: 70000, unit: "count", rule: "sum" },
+						vo2_max: {
+							value: 42.1,
+							unit: "mL/kg/min",
+							rule: "maximum",
+							statistics: { maximum_daily_value: 42.1 },
+						},
+					},
 				})),
 			]),
 			folder("Health/Rollups/JSON", [
 				folder("Health/Rollups/JSON/Weekly", [
 					file("Health/Rollups/JSON/Weekly/2026-W24.json", JSON.stringify({
 						schema: "healthmd.rollup_summary",
-						schema_version: 1,
+						schema_version: 6,
 						type: "health_rollup",
 						rollup_period: "weekly",
 						period_id: "2026-W24",
@@ -222,6 +281,14 @@ source_schema_version: 1
 				]),
 			]),
 			folder("Health/Rollups/CSV", [
+				folder("Health/Rollups/CSV/Weekly", [
+					file("Health/Rollups/CSV/Weekly/2026-W24.csv", `Period,Period ID,Start Date,End Date,Days Expected,Days Counted,Coverage Percent,Category,Metric,Key,Canonical Key,Primary Value,Unit,Metric Days Counted,Rule,Statistic,Statistic Value,Notes
+weekly,2026-W24,2026-06-08,2026-06-14,7,7,100,Activity,Cardio Fitness,vo2_max,vo2_max,40.2,mL/kg/min,2,latest,primary,40.2,current contract
+weekly,2026-W24,2026-06-08,2026-06-14,7,7,100,Activity,Cardio Fitness,vo2_max,vo2_max,40.2,mL/kg/min,2,latest,latest,40.2,current contract
+weekly,2026-W24,2026-06-08,2026-06-14,7,7,100,Activity,Cardio Fitness,vo2_max,vo2_max,40.2,mL/kg/min,2,latest,maximum_daily_value,42.1,current contract
+weekly,2026-W24,2026-06-08,2026-06-14,7,7,100,Activity,Steps,steps,steps,70000,count,7,sum,primary,70000,
+`),
+				]),
 				folder("Health/Rollups/CSV/Yearly", [
 					file("Health/Rollups/CSV/Yearly/2026.csv", `Period,Period ID,Start Date,End Date,Days Expected,Days Counted,Coverage Percent,Category,Metric,Key,Canonical Key,Primary Value,Unit,Metric Days Counted,Rule,Statistic,Statistic Value,Notes
 yearly,2026,2026-01-01,2026-12-31,365,166,45.5,Activity,Steps,steps,steps,1234567,count,166,sum,primary,1234567,
@@ -265,8 +332,16 @@ test("DataLoader loads mixed Health.md schema vaults and indexes roll-ups separa
 
 	const days = await loader.load();
 
-	assert.equal(days.length, 4);
-	assert.deepEqual(days.map((day) => day.date), ["2026-06-14", "2026-06-15", "2026-06-16", "2026-06-17"]);
+	assert.equal(days.length, 7);
+	assert.deepEqual(days.map((day) => day.date), [
+		"2026-06-14",
+		"2026-06-15",
+		"2026-06-16",
+		"2026-06-17",
+		"2026-06-18",
+		"2026-06-19",
+		"2026-06-20",
+	]);
 	assert.ok(readPaths.some((filePath) => filePath.startsWith("Health/Rollups/")), "roll-up folders should be read for the separate roll-up index");
 	assert.ok(!days.some((day) => day.date === "2026-W24" || day.date === "2026-06"), "roll-ups should not be mixed into daily records");
 
@@ -305,14 +380,17 @@ test("DataLoader loads mixed Health.md schema vaults and indexes roll-ups separa
 	assert.equal(weekly.daysExpected, 7);
 	assert.equal(weekly.daysCounted, 7);
 	assert.equal(weekly.coveragePercent, 100);
-	assert.equal(weekly.sourceSchema, "healthmd.health_data");
-	assert.equal(weekly.sourceSchemaVersion, 1);
+	assert.equal(weekly.schemaVersion, undefined, "current roll-up CSV remains explicitly unversioned");
 	assert.deepEqual(weekly.sourcePaths, [
+		"Health/Rollups/CSV/Weekly/2026-W24.csv",
 		"Health/Rollups/JSON/Weekly/2026-W24.json",
 		"Health/Rollups/Weekly/2026-W24.json",
 	]);
 	assert.ok(weekly.metrics.steps);
 	assert.ok(weekly.metrics.active_calories);
+	assert.equal(weekly.metrics.vo2_max.rule, "latest");
+	assert.equal(weekly.metrics.vo2_max.primaryValue, 40.2);
+	assert.equal(weekly.metrics.vo2_max.statistics.maximum_daily_value, 42.1);
 
 	const futureDay = days.find((day) => day.date === "2026-06-17");
 	assert.ok(futureDay);
@@ -323,11 +401,29 @@ test("DataLoader loads mixed Health.md schema vaults and indexes roll-ups separa
 	assert.equal(report.dictionaryLoaded, true);
 	assert.equal(report.dictionaryEntries, 2);
 	assert.equal(loader.getDataDictionary().unitsByCanonicalKey.walking_running_mi, "mi");
-	assert.deepEqual(report.schemaVersions, [0, 1, 99]);
+	assert.deepEqual(report.schemaVersions, [0, 1, 5, 6, 7, 99]);
+	assert.deepEqual(report.rollupSchemaVersions, [0, 1, 6]);
+	assert.deepEqual(report.archiveSchemaVersions, [1]);
+	assert.deepEqual(report.captureStatuses, { partial: 1, not_requested: 1 });
+	assert.equal(report.captureIssueDays, 1);
+	assert.ok(report.warnings.some((warning) => warning.includes("Conflicting duplicate export capture metadata")));
 	assert.ok(report.warnings.some((warning) => warning.includes("schema v99")));
 	assert.equal(report.loadedRollups, 3);
 	assert.deepEqual(report.rollupPeriods, ["monthly", "weekly", "yearly"]);
 	assert.ok(report.skippedFiles.some((entry) => entry.path === "Health/_healthmd_data_dictionary.json" && entry.reason === "data-dictionary"));
 	assert.ok(loader.getLastLoadSummary().includes("data dictionary loaded"));
 	assert.ok(loader.getLastLoadSummary().includes("indexed 3 roll-ups"));
+	assert.ok(loader.getLastLoadSummary().includes("lossless capture"));
+
+	const v6 = days.find((day) => day.date === "2026-06-19");
+	assert.equal(v6?.rawCapture?.archiveVersion, 1);
+	assert.equal(v6?.rawCapture?.recordCount, 1);
+	assert.ok(!JSON.stringify(days).includes("must-not-enter-loader-cache"));
+
+	const zeroDay = days.find((day) => day.date === "2026-06-20");
+	assert.equal(zeroDay?.activity?.steps, 0, "newer JSON explicit zero must not be replaced by stale Bases data");
+	assert.equal(zeroDay?.activity?.activeCalories, 0);
+	assert.equal(zeroDay?.canonicalMetrics?.steps, 0, "canonical metric merge must preserve the preferred explicit zero");
+	assert.equal(zeroDay?.rawCapture?.status, "not_requested", "v6 archive status must not replace the v7 user setting");
+	assert.equal(zeroDay?.rawCapture?.archiveVersion, undefined);
 });

@@ -1,10 +1,16 @@
+import { isBlankCsvRecord, iterateCsvRecords } from "./csv-utils";
+import { parseJsonObjectExcluding } from "./json-utils";
+
 export const HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
 export const HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 export const HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
+export const HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
 /** Latest Health.md daily export schema supported by this plugin. */
-export const SUPPORTED_HEALTHMD_SCHEMA_VERSION = 2;
+export const SUPPORTED_HEALTHMD_SCHEMA_VERSION = 7;
 /** Latest Health.md roll-up summary schema supported by this plugin. */
-export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 1;
+export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 7;
+/** The source-record archive advances independently from the daily schema. */
+export const SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 
 export type HealthMdDataFormat = "json" | "csv" | "markdown" | "bases" | "unknown";
 
@@ -33,6 +39,8 @@ export interface HealthMetricDataDictionaryEntry {
 	canonicalKey?: unknown;
 	displayName?: unknown;
 	category?: unknown;
+	metricId?: unknown;
+	metricType?: unknown;
 	unit?: unknown;
 	aggregation?: unknown;
 	dailyAggregation?: unknown;
@@ -46,6 +54,8 @@ export interface NormalizedHealthMetricDataDictionaryEntry {
 	canonicalKey: string;
 	displayName?: string;
 	category?: string;
+	metricId?: string;
+	metricType?: string;
 	unit?: string;
 	dailyAggregation?: string;
 	healthKitAggregation?: string;
@@ -130,7 +140,13 @@ function detectKnownSchema(format: HealthMdDataFormat, schema: string | undefine
 
 export function detectJsonSchema(contentOrValue: unknown): DetectedSchema {
 	try {
-		const parsed = typeof contentOrValue === "string" ? JSON.parse(contentOrValue) as unknown : contentOrValue;
+		let parsed: unknown = contentOrValue;
+		if (typeof contentOrValue === "string") {
+			const trimmed = contentOrValue.trimStart();
+			parsed = trimmed.startsWith("{")
+				? parseJsonObjectExcluding(contentOrValue, new Set(["healthkit_record_archive"]))?.record
+				: JSON.parse(contentOrValue) as unknown;
+		}
 		if (isHealthMetricDataDictionaryValue(parsed)) {
 			return { kind: "data-dictionary", version: schemaVersionOfDictionaryValue(parsed), format: "json" };
 		}
@@ -180,12 +196,15 @@ export function detectFrontmatterSchema(frontmatter: Record<string, unknown> | u
 }
 
 export function detectCsvSchema(content: string): DetectedSchema {
-	const lines = content.split(/\r?\n/).filter((line) => line.trim());
-	if (!lines.length) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
+	const records = iterateCsvRecords(content);
+	let first = records.next();
+	while (!first.done && isBlankCsvRecord(first.value)) first = records.next();
+	if (first.done) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
 
-	const header = parseCsvLine(lines[0]).map(normalizeCsvLabel);
+	const header = first.value.map(normalizeCsvLabel);
 	if (header[0] === "period" && header[1] === "period id") {
-		return { kind: "rollup-summary", version: SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+		// The roll-up CSV contract currently has no schema-version column.
+		return { kind: "rollup-summary", version: 0, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
 	}
 	if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
 		return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };
@@ -193,8 +212,10 @@ export function detectCsvSchema(content: string): DetectedSchema {
 
 	let schema: string | undefined;
 	let version = 0;
-	for (let i = 1; i < Math.min(lines.length, 40); i++) {
-		const parts = parseCsvLine(lines[i]);
+	let inspected = 0;
+	for (const parts of records) {
+		if (isBlankCsvRecord(parts)) continue;
+		if (++inspected > 40) break;
 		if (normalizeCsvLabel(parts[1] ?? "") !== "metadata") continue;
 		const metric = normalizeCsvLabel(parts[2] ?? "");
 		const value = (parts[3] ?? "").trim();
@@ -245,6 +266,8 @@ export function parseHealthMetricDataDictionaryDetails(content: string): ParsedH
 				canonicalKey,
 				displayName,
 				category,
+				metricId,
+				metricType,
 				unit,
 				aggregation,
 				dailyAggregation,
@@ -260,6 +283,8 @@ export function parseHealthMetricDataDictionaryDetails(content: string): ParsedH
 			};
 			if (typeof displayName === "string") normalizedEntry.displayName = displayName;
 			if (typeof category === "string") normalizedEntry.category = category;
+			if (typeof metricId === "string") normalizedEntry.metricId = metricId;
+			if (typeof metricType === "string") normalizedEntry.metricType = metricType;
 			if (typeof unit === "string") normalizedEntry.unit = unit;
 			const aggregationValue = dailyAggregation ?? aggregation;
 			if (typeof aggregationValue === "string") normalizedEntry.dailyAggregation = aggregationValue;
@@ -310,36 +335,4 @@ function stringValue(value: unknown): string | undefined {
 
 function normalizeCsvLabel(value: string): string {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-function parseCsvLine(line: string): string[] {
-	const fields: string[] = [];
-	let current = "";
-	let inQuotes = false;
-
-	for (let i = 0; i < line.length; i++) {
-		const char = line[i];
-		const next = line[i + 1];
-
-		if (char === '"') {
-			if (inQuotes && next === '"') {
-				current += '"';
-				i++;
-			} else {
-				inQuotes = !inQuotes;
-			}
-			continue;
-		}
-
-		if (char === "," && !inQuotes) {
-			fields.push(current);
-			current = "";
-			continue;
-		}
-
-		current += char;
-	}
-
-	fields.push(current);
-	return fields;
 }

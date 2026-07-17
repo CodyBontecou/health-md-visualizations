@@ -53,7 +53,10 @@ const METRICS: Record<Metric, MetricMeta> = {
 		unit: "steps",
 		decimals: 0,
 		higherIsBetter: true,
-		extract: (d) => (d.activity?.steps ?? 0) > 0 ? d.activity!.steps : null,
+		extract: (d) => {
+			const value = d.activity?.steps;
+			return value !== undefined && Number.isFinite(value) && value >= 0 ? value : null;
+		},
 	},
 	"vo2max": {
 		category: "HEART",
@@ -82,7 +85,7 @@ const METRICS: Record<Metric, MetricMeta> = {
 		higherIsBetter: true,
 		extract: (d) => {
 			const v = d.sleep?.totalDuration;
-			return v != null && v > 0 ? v / 3600 : null;
+			return v != null && Number.isFinite(v) && v >= 0 ? v / 3600 : null;
 		},
 	},
 	"active-calories": {
@@ -92,7 +95,10 @@ const METRICS: Record<Metric, MetricMeta> = {
 		unit: "CAL",
 		decimals: 0,
 		higherIsBetter: true,
-		extract: (d) => (d.activity?.activeCalories ?? 0) > 0 ? d.activity!.activeCalories : null,
+		extract: (d) => {
+			const value = d.activity?.activeCalories;
+			return value !== undefined && Number.isFinite(value) && value >= 0 ? value : null;
+		},
 	},
 };
 

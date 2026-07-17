@@ -1,10 +1,15 @@
 import { FileView, TFile, WorkspaceLeaf } from "obsidian";
+import { isBlankCsvRecord, iterateCsvRecords } from "./csv-utils";
+import { parseJSON } from "./parsers/json-parser";
 
 export const HEALTH_MD_SOURCE_VIEW_TYPE = "health-md-source-file";
 export const HEALTH_MD_SOURCE_EXTENSIONS = ["json", "csv"];
 
 const CSV_PREVIEW_MAX_ROWS = 200;
 const CSV_PREVIEW_MAX_COLUMNS = 40;
+const CSV_PREVIEW_MAX_CELL_CHARACTERS = 500;
+const INLINE_RAW_MAX_BYTES = 512 * 1024;
+const JSON_PRETTY_PRINT_MAX_BYTES = 1024 * 1024;
 
 function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
@@ -13,49 +18,23 @@ function formatBytes(bytes: number): string {
 	return `${(kb / 1024).toFixed(1)} MB`;
 }
 
-function parseCsvLine(line: string): string[] {
-	const cells: string[] = [];
-	let cell = "";
-	let inQuotes = false;
-
-	for (let i = 0; i < line.length; i++) {
-		const ch = line[i];
-		const next = line[i + 1];
-		if (ch === '"') {
-			if (inQuotes && next === '"') {
-				cell += '"';
-				i++;
-			} else {
-				inQuotes = !inQuotes;
-			}
-		} else if (ch === "," && !inQuotes) {
-			cells.push(cell);
-			cell = "";
-		} else {
-			cell += ch;
-		}
-	}
-
-	cells.push(cell);
-	return cells;
-}
-
-function parseCsvPreview(content: string): { rows: string[][]; truncatedRows: boolean; truncatedColumns: boolean } {
-	const lines = content.split(/\r?\n/).filter((line, index, arr) => index < arr.length - 1 || line.length > 0);
+export function parseCsvPreview(content: string): { rows: string[][]; truncatedRows: boolean; truncatedColumns: boolean } {
 	const rows: string[][] = [];
 	let truncatedColumns = false;
-
-	for (const line of lines.slice(0, CSV_PREVIEW_MAX_ROWS)) {
-		const cells = parseCsvLine(line);
-		if (cells.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
-		rows.push(cells.slice(0, CSV_PREVIEW_MAX_COLUMNS));
+	let truncatedRows = false;
+	for (const record of iterateCsvRecords(content, {
+		cellCharacterLimit: () => CSV_PREVIEW_MAX_CELL_CHARACTERS,
+		truncationMarker: "…",
+	})) {
+		if (isBlankCsvRecord(record)) continue;
+		if (rows.length >= CSV_PREVIEW_MAX_ROWS) {
+			truncatedRows = true;
+			break;
+		}
+		if (record.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
+		rows.push(record.slice(0, CSV_PREVIEW_MAX_COLUMNS));
 	}
-
-	return {
-		rows,
-		truncatedRows: lines.length > CSV_PREVIEW_MAX_ROWS,
-		truncatedColumns,
-	};
+	return { rows, truncatedRows, truncatedColumns };
 }
 
 function renderPre(container: HTMLElement, text: string, language: string): void {
@@ -118,15 +97,28 @@ export class HealthMdSourceFileView extends FileView {
 	}
 
 	private renderJson(root: HTMLElement, content: string): void {
+		if (content.length > JSON_PRETTY_PRINT_MAX_BYTES) {
+			const day = parseJSON(content);
+			root.createDiv({
+				cls: "health-md-source-warning",
+				text: "This lossless export is too large to render safely. Showing compact metadata instead of record payloads.",
+			});
+			if (day) {
+				renderPre(root, JSON.stringify({
+					schema: day.schema,
+					schema_version: day.schemaVersion,
+					date: day.date,
+					time_context: day.time_context,
+					raw_capture: day.rawCapture,
+				}, null, 2), "json");
+			}
+			return;
+		}
 		try {
 			const formatted = JSON.stringify(JSON.parse(content), null, 2);
 			renderPre(root, formatted, "json");
 		} catch {
-			root.createDiv({
-				cls: "health-md-source-warning",
-				text: "Could not pretty-print JSON; showing raw file contents.",
-			});
-			renderPre(root, content, "json");
+			root.createDiv({ cls: "health-md-source-warning", text: "Could not pretty-print this JSON file." });
 		}
 	}
 
@@ -159,8 +151,15 @@ export class HealthMdSourceFileView extends FileView {
 			}
 		});
 
-		const details = root.createEl("details", { cls: "health-md-source-raw" });
-		details.createEl("summary", { text: "Raw CSV" });
-		renderPre(details, content, "csv");
+		if (content.length <= INLINE_RAW_MAX_BYTES) {
+			const details = root.createEl("details", { cls: "health-md-source-raw" });
+			details.createEl("summary", { text: "Raw CSV" });
+			renderPre(details, content, "csv");
+		} else {
+			root.createDiv({
+				cls: "health-md-source-warning",
+				text: "Raw CSV is not embedded because this lossless export is large. Open it with an external editor to inspect every canonical record.",
+			});
+		}
 	}
 }

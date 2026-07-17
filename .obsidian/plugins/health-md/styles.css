@@ -80,24 +80,46 @@
 	gap: 6px 16px;
 	justify-content: center;
 	padding: 8px 0 4px;
+	container-type: inline-size;
+	margin-block: 0;
 }
 
-.health-md-stat-box {
+.health-md-container .health-md-stats > .health-md-stat-box {
+	/* Keep stats in the same row when the container is narrow. Without an
+	   explicit flex basis, long labels (for example “EXERCISE / 45”) inflate
+	   their item's intrinsic width and can push neighboring stats onto a
+	   different row/vertical offset. */
+	flex: 1 1 72px;
 	min-width: 72px;
+	max-width: 150px;
 	text-align: center;
+	margin-block: 0;
 }
 
-.health-md-stat-value {
+.health-md-container .health-md-stats .health-md-stat-value {
 	font-size: 1.3em;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
+	margin-block: 0;
 }
 
-.health-md-stat-label {
+.health-md-container .health-md-stats .health-md-stat-label {
 	font-size: 0.75em;
 	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
+	margin-block: 0;
+}
+
+.health-md-stats-boxes:not(.health-md-stats-many-boxes) .health-md-stat-label {
+	white-space: nowrap;
+}
+
+@container (max-width: 360px) {
+	.health-md-container .health-md-stats-many-boxes > .health-md-stat-box {
+		flex-basis: calc(50% - 8px);
+		max-width: calc(50% - 8px);
+	}
 }
 
 /* Summary card */
@@ -913,6 +935,136 @@
 
 .health-md-med-event-table td:nth-child(2) {
 	text-align: left;
+}
+
+/* Schema v7 roll-up and medication insight views */
+.health-md-rollup-definition {
+	display: grid;
+	grid-template-columns: minmax(7rem, auto) 1fr;
+	gap: 0.5rem;
+}
+
+.health-md-rollup-detail {
+	margin: 0;
+}
+
+.health-md-rollup-statistics-table,
+.health-md-med-timeline-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.health-md-rollup-statistics-table th,
+.health-md-rollup-statistics-table td {
+	padding: 0.3rem 0.5rem;
+	text-align: left;
+}
+
+.health-md-rollup-statistics-table .is-selected-statistic {
+	font-weight: 600;
+}
+
+.health-md-rollup-metric {
+	padding: 0.9rem 0;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.health-md-rollup-metric-title {
+	margin: 0 0 0.2rem;
+}
+
+.health-md-rollup-metric-key,
+.health-md-rollup-period-kind {
+	opacity: 0.72;
+}
+
+.health-md-rollup-primary {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.4rem;
+	margin: 0.55rem 0;
+}
+
+.health-md-rollup-metric-details {
+	margin: 0.5rem 0;
+}
+
+.health-md-rollup-selected-statistic {
+	padding: 0.45rem 0.6rem;
+	border-inline-start: 3px solid var(--interactive-accent);
+}
+
+.health-md-rollup-card {
+	margin-block: 0.9rem;
+	padding: 1rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+}
+
+.health-md-rollup-card.is-first {
+	margin-block-start: 0;
+}
+
+.health-md-rollup-period-title {
+	margin: 0;
+}
+
+.health-md-rollup-period-details {
+	margin: 0.75rem 0;
+}
+
+.health-md-med-timeline-group-title {
+	margin-block: 1rem 0.5rem;
+}
+
+.health-md-med-timeline-table-wrap {
+	overflow-x: auto;
+}
+
+.health-md-med-timeline-table th,
+.health-md-med-timeline-table td {
+	padding: 0.4rem 0.5rem;
+	text-align: left;
+	vertical-align: top;
+}
+
+.health-md-med-timeline-table th {
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.health-md-med-timeline-table .health-md-med-status {
+	font-weight: 600;
+}
+
+.health-md-med-skip-reasons-list {
+	margin: 0.75rem 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.health-md-med-skip-reason {
+	margin-block: 0.65rem;
+}
+
+.health-md-med-skip-reason-label-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.health-md-med-skip-reason-track {
+	height: 0.5rem;
+	margin-top: 0.3rem;
+	border-radius: 999px;
+	background: var(--background-modifier-border);
+}
+
+.health-md-med-skip-reason-bar {
+	width: var(--health-md-skip-reason-width, 0%);
+	height: 100%;
+	border-radius: inherit;
+	background: var(--interactive-accent);
 }
 
 /* Source data viewer (JSON/CSV opened from chart data points) */

@@ -82,7 +82,7 @@ function isDataFolderGranularity(value: unknown): value is DataFolderGranularity
 function isColorSchemeId(value: unknown): value is ColorSchemeId {
 	return (
 		typeof value === "string" &&
-		(value === "theme" || value === "custom" || Object.prototype.hasOwnProperty.call(COLOR_SCHEMES, value))
+		(value === "theme" || value === "custom" || Boolean(Object.prototype.hasOwnProperty.call(COLOR_SCHEMES, value)))
 	);
 }
 

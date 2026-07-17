@@ -286,7 +286,7 @@ export function normalizeMedicationDetails(value: unknown): MedicationInventoryI
 			const isArchived = firstBoolean(item, "is_archived", "isArchived", "archived");
 			const hasSchedule = firstBoolean(item, "has_schedule", "hasSchedule", "scheduled");
 			const nickname = firstString(item, "nickname", "nick_name", "nickName");
-			const rxnormCodes = stringArrayFromUnknown(firstRaw(item, "rxnorm_codes", "rxnormCodes", "rxnorm"));
+			const rxnormCodes = stringArrayFromUnknown(firstRaw(item, "rxnorm_codes", "rxnormCodes", "rxNormCodes", "rxnorm"));
 			const relatedCodings = parseUnknownCollection(firstRaw(item, "related_codings", "relatedCodings", "codings"));
 			return [{
 				...item,
@@ -314,8 +314,8 @@ export function normalizeMedicationDoseEvents(value: unknown): MedicationDoseEve
 	return parseUnknownCollection(value)
 		.flatMap((item): MedicationDoseEvent[] => {
 			if (!isRecord(item)) return [];
-			const status = firstString(item, "status", "dose_status", "doseStatus");
-			const statusDisplay = firstString(item, "status_display", "statusDisplay") ?? statusLabel(status);
+			const status = firstString(item, "status", "dose_status", "doseStatus", "log_status", "logStatus");
+			const statusDisplay = firstString(item, "status_display", "statusDisplay", "log_status_display", "logStatusDisplay") ?? statusLabel(status);
 			const startDate = firstString(item, "start_date", "startDate", "start", "started_at", "startedAt");
 			const endDate = firstString(item, "end_date", "endDate", "end", "ended_at", "endedAt");
 			const scheduledDate = firstString(item, "scheduled_date", "scheduledDate", "scheduled", "scheduled_at", "scheduledAt", "time", "timestamp");
@@ -325,7 +325,7 @@ export function normalizeMedicationDoseEvents(value: unknown): MedicationDoseEve
 			const conceptIdentifier = firstString(item, "medication_concept_identifier", "medicationConceptIdentifier", "concept_identifier", "conceptIdentifier");
 			return [{
 				...item,
-				name: firstString(item, "name", "medication", "display_name", "displayName"),
+				name: firstString(item, "name", "medication", "medication_name", "medicationName", "display_name", "displayName"),
 				status,
 				statusDisplay,
 				status_display: statusDisplay,
@@ -420,7 +420,10 @@ export type MedicationDoseStatusKind = "taken" | "skipped" | "other";
 export function doseStatusKind(status: string | undefined): MedicationDoseStatusKind {
 	const normalized = (status ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
 	if (["taken", "completed", "complete", "logged", "administered", "consumed", "done"].includes(normalized)) return "taken";
-	if (["skipped", "missed", "not_taken", "not_taken_as_scheduled", "declined", "omitted"].includes(normalized)) return "skipped";
+	if ([
+		"skipped", "missed", "not_taken", "not_taken_as_scheduled", "declined", "omitted",
+		"snoozed", "not_interacted", "notification_not_sent", "not_logged",
+	].includes(normalized)) return "skipped";
 	return "other";
 }
 

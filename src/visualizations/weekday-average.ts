@@ -23,21 +23,30 @@ const METRICS: Record<Metric, MetricMeta> = {
 		label: "Steps",
 		unit: "steps",
 		color: (t) => t.colors.accent,
-		extract: (d) => (d.activity?.steps ?? 0) > 0 ? d.activity!.steps : null,
+		extract: (d) => {
+			const value = d.activity?.steps;
+			return value !== undefined && Number.isFinite(value) && value >= 0 ? value : null;
+		},
 		format: (v) => Math.round(v).toLocaleString(),
 	},
 	activeCalories: {
 		label: "Active Calories",
 		unit: "CAL",
 		color: (t) => t.colors.accent,
-		extract: (d) => (d.activity?.activeCalories ?? 0) > 0 ? d.activity!.activeCalories : null,
+		extract: (d) => {
+			const value = d.activity?.activeCalories;
+			return value !== undefined && Number.isFinite(value) && value >= 0 ? value : null;
+		},
 		format: (v) => `${Math.round(v)}`,
 	},
 	exerciseMinutes: {
 		label: "Exercise",
 		unit: "min",
 		color: (t) => t.colors.accent,
-		extract: (d) => (d.activity?.exerciseMinutes ?? 0) > 0 ? d.activity!.exerciseMinutes : null,
+		extract: (d) => {
+			const value = d.activity?.exerciseMinutes;
+			return value !== undefined && Number.isFinite(value) && value >= 0 ? value : null;
+		},
 		format: (v) => `${Math.round(v)}`,
 	},
 	sleepHours: {
@@ -46,7 +55,7 @@ const METRICS: Record<Metric, MetricMeta> = {
 		color: (t) => t.colors.sleep.rem,
 		extract: (d) => {
 			const v = d.sleep?.totalDuration;
-			return v != null && v > 0 ? v / 3600 : null;
+			return v != null && Number.isFinite(v) && v >= 0 ? v / 3600 : null;
 		},
 		format: (v) => {
 			const h = Math.floor(v);

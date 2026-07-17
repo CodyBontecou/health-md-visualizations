@@ -10,7 +10,7 @@ use `last` by itself when you want a dashboard that always follows today.
 
 > **Tip:** Every canvas chart supports hover tooltips and click-to-pin. The
 > HTML/SVG/Leaflet renderers (`intro-stats`, `summary-card`, `trend-tile`,
-> `medication-overview`, individual `medication-*` section components, `workout-map`,
+> `medication-overview`, individual `medication-*` section components, `rollup-explorer`, `workout-map`,
 > `workout-intervals`) do not use the canvas tooltip layer.
 
 ---
@@ -20,6 +20,7 @@ use `last` by itself when you want a dashboard that always follows today.
 | Category | Reference | Includes |
 | --- | --- | --- |
 | Overview & trends | [Open](visualizations/overview-and-trends.md) | `intro-stats`, `summary-card`, `trend-tile` |
+| Schema v7 summaries | [Open](v7-summary-visualizations.md) | canonical metric, roll-up, capture, vitals, body, performance, nutrition, symptom, cycle, hearing, and medication summary views |
 | Activity & fitness | [Open](visualizations/activity-and-fitness.md) | `activity-rings`, `vitals-rings`, `bar-chart`, `activity-heatmap`, `step-spiral`, `weekday-average` |
 | Heart | [Open](visualizations/heart.md) | `heart-terrain`, `heart-range`, `hrv-trend` |
 | Sleep | [Open](visualizations/sleep.md) | `sleep-schedule`, `sleep-quality-bars`, `sleep-architecture`, `sleep-polar` |
@@ -27,7 +28,7 @@ use `last` by itself when you want a dashboard that always follows today.
 | Mobility | [Open](visualizations/mobility.md) | `walking-symmetry` |
 | Mindfulness & mood | [Open](visualizations/mindfulness-and-mood.md) | `mood-trend`, `mood-calendar-heatmap`, `mood-sleep-scatter`, `mood-day-timeline`, `mood-association-breakdown`, `mood-label-cloud`, `mood-volatility`, `mood-kind-split`, `mood-circadian-clock`, `mood-recovery-tile`, `mood-association-matrix` |
 | Workouts | [Open](visualizations/workouts.md) | `workout-log`, `workout-heart-rate`, `workout-zones`, `workout-trends`, `workout-intervals`, `workout-map` |
-| Medications | [Open](visualizations/medications.md) | `medication-overview`, `medication-inventory`, `medication-adherence-summary`, `medication-dose-status`, `medication-adherence-trend`, `medication-recent-dose-events` |
+| Medications | [Open](visualizations/medications.md) | `medication-overview`, `medication-inventory`, `medication-adherence-summary`, `medication-dose-status`, `medication-adherence-trend`, `medication-recent-dose-events`, `medication-schedule-timeline`, `medication-skip-reasons` |
 
 ---
 

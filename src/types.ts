@@ -1,4 +1,6 @@
-import type { HealthMdUnitMap } from "./healthmd-schema";
+import type { HealthMdUnitMap, ParsedHealthMetricDataDictionary } from "./healthmd-schema";
+
+export type HealthMetricScalar = number | string | boolean;
 
 export interface TimeSeriesSample {
 	timestamp: string;
@@ -95,7 +97,57 @@ export interface WorkoutEntry {
 	timeSeries?: WorkoutTimeSeries;
 }
 
+export type RawCaptureStatus = "complete" | "partial" | "not_requested" | "legacy_unavailable";
+
+export interface HealthMdTimeContext {
+	calendarTimezone?: string;
+	timestampTimezone?: string;
+	calendar_timezone?: string;
+	timestamp_timezone?: string;
+}
+
+export interface HealthMdQueryStatusCounts {
+	success: number;
+	failure: number;
+	cancelled: number;
+	skipped: number;
+	unsupported: number;
+	other: number;
+}
+
+export interface HealthMdCaptureSummary {
+	status: RawCaptureStatus;
+	archiveSchema?: string;
+	archiveVersion?: number;
+	recordCount?: number;
+	externalRecordCount?: number;
+	queryFailureCount?: number;
+	warningCount?: number;
+	partialFailureCount?: number;
+	queryStatusCounts?: HealthMdQueryStatusCounts;
+	validationIssues?: string[];
+}
+
 export type HealthRollupPeriod = "weekly" | "monthly" | "yearly";
+
+export interface HealthRollupStatistic {
+	name: string;
+	value: unknown;
+}
+
+export interface HealthRollupMetric {
+	key?: string;
+	canonicalKey: string;
+	category?: string;
+	displayName?: string;
+	primaryValue?: unknown;
+	value?: unknown;
+	unit?: string;
+	rule?: string;
+	daysCounted?: number;
+	statistics: Record<string, unknown>;
+	notes?: string;
+}
 
 export interface HealthRollupSummary {
 	type: "health_rollup";
@@ -120,7 +172,14 @@ export interface HealthRollupSummary {
 	source_schema?: string;
 	sourceSchemaVersion?: number;
 	source_schema_version?: number;
-	metrics?: Record<string, unknown>;
+	rollupRulesVersion?: number;
+	rollup_rules_version?: number;
+	generatedAt?: string;
+	generated_at?: string;
+	sourceDates?: string[];
+	source_dates?: string[];
+	units?: HealthMdUnitMap;
+	metrics?: Record<string, HealthRollupMetric>;
 	sourcePaths?: string[];
 }
 
@@ -226,12 +285,25 @@ export interface HealthDay {
 	unitSystem?: string;
 	/** Raw snake_case unit system from JSON/frontmatter when present. */
 	unit_system?: string;
+	/** Calendar and timestamp timezone semantics declared by schema v6+. */
+	timeContext?: HealthMdTimeContext;
+	time_context?: HealthMdTimeContext;
+	/** Compact lossless-capture diagnostics. Canonical record payloads are never cached here. */
+	rawCapture?: HealthMdCaptureSummary;
+	raw_capture_status?: RawCaptureStatus;
+	/** Scalar daily summary values keyed by Health.md canonical metric key. */
+	canonicalMetrics?: Record<string, HealthMetricScalar>;
 	activity?: {
-		steps: number;
-		walkingRunningDistanceKm: number;
-		activeCalories: number;
-		exerciseMinutes: number;
+		steps?: number;
+		walkingRunningDistanceKm?: number;
+		activeCalories?: number;
+		exerciseMinutes?: number;
 		vo2Max?: number;
+		vo2MaxSourceUUID?: string;
+		vo2MaxSourceStartDate?: string;
+		vo2MaxSourceEndDate?: string;
+		vo2MaxCarriedForward?: boolean;
+		vo2MaxAgeSeconds?: number;
 		basalEnergyBurned?: number;
 		standHours?: number;
 		flightsClimbed?: number;
@@ -282,8 +354,8 @@ export interface HealthDay {
 		wakeTimeISO?: string;
 	};
 	mobility?: {
-		walkingSpeed: number;
-		walkingAsymmetryPercentage: number;
+		walkingSpeed?: number;
+		walkingAsymmetryPercentage?: number;
 		walkingStepLength?: number;
 		walkingDoubleSupportPercentage?: number;
 		stairAscentSpeed?: number;
@@ -326,7 +398,14 @@ export interface HealthDay {
 	medication_dose_events?: MedicationDoseEvent[];
 	hearing?: {
 		headphoneAudioLevel?: number;
+		environmentalSoundLevel?: number;
 	};
+}
+
+export interface VisualizationContext {
+	rollups: HealthRollupSummary[];
+	dictionary?: ParsedHealthMetricDataDictionary;
+	loadReport?: unknown;
 }
 
 export interface VizConfig {
@@ -442,7 +521,8 @@ export type RenderFn = (
 	config: VizConfig,
 	theme: ResolvedTheme,
 	statsEl: HTMLElement,
-	hits: HitRegistry
+	hits: HitRegistry,
+	context?: VisualizationContext
 ) => void;
 
 // Special render fn for intro-stats (no canvas)
@@ -450,5 +530,6 @@ export type HtmlRenderFn = (
 	data: HealthDay[],
 	el: HTMLElement,
 	config: VizConfig,
-	theme: ResolvedTheme
+	theme: ResolvedTheme,
+	context?: VisualizationContext
 ) => void;

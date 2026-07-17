@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
-const OUT_DIR = path.join(REPO_ROOT, "examples", "Health");
+const OUT_DIR = process.env.HEALTHMD_MOCK_OUTPUT_DIR
+	? path.resolve(process.env.HEALTHMD_MOCK_OUTPUT_DIR)
+	: path.join(REPO_ROOT, "examples", "Health");
 
-const START_DATE = "2025-11-19";
-const END_DATE = "2026-12-31";
+const START_DATE = process.env.HEALTHMD_MOCK_START_DATE || "2025-11-19";
+const END_DATE = process.env.HEALTHMD_MOCK_END_DATE || "2026-12-31";
 const SEED = 0x5eed5eed;
 
 const DAY_MS = 86_400_000;
@@ -404,13 +406,19 @@ function buildActivity(dateIso, rng, dayIndex, totalDays, workoutEntries, recove
 	const workoutMinutes = workoutEntries.reduce((sum, workout) => sum + workout.duration / 60, 0);
 	const exerciseMinutes = Math.round(clamp(steps / 640 + workoutMinutes * 0.72 + randBetween(rng, -4, 7), 6, 145));
 	const standHours = Math.round(clamp(6 + steps / 1350 + randBetween(rng, -1.2, 1.6), 5, 14));
+	const vo2AgeDays = dayIndex % 14;
+	const vo2SourceDate = addDays(dateIso, -vo2AgeDays);
 	return {
 		steps,
 		walkingRunningDistanceKm: distance,
 		walkingRunningDistance: round(distance * 1000, 0),
 		activeCalories,
 		exerciseMinutes,
-		vo2Max: round(41.6 + trend * 3.4 + Math.sin(dayIndex / 31) * 0.7 + randBetween(rng, -0.45, 0.45), 1),
+		vo2Max: round(41.6 + trend * 3.4 + Math.sin((dayIndex - vo2AgeDays) / 31) * 0.7 + randBetween(rng, -0.45, 0.45), 1),
+		vo2MaxCarriedForward: vo2AgeDays > 0,
+		vo2MaxAgeSeconds: vo2AgeDays * 86400,
+		vo2MaxSourceStartDate: `${vo2SourceDate}T11:00:00Z`,
+		vo2MaxSourceEndDate: `${vo2SourceDate}T11:01:00Z`,
 		basalEnergyBurned: Math.round(1600 + randBetween(rng, -55, 55)),
 		standHours,
 		flightsClimbed: Math.round(clamp(steps / 1650 + randBetween(rng, -2, 5), 0, 24)),
@@ -478,6 +486,9 @@ function buildVitals(dateIso, rng, dayIndex, sleep, recoveryFlag) {
 	const respVals = respiratoryRateSamples.map((sample) => sample.value);
 	const avgOx = oxVals.reduce((sum, value) => sum + value, 0) / oxVals.length;
 	const avgResp = respVals.reduce((sum, value) => sum + value, 0) / respVals.length;
+	const systolicAvg = Math.round(clamp(118 + Math.sin(dayIndex / 23) * 4 + (recoveryFlag ? 5 : 0) + randBetween(rng, -3, 3), 102, 138));
+	const diastolicAvg = Math.round(clamp(76 + Math.sin(dayIndex / 29) * 3 + (recoveryFlag ? 3 : 0) + randBetween(rng, -2, 2), 64, 91));
+	const glucoseAvg = Math.round(clamp(94 + Math.sin(dayIndex / 15) * 6 + randBetween(rng, -5, 7), 76, 128));
 	return {
 		bloodOxygenSamples,
 		respiratoryRateSamples,
@@ -489,6 +500,18 @@ function buildVitals(dateIso, rng, dayIndex, sleep, recoveryFlag) {
 		respiratoryRateAvg: round(avgResp, 1),
 		respiratoryRateMin: Math.min(...respVals),
 		respiratoryRateMax: Math.max(...respVals),
+		bloodPressureSystolic: systolicAvg,
+		bloodPressureSystolicAvg: systolicAvg,
+		bloodPressureSystolicMin: systolicAvg - Math.round(randBetween(rng, 4, 9)),
+		bloodPressureSystolicMax: systolicAvg + Math.round(randBetween(rng, 5, 11)),
+		bloodPressureDiastolic: diastolicAvg,
+		bloodPressureDiastolicAvg: diastolicAvg,
+		bloodPressureDiastolicMin: diastolicAvg - Math.round(randBetween(rng, 3, 7)),
+		bloodPressureDiastolicMax: diastolicAvg + Math.round(randBetween(rng, 4, 8)),
+		bloodGlucose: glucoseAvg,
+		bloodGlucoseAvg: glucoseAvg,
+		bloodGlucoseMin: glucoseAvg - Math.round(randBetween(rng, 8, 18)),
+		bloodGlucoseMax: glucoseAvg + Math.round(randBetween(rng, 18, 42)),
 	};
 }
 
@@ -496,11 +519,16 @@ function buildMobility(rng, dayIndex, totalDays, recoveryFlag) {
 	const trend = dayIndex / Math.max(1, totalDays - 1);
 	return {
 		walkingSpeed: round(clamp(1.24 + trend * 0.08 + randBetween(rng, -0.07, 0.07) - (recoveryFlag ? 0.08 : 0), 0.92, 1.52), 2),
-		walkingAsymmetryPercentage: round(clamp(1.8 - trend * 0.35 + randBetween(rng, -0.35, 0.42) + (recoveryFlag ? 0.45 : 0), 0.4, 4.2), 1),
+		walkingAsymmetryPercentage: round(clamp(1.8 - trend * 0.35 + randBetween(rng, -0.35, 0.42) + (recoveryFlag ? 0.45 : 0), 0.4, 4.2) / 100, 4),
 		walkingStepLength: round(clamp(0.74 + trend * 0.03 + randBetween(rng, -0.035, 0.035), 0.58, 0.92), 2),
-		walkingDoubleSupportPercentage: round(clamp(25.5 - trend * 1.1 + randBetween(rng, -1.4, 1.5) + (recoveryFlag ? 1.5 : 0), 18, 32), 1),
+		walkingDoubleSupportPercentage: round(clamp(25.5 - trend * 1.1 + randBetween(rng, -1.4, 1.5) + (recoveryFlag ? 1.5 : 0), 18, 32) / 100, 4),
 		stairAscentSpeed: round(clamp(0.52 + trend * 0.04 + randBetween(rng, -0.06, 0.06), 0.32, 0.78), 2),
 		stairDescentSpeed: round(clamp(0.58 + trend * 0.04 + randBetween(rng, -0.06, 0.06), 0.36, 0.86), 2),
+		runningSpeed: round(clamp(2.8 + trend * 0.35 + randBetween(rng, -0.25, 0.3), 2.1, 4.2), 2),
+		runningPowerW: Math.round(clamp(245 + trend * 34 + randBetween(rng, -22, 24), 185, 350)),
+		runningStrideLengthM: round(clamp(1.05 + trend * 0.1 + randBetween(rng, -0.08, 0.08), 0.82, 1.42), 2),
+		runningGroundContactMs: Math.round(clamp(260 - trend * 17 + randBetween(rng, -12, 13), 205, 290)),
+		runningVerticalOscillationCm: round(clamp(8.7 - trend * 0.35 + randBetween(rng, -0.6, 0.6), 6.8, 10.5), 1),
 	};
 }
 
@@ -662,15 +690,89 @@ function buildMedication(dateIso, rng, dayIndex, recoveryFlag) {
 	const taken = events.filter((event) => event.status === "taken").length;
 	const skipped = events.filter((event) => event.status === "skipped").length;
 	return {
-		medication_count: inventory.length,
-		active_medication_count: inventory.filter((item) => !item.is_archived).length,
-		archived_medication_count: inventory.filter((item) => item.is_archived).length,
-		medication_details: inventory,
-		medications: inventory.map((item) => item.display_name),
-		medication_dose_count: events.length,
-		medication_taken_count: taken,
-		medication_skipped_count: skipped,
-		medication_dose_events: events,
+		medicationCount: inventory.length,
+		activeMedicationCount: inventory.filter((item) => !item.is_archived).length,
+		archivedMedicationCount: inventory.filter((item) => item.is_archived).length,
+		medications: inventory.map((item) => ({
+			name: item.name,
+			displayName: item.display_name,
+			conceptIdentifier: item.concept_identifier,
+			generalForm: item.general_form,
+			isArchived: item.is_archived,
+			hasSchedule: item.has_schedule,
+			rxNormCodes: item.rxnorm_codes,
+			relatedCodings: item.related_codings,
+		})),
+		doseEventCount: events.length,
+		takenDoseCount: taken,
+		skippedDoseCount: skipped,
+		doseEvents: events.map((event) => ({
+			id: event.id,
+			medicationName: event.name,
+			medicationConceptIdentifier: event.medication_concept_identifier,
+			logStatus: event.status,
+			logStatusDisplay: event.status_display,
+			scheduledDate: event.scheduled_date,
+			startDate: event.start_date,
+			endDate: event.end_date,
+			doseQuantity: event.dose_quantity,
+			unit: event.unit,
+			scheduleType: event.schedule_type,
+			metadata: event.metadata,
+		})),
+	};
+}
+
+function buildExtendedSummaries(dateIso, dayIndex, totalDays) {
+	const rng = rngFor(dateIso, "extended-v7");
+	const trend = dayIndex / Math.max(1, totalDays - 1);
+	const weight = round(76 - trend * 3.2 + Math.sin(dayIndex / 21) * 0.5 + randBetween(rng, -0.25, 0.25), 1);
+	const bodyFat = round(20.5 - trend * 1.8 + Math.sin(dayIndex / 33) * 0.45, 1);
+	const cycleDay = dayIndex % 29;
+	const hasCycling = dayIndex % 7 === 2 || dayIndex % 7 === 6;
+	return {
+		body: {
+			weight,
+			height: 1.78,
+			bmi: round(weight / (1.78 * 1.78), 1),
+			bodyFatPercent: bodyFat,
+			leanBodyMass: round(weight * (1 - bodyFat / 100), 1),
+			waistCircumference: round(86 - trend * 3 + Math.sin(dayIndex / 27) * 0.6, 1),
+		},
+		cyclingPerformance: {
+			cycling_km: hasCycling ? round(randBetween(rng, 12, 42), 1) : 0,
+			cycling_speed: hasCycling ? round(randBetween(rng, 6.5, 9.8), 2) : 0,
+			cycling_power_w: hasCycling ? Math.round(randBetween(rng, 175, 245)) : 0,
+			cycling_cadence_rpm: hasCycling ? Math.round(randBetween(rng, 78, 94)) : 0,
+			cycling_ftp_w: Math.round(245 + trend * 22),
+		},
+		nutrition: {
+			dietaryEnergy: Math.round(randBetween(rng, 1850, 2450)), protein: round(randBetween(rng, 85, 145), 1),
+			carbohydrates: round(randBetween(rng, 180, 310), 1), fat: round(randBetween(rng, 55, 92), 1),
+			fiber: round(randBetween(rng, 18, 36), 1), sugar: round(randBetween(rng, 28, 68), 1),
+			sodium: Math.round(randBetween(rng, 1500, 2800)), water: round(randBetween(rng, 1.7, 3.1), 2), caffeine: Math.round(randBetween(rng, 60, 280)),
+		},
+		vitamins: {
+			vitamin_d_ug: round(randBetween(rng, 8, 28), 1), vitamin_c_mg: round(randBetween(rng, 55, 145), 1),
+			vitamin_b12_ug: round(randBetween(rng, 1.8, 5.2), 1), folate_ug: Math.round(randBetween(rng, 240, 520)),
+		},
+		minerals: {
+			calcium_mg: Math.round(randBetween(rng, 650, 1250)), iron_mg: round(randBetween(rng, 8, 22), 1),
+			magnesium_mg: Math.round(randBetween(rng, 260, 470)), potassium_mg: Math.round(randBetween(rng, 2400, 3900)), zinc_mg: round(randBetween(rng, 7, 16), 1),
+		},
+		symptoms: {
+			symptom_headache: rng() < 0.12 ? 1 : 0,
+			symptom_fatigue: rng() < 0.18 ? 1 : 0,
+			symptom_bloating: rng() < 0.1 ? 1 : 0,
+			symptom_nausea: rng() < 0.04 ? 1 : 0,
+			symptom_sleep_changes: rng() < 0.08 ? 1 : 0,
+		},
+		reproductiveHealth: {
+			menstrual_flow: cycleDay < 2 ? "heavy" : cycleDay < 5 ? "light" : "none",
+			cervical_mucus: cycleDay >= 11 && cycleDay <= 15 ? "egg_white" : "dry",
+			ovulation_test: cycleDay === 14 ? "positive" : "negative",
+			intermenstrual_bleeding: cycleDay === 20 ? "1" : "0",
+		},
 	};
 }
 
@@ -706,12 +808,73 @@ function buildDay(dateIso, dayIndex, totalDays) {
 		stateOfMindEntries: mood.entries,
 	};
 	const medication = buildMedication(dateIso, rngFor(dateIso, "medication"), dayIndex, recoveryFlag);
+	const extended = buildExtendedSummaries(dateIso, dayIndex, totalDays);
+	const rawCaptureStatus = dayIndex % 19 === 0
+		? "not_requested"
+		: dayIndex % 11 === 0
+			? "partial"
+			: "complete";
 	const day = {
 		type: "health-data",
 		schema: "healthmd.health_data",
-		schema_version: 2,
+		schema_version: 7,
 		date: dateIso,
-		units: "metric",
+		raw_capture_status: rawCaptureStatus,
+		time_context: {
+			calendar_timezone: "UTC",
+			timestamp_timezone: "UTC",
+		},
+		units: {
+			steps: "count",
+			walking_running_km: "km",
+			active_calories: "kcal",
+			exercise_minutes: "min",
+			vo2_max: "mL/kg/min",
+			average_heart_rate: "bpm",
+			heart_rate_min: "bpm",
+			heart_rate_max: "bpm",
+			hrv_ms: "ms",
+			blood_oxygen_avg: "percent",
+			respiratory_rate_avg: "breaths/min",
+			walking_speed: "m/s",
+			walking_asymmetry_percent: "percent",
+			double_support_percent: "percent",
+			weight_kg: "kg",
+			bmi: "kg/m²",
+			body_fat_percent: "percent",
+			lean_body_mass_kg: "kg",
+			waist_circumference_cm: "cm",
+			blood_pressure_systolic_avg: "mmHg",
+			blood_pressure_systolic_min: "mmHg",
+			blood_pressure_systolic_max: "mmHg",
+			blood_pressure_diastolic_avg: "mmHg",
+			blood_pressure_diastolic_min: "mmHg",
+			blood_pressure_diastolic_max: "mmHg",
+			blood_glucose_avg: "mg/dL",
+			blood_glucose_min: "mg/dL",
+			blood_glucose_max: "mg/dL",
+			running_speed: "m/s",
+			running_power_w: "W",
+			running_stride_length_m: "m",
+			running_ground_contact_ms: "ms",
+			running_vertical_oscillation_cm: "cm",
+			cycling_km: "km",
+			cycling_speed: "m/s",
+			cycling_power_w: "W",
+			cycling_cadence_rpm: "rpm",
+			cycling_ftp_w: "W",
+			headphone_audio_db: "dB",
+			environmental_sound_db: "dB",
+			dietary_calories: "kcal",
+			protein_g: "g",
+			carbohydrates_g: "g",
+			fat_g: "g",
+			fiber_g: "g",
+			sugar_g: "g",
+			sodium_mg: "mg",
+			water_l: "L",
+			caffeine_mg: "mg",
+		},
 		unit_system: "metric",
 		activity: finalActivity,
 		heart,
@@ -719,9 +882,11 @@ function buildDay(dateIso, dayIndex, totalDays) {
 		sleep,
 		mobility,
 		mindfulness,
-		...medication,
+		...extended,
+		medications: medication,
 		hearing: {
 			headphoneAudioLevel: round(clamp(64 + Math.sin(dayIndex / 11) * 3 + randBetween(rng, -4, 5), 48, 82), 1),
+			environmentalSoundLevel: round(clamp(53 + Math.sin(dayIndex / 8) * 4 + randBetween(rng, -5, 7), 38, 76), 1),
 		},
 	};
 	if (refreshedWorkouts.length) day.workouts = refreshedWorkouts;
@@ -747,7 +912,7 @@ async function main() {
 		await writeFile(path.join(OUT_DIR, `${dates[i]}.json`), `${JSON.stringify(day)}\n`);
 	}
 
-	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, respiratory rate, mobility, mood / State of Mind entries under \`mindfulness.stateOfMindEntries\`, schema v2 medication inventory/dose events, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
+	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, blood pressure, glucose, body composition, nutrition, symptoms, cycle summaries, hearing, running/cycling summaries, mood / State of Mind entries under \`mindfulness.stateOfMindEntries\`, schema v7 medication inventory/dose events, and sample workouts\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
 	await writeFile(path.join(OUT_DIR, "README.md"), readme);
 
 	console.log(`Wrote ${dates.length} mock Health.md JSON files to ${path.relative(REPO_ROOT, OUT_DIR)}`);

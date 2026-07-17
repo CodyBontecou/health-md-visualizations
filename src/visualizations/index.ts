@@ -39,6 +39,20 @@ import {
 	renderMoodVolatility,
 } from "./mood-insights";
 import {
+	renderBodyComposition,
+	renderCardioFitnessFreshness,
+	renderCyclingPerformance,
+	renderHearingExposure,
+	renderMetricTrend,
+	renderRunningForm,
+} from "./metric-trends";
+import { renderBloodPressureBands, renderGlucoseRange } from "./v7-range-charts";
+import { renderNutritionGrid, renderSymptomHeatmap } from "./metric-matrix";
+import { renderCaptureCoverageCalendar } from "./capture-coverage";
+import { renderCycleTimeline } from "./cycle-timeline";
+import { renderRollupExplorer } from "./rollup-explorer";
+import { renderMedicationScheduleTimeline, renderMedicationSkipReasons } from "./medication-insights";
+import {
 	renderMedicationAdherenceSummary,
 	renderMedicationAdherenceTrend,
 	renderMedicationDoseStatus,
@@ -82,7 +96,21 @@ export const VISUALIZATIONS: Record<string, RenderFn> = {
 	"workout-zones": renderWorkoutZones,
 	"workout-heart-rate-zones": renderWorkoutZones,
 	"workout-trends": renderWorkoutTrends,
+	"metric-trend": renderMetricTrend,
+	"cardio-fitness-freshness": renderCardioFitnessFreshness,
+	"blood-pressure-bands": renderBloodPressureBands,
+	"glucose-range": renderGlucoseRange,
+	"body-composition": renderBodyComposition,
+	"running-form": renderRunningForm,
+	"cycling-performance": renderCyclingPerformance,
+	"hearing-exposure": renderHearingExposure,
+	"nutrition-grid": renderNutritionGrid,
+	"symptom-heatmap": renderSymptomHeatmap,
+	"capture-coverage-calendar": renderCaptureCoverageCalendar,
+	"cycle-timeline": renderCycleTimeline,
 };
+
+export const ROLLUP_ONLY_VISUALIZATIONS = new Set(["rollup-explorer"]);
 
 export const HTML_VISUALIZATIONS: Record<string, HtmlRenderFn> = {
 	"intro-stats": renderIntroStats,
@@ -102,4 +130,7 @@ export const HTML_VISUALIZATIONS: Record<string, HtmlRenderFn> = {
 	"medication-daily-adherence-trend": renderMedicationAdherenceTrend,
 	"medication-recent-dose-events": renderMedicationRecentDoseEvents,
 	"medication-dose-events": renderMedicationRecentDoseEvents,
+	"rollup-explorer": renderRollupExplorer,
+	"medication-schedule-timeline": renderMedicationScheduleTimeline,
+	"medication-skip-reasons": renderMedicationSkipReasons,
 };

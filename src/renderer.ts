@@ -7,10 +7,10 @@ import {
 	normalizePath,
 } from "obsidian";
 import type HealthMdPlugin from "./main";
-import { DataPointClickAction, HealthDay, HitRegion, HitRegistry, VizConfig } from "./types";
+import { DataPointClickAction, HealthDay, HealthRollupSummary, HitRegion, HitRegistry, VisualizationContext, VizConfig } from "./types";
 import { setupCanvas, resolveTheme, formatDuration } from "./canvas-utils";
 import { doseStatusKind } from "./medication-utils";
-import { HTML_VISUALIZATIONS, VISUALIZATIONS } from "./visualizations";
+import { HTML_VISUALIZATIONS, ROLLUP_ONLY_VISUALIZATIONS, VISUALIZATIONS } from "./visualizations";
 import {
 	parseFrontmatterVariableReference,
 	resolveDynamicDateVariable,
@@ -543,6 +543,19 @@ function filterByDateRange(
 	return result;
 }
 
+function filterRollupsByDateRange(
+	rollups: HealthRollupSummary[],
+	range: DateRange
+): HealthRollupSummary[] {
+	return rollups.filter((rollup) => {
+		const start = rollup.startDate ?? rollup.start_date;
+		const end = rollup.endDate ?? rollup.end_date;
+		if (range.fromDate && end && end < range.fromDate) return false;
+		if (range.toDate && start && start > range.toDate) return false;
+		return true;
+	});
+}
+
 function describeRange(range: DateRange): string {
 	if (range.fromLabel && range.toLabel)
 		return `${range.fromLabel} to ${range.toLabel}`;
@@ -943,27 +956,31 @@ export async function renderCodeBlock(
 		return;
 	}
 
+	const allData = await plugin.dataLoader.load();
+	const data = filterByDateRange(allData, range);
+	const rollups = filterRollupsByDateRange(plugin.dataLoader.getLastRollups(), range);
+	const visualizationContext: VisualizationContext = {
+		rollups,
+		dictionary: plugin.dataLoader.getDataDictionary() ?? undefined,
+		loadReport: plugin.dataLoader.getLastLoadReport(),
+	};
+	const rollupOnly = ROLLUP_ONLY_VISUALIZATIONS.has(config.type);
+
 	// HTML-only visualizations (no canvas)
 	const htmlRenderFn = HTML_VISUALIZATIONS[config.type];
 	if (htmlRenderFn) {
-		const allData = await plugin.dataLoader.load();
-		if (!allData.length) {
-			el.createEl("p", {
-				text: noHealthDataMessage(plugin),
-			});
+		if (rollupOnly ? !rollups.length : !allData.length) {
+			el.createEl("p", { text: rollupOnly ? "No Health.md roll-up summaries found." : noHealthDataMessage(plugin) });
 			return;
 		}
-		const data = filterByDateRange(allData, range);
-		if (!data.length) {
-			el.createEl("p", {
-				text: `No health data in range (${describeRange(range)}).`,
-			});
+		if (!rollupOnly && !data.length) {
+			el.createEl("p", { text: `No health data in range (${describeRange(range)}).` });
 			return;
 		}
 		const container = el.createDiv({ cls: "health-md-container" });
 		function drawHtml(): void {
 			container.empty();
-			htmlRenderFn(data, container, config, resolveTheme(plugin.settings, config));
+			htmlRenderFn(data, container, config, resolveTheme(plugin.settings, config), visualizationContext);
 		}
 		drawHtml();
 		const htmlChild = new VizRenderChild(container);
@@ -981,14 +998,12 @@ export async function renderCodeBlock(
 		return;
 	}
 
-	const allData = await plugin.dataLoader.load();
 	if (!allData.length) {
 		el.createEl("p", {
 			text: noHealthDataMessage(plugin),
 		});
 		return;
 	}
-	const data = filterByDateRange(allData, range);
 	if (!data.length) {
 		el.createEl("p", {
 			text: `No health data in range (${describeRange(range)}).`,
@@ -1112,7 +1127,7 @@ export async function renderCodeBlock(
 		hideTooltip();
 		canvas.removeClass("health-md-canvas-pointer");
 		const canvasCtx = setupCanvas(canvas, width, height);
-		renderFn(canvasCtx, data, width, height, config, resolveTheme(plugin.settings, config), statsEl, hits);
+		renderFn(canvasCtx, data, width, height, config, resolveTheme(plugin.settings, config), statsEl, hits, visualizationContext);
 	}
 
 	draw();
