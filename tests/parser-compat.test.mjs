@@ -1352,9 +1352,36 @@ test("large and future source-record archives never enter dashboard data", async
 	}));
 	assert.ok(day);
 	assert.equal(day.activity?.steps, 0);
-	assert.equal(day.rawCapture?.recordCount, 1);
+	assert.equal(day.rawCapture?.recordCount, undefined);
+	assert.equal(day.rawCapture?.archiveVersion, 2);
 	assert.ok(day.rawCapture?.validationIssues?.some((issue) => issue.includes("archive v2")));
 	const cached = JSON.stringify(day);
 	assert.ok(cached.length < 5000);
 	assert.ok(!cached.includes(marker));
+});
+
+test("oversized trailing source-record archives use compact capture metadata", async () => {
+	const { parseJSON } = await loadParsers();
+	const archivePadding = "x".repeat(600_000);
+	const content = JSON.stringify({
+		type: "health-data",
+		date: "2026-08-10",
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		raw_capture_status: "complete",
+		activity: { steps: 1234 },
+		healthkit_record_archive: {
+			schema: "healthmd.healthkit_records",
+			schema_version: 1,
+			capture_status: "complete",
+			records: [{ metadata: archivePadding }],
+		},
+	});
+
+	const day = parseJSON(content);
+	assert.equal(day?.activity?.steps, 1234);
+	assert.equal(day?.rawCapture?.status, "complete");
+	assert.equal(day?.rawCapture?.archiveVersion, 1);
+	assert.equal(day?.rawCapture?.recordCount, undefined);
+	assert.ok(!JSON.stringify(day).includes(archivePadding));
 });

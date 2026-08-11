@@ -9734,6 +9734,61 @@ function* iterateCsvRecords(content, options = {}) {
 }
 
 // src/json-utils.ts
+var TRAILING_OMISSION_FAST_PATH_MIN_LENGTH = 512 * 1024;
+function compactTrailingMetadata(content, valueStart) {
+  const head = content.slice(valueStart, Math.min(content.length, valueStart + 4096));
+  const tail = content.slice(Math.max(valueStart, content.length - 4096));
+  const edges = `${head}
+${tail}`;
+  const metadata = {};
+  const stringProperty = (source, key) => {
+    const match = source.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*("(?:\\\\.|[^"\\\\])*")`));
+    if (!match) return void 0;
+    try {
+      return JSON.parse(match[1]);
+    } catch (e) {
+      return void 0;
+    }
+  };
+  const numberProperty = (source, key) => {
+    const match = source.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`));
+    if (!match) return void 0;
+    const value = Number(match[1]);
+    return Number.isFinite(value) ? value : void 0;
+  };
+  metadata.capture_status = stringProperty(head, "capture_status");
+  metadata.schema = stringProperty(edges, "schema");
+  metadata.schema_version = numberProperty(edges, "schema_version");
+  for (const key of Object.keys(metadata)) {
+    if (metadata[key] === void 0) delete metadata[key];
+  }
+  return JSON.stringify(metadata);
+}
+function parseWithoutLargeTrailingProperty(content, omittedKeys) {
+  if (content.length < TRAILING_OMISSION_FAST_PATH_MIN_LENGTH || omittedKeys.size !== 1) return null;
+  const [key] = omittedKeys;
+  const keyToken = JSON.stringify(key);
+  const keyStart = content.lastIndexOf(keyToken);
+  if (keyStart < 0) return null;
+  const beforeKey = content.slice(0, keyStart).trimEnd();
+  if (!beforeKey.endsWith(",")) return null;
+  let valueStart = skipWhitespace(content, keyStart + keyToken.length);
+  if (content[valueStart] !== ":") return null;
+  valueStart = skipWhitespace(content, valueStart + 1);
+  if (content[valueStart] !== "{" && content[valueStart] !== "[") return null;
+  if (!content.trimEnd().endsWith("}")) return null;
+  try {
+    const prefix = `${beforeKey.slice(0, -1).trimEnd()}}`;
+    const record = JSON.parse(prefix);
+    if (!record || typeof record !== "object" || Array.isArray(record)) return null;
+    return {
+      record,
+      omittedValues: { [key]: compactTrailingMetadata(content, valueStart) }
+    };
+  } catch (e) {
+    return null;
+  }
+}
 function skipWhitespace(content, index) {
   while (index < content.length && /\s/.test(content[index])) index++;
   return index;
@@ -9820,6 +9875,8 @@ function topLevelJsonObjectProperties(content) {
   return null;
 }
 function parseJsonObjectExcluding(content, omittedKeys) {
+  const fastPath = parseWithoutLargeTrailingProperty(content, omittedKeys);
+  if (fastPath) return fastPath;
   const properties = topLevelJsonObjectProperties(content);
   if (!properties) return null;
   const record = {};
