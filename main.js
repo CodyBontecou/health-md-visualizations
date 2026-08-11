@@ -14239,6 +14239,7 @@ var DataLoader = class {
     this.settings = settings;
     this.metadataCache = metadataCache;
     this.cache = null;
+    this.loadPromise = null;
     this.rollupCache = [];
     this.dataDictionary = null;
     this.lastLoad = 0;
@@ -14246,10 +14247,21 @@ var DataLoader = class {
     this.lastReport = emptyLoadReport();
   }
   async load() {
-    var _a, _b, _c, _d, _e, _f;
     if (this.cache && Date.now() - this.lastLoad < this.TTL) {
       return this.cache;
     }
+    if (this.loadPromise) {
+      return this.loadPromise;
+    }
+    this.loadPromise = this.loadFresh();
+    try {
+      return await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
+    }
+  }
+  async loadFresh() {
+    var _a, _b, _c, _d, _e, _f;
     const pattern = this.settings.filePattern || "*";
     const files = this.getDataFiles(pattern);
     const rollupFiles = this.getRollupFiles(pattern);
@@ -14274,7 +14286,7 @@ var DataLoader = class {
         });
         continue;
       }
-      const content = await this.vault.cachedRead(file);
+      const content = await this.vault.read(file);
       const format = detectFormat(file.extension, this.settings.dataFormat);
       const cachedFrontmatter = format === "markdown" || format === "bases" ? (_b = (_a = this.metadataCache) == null ? void 0 : _a.getFileCache(file)) == null ? void 0 : _b.frontmatter : void 0;
       try {
@@ -14316,7 +14328,7 @@ var DataLoader = class {
       }
     }
     for (const file of rollupFiles) {
-      const content = await this.vault.cachedRead(file);
+      const content = await this.vault.read(file);
       const format = detectFormat(file.extension, this.settings.dataFormat);
       const cachedFrontmatter = format === "markdown" || format === "bases" ? (_d = (_c = this.metadataCache) == null ? void 0 : _c.getFileCache(file)) == null ? void 0 : _d.frontmatter : void 0;
       try {
@@ -14427,7 +14439,7 @@ var DataLoader = class {
     let loaded = false;
     for (const file of dictionaryFiles.values()) {
       try {
-        const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.cachedRead(file));
+        const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.read(file));
         mergedDictionary.entries.push(...dictionary.entries);
         Object.assign(mergedDictionary.aliases, dictionary.aliases);
         Object.assign(mergedDictionary.unitsByCanonicalKey, dictionary.unitsByCanonicalKey);

@@ -309,9 +309,12 @@ yearly,2026,2026-01-01,2026-12-31,365,166,45.5,Activity,Steps,steps,steps,123456
 			getAbstractFileByPath(filePath) {
 				return allByPath.get(filePath) ?? null;
 			},
-			async cachedRead(item) {
+			async read(item) {
 				readPaths.push(item.path);
 				return contentsByPath.get(item.path) ?? "";
+			},
+			async cachedRead() {
+				throw new Error("DataLoader should not retain raw Health exports in Obsidian's read cache");
 			},
 		},
 		readPaths,
@@ -426,4 +429,28 @@ test("DataLoader loads mixed Health.md schema vaults and indexes roll-ups separa
 	assert.equal(zeroDay?.canonicalMetrics?.steps, 0, "canonical metric merge must preserve the preferred explicit zero");
 	assert.equal(zeroDay?.rawCapture?.status, "not_requested", "v6 archive status must not replace the v7 user setting");
 	assert.equal(zeroDay?.rawCapture?.archiveVersion, undefined);
+});
+
+test("DataLoader shares one in-flight read across concurrent visualizations", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const contentsByPath = new Map();
+	const { vault, readPaths } = createMockVault({ TFile, TFolder, contentsByPath });
+	const loader = new DataLoader(vault, {
+		dataFolder: "Health",
+		filePattern: "*",
+		dataFormat: "auto",
+		dataFolderGranularity: "flat",
+		dataFolderCustomPathTemplate: "",
+	});
+
+	const [first, second, third] = await Promise.all([
+		loader.load(),
+		loader.load(),
+		loader.load(),
+	]);
+
+	assert.equal(first, second);
+	assert.equal(second, third);
+	const dailyPath = "Health/JSON/2026-06-17.json";
+	assert.equal(readPaths.filter((filePath) => filePath === dailyPath).length, 1);
 });
