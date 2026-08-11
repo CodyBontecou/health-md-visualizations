@@ -23,6 +23,11 @@ import {
 } from "../types";
 
 const OMITTED_ROOT_KEYS = new Set(["healthkit_record_archive"]);
+const LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH = 512 * 1024;
+const ROOT_KEYS_AFTER_ARCHIVE = [
+	"hearing", "heart", "medications", "mobility", "other", "raw_capture_status",
+	"schema", "schema_version", "time_context", "type", "unit_system", "units", "vitals",
+];
 const CAPTURE_STATUSES = new Set<RawCaptureStatus>([
 	"complete",
 	"partial",
@@ -40,6 +45,60 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function compactArchiveMetadata(content: string, valueStart: number, valueEnd: number): string {
+	const edges = `${content.slice(valueStart, Math.min(valueEnd, valueStart + 4096))}\n${content.slice(Math.max(valueStart, valueEnd - 4096), valueEnd)}`;
+	const stringProperty = (key: string): string | undefined => {
+		const match = edges.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*("(?:\\\\.|[^"\\\\])*")`));
+		if (!match) return undefined;
+		try { return JSON.parse(match[1]) as string; } catch { return undefined; }
+	};
+	const numberProperty = (key: string): number | undefined => {
+		const match = edges.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`));
+		if (!match) return undefined;
+		const value = Number(match[1]);
+		return Number.isFinite(value) ? value : undefined;
+	};
+	const metadata: Record<string, unknown> = {
+		capture_status: stringProperty("capture_status"),
+		schema: stringProperty("schema"),
+		schema_version: numberProperty("schema_version"),
+	};
+	for (const key of Object.keys(metadata)) if (metadata[key] === undefined) delete metadata[key];
+	return JSON.stringify(metadata);
+}
+
+function parseLargeHealthDataEnvelope(content: string): { record: Record<string, unknown>; omittedValues: Record<string, string> } | null {
+	if (content.length < LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH) return null;
+	const archiveKey = JSON.stringify("healthkit_record_archive");
+	const keyStart = content.indexOf(archiveKey);
+	if (keyStart < 0) return null;
+	const beforeKey = content.slice(0, keyStart);
+	if (!beforeKey.trimEnd().endsWith(",")) return null;
+	let valueStart = keyStart + archiveKey.length;
+	while (/\s/.test(content[valueStart])) valueStart++;
+	if (content[valueStart++] !== ":") return null;
+	while (/\s/.test(content[valueStart])) valueStart++;
+	if (content[valueStart] !== "{") return null;
+
+	const suffixStart = ROOT_KEYS_AFTER_ARCHIVE
+		.map((key) => content.lastIndexOf(JSON.stringify(key)))
+		.find((index) => index > valueStart) ?? -1;
+	if (suffixStart < 0 || content.slice(valueStart, suffixStart).trimEnd().at(-1) !== ",") return null;
+
+	try {
+		const record = JSON.parse(`${beforeKey}${content.slice(suffixStart)}`) as unknown;
+		if (!isRecord(record) || record.type !== "health-data") return null;
+		return {
+			record,
+			omittedValues: {
+				healthkit_record_archive: compactArchiveMetadata(content, valueStart, suffixStart),
+			},
+		};
+	} catch {
+		return null;
+	}
 }
 
 function captureStatus(value: unknown): RawCaptureStatus | undefined {
@@ -215,7 +274,7 @@ function normalizedMedicationSource(root: Record<string, unknown>): Record<strin
 
 export function parseJSON(content: string): HealthDay | null {
 	try {
-		const selective = parseJsonObjectExcluding(content, OMITTED_ROOT_KEYS);
+		const selective = parseLargeHealthDataEnvelope(content) ?? parseJsonObjectExcluding(content, OMITTED_ROOT_KEYS);
 		if (!selective) return null;
 		const parsed = selective.record;
 

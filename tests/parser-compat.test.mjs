@@ -1352,7 +1352,7 @@ test("large and future source-record archives never enter dashboard data", async
 	}));
 	assert.ok(day);
 	assert.equal(day.activity?.steps, 0);
-	assert.equal(day.rawCapture?.recordCount, undefined);
+	assert.equal(day.rawCapture?.recordCount, 1);
 	assert.equal(day.rawCapture?.archiveVersion, 2);
 	assert.ok(day.rawCapture?.validationIssues?.some((issue) => issue.includes("archive v2")));
 	const cached = JSON.stringify(day);
@@ -1360,7 +1360,7 @@ test("large and future source-record archives never enter dashboard data", async
 	assert.ok(!cached.includes(marker));
 });
 
-test("oversized trailing source-record archives use compact capture metadata", async () => {
+test("oversized source-record archives preserve summary fields that follow the archive", async () => {
 	const { parseJSON } = await loadParsers();
 	const archivePadding = "x".repeat(600_000);
 	const content = JSON.stringify({
@@ -1376,10 +1376,14 @@ test("oversized trailing source-record archives use compact capture metadata", a
 			capture_status: "complete",
 			records: [{ metadata: archivePadding }],
 		},
+		heart: { restingHeartRate: 57 },
+		vitals: { respiratoryRate: 14 },
 	});
 
 	const day = parseJSON(content);
 	assert.equal(day?.activity?.steps, 1234);
+	assert.equal(day?.heart?.restingHeartRate, 57);
+	assert.equal(day?.vitals?.respiratoryRate, 14);
 	assert.equal(day?.rawCapture?.status, "complete");
 	assert.equal(day?.rawCapture?.archiveVersion, 1);
 	assert.equal(day?.rawCapture?.recordCount, undefined);

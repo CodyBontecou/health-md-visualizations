@@ -4,67 +4,6 @@ export interface JsonPropertyRange {
 	valueEnd: number;
 }
 
-const TRAILING_OMISSION_FAST_PATH_MIN_LENGTH = 512 * 1024;
-
-function compactTrailingMetadata(content: string, valueStart: number): string {
-	const head = content.slice(valueStart, Math.min(content.length, valueStart + 4096));
-	const tail = content.slice(Math.max(valueStart, content.length - 4096));
-	const edges = `${head}\n${tail}`;
-	const metadata: Record<string, unknown> = {};
-	const stringProperty = (source: string, key: string): string | undefined => {
-		const match = source.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*("(?:\\\\.|[^"\\\\])*")`));
-		if (!match) return undefined;
-		try { return JSON.parse(match[1]) as string; } catch { return undefined; }
-	};
-	const numberProperty = (source: string, key: string): number | undefined => {
-		const match = source.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`));
-		if (!match) return undefined;
-		const value = Number(match[1]);
-		return Number.isFinite(value) ? value : undefined;
-	};
-
-	metadata.capture_status = stringProperty(head, "capture_status");
-	metadata.schema = stringProperty(edges, "schema");
-	metadata.schema_version = numberProperty(edges, "schema_version");
-	for (const key of Object.keys(metadata)) {
-		if (metadata[key] === undefined) delete metadata[key];
-	}
-	return JSON.stringify(metadata);
-}
-
-function parseWithoutLargeTrailingProperty(
-	content: string,
-	omittedKeys: ReadonlySet<string>
-): { record: Record<string, unknown>; omittedValues: Record<string, string> } | null {
-	if (content.length < TRAILING_OMISSION_FAST_PATH_MIN_LENGTH || omittedKeys.size !== 1) return null;
-	const [key] = omittedKeys;
-	const keyToken = JSON.stringify(key);
-	const keyStart = content.lastIndexOf(keyToken);
-	if (keyStart < 0) return null;
-
-	const beforeKey = content.slice(0, keyStart).trimEnd();
-	if (!beforeKey.endsWith(",")) return null;
-	let valueStart = skipWhitespace(content, keyStart + keyToken.length);
-	if (content[valueStart] !== ":") return null;
-	valueStart = skipWhitespace(content, valueStart + 1);
-	if (content[valueStart] !== "{" && content[valueStart] !== "[") return null;
-	if (!content.trimEnd().endsWith("}")) return null;
-
-	try {
-		const prefix = `${beforeKey.slice(0, -1).trimEnd()}}`;
-		const record = JSON.parse(prefix) as unknown;
-		if (!record || typeof record !== "object" || Array.isArray(record)) return null;
-		// Preserve scalar archive identity/status while deliberately skipping large
-		// record arrays and detailed diagnostics for oversized inputs.
-		return {
-			record: record as Record<string, unknown>,
-			omittedValues: { [key]: compactTrailingMetadata(content, valueStart) },
-		};
-	} catch {
-		return null;
-	}
-}
-
 function skipWhitespace(content: string, index: number): number {
 	while (index < content.length && /\s/.test(content[index])) index++;
 	return index;
@@ -171,8 +110,6 @@ export function parseJsonObjectExcluding(
 	content: string,
 	omittedKeys: ReadonlySet<string>
 ): { record: Record<string, unknown>; omittedValues: Record<string, string> } | null {
-	const fastPath = parseWithoutLargeTrailingProperty(content, omittedKeys);
-	if (fastPath) return fastPath;
 	const properties = topLevelJsonObjectProperties(content);
 	if (!properties) return null;
 	const record: Record<string, unknown> = {};

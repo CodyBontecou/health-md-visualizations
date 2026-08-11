@@ -9734,61 +9734,6 @@ function* iterateCsvRecords(content, options = {}) {
 }
 
 // src/json-utils.ts
-var TRAILING_OMISSION_FAST_PATH_MIN_LENGTH = 512 * 1024;
-function compactTrailingMetadata(content, valueStart) {
-  const head = content.slice(valueStart, Math.min(content.length, valueStart + 4096));
-  const tail = content.slice(Math.max(valueStart, content.length - 4096));
-  const edges = `${head}
-${tail}`;
-  const metadata = {};
-  const stringProperty = (source, key) => {
-    const match = source.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*("(?:\\\\.|[^"\\\\])*")`));
-    if (!match) return void 0;
-    try {
-      return JSON.parse(match[1]);
-    } catch (e) {
-      return void 0;
-    }
-  };
-  const numberProperty = (source, key) => {
-    const match = source.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`));
-    if (!match) return void 0;
-    const value = Number(match[1]);
-    return Number.isFinite(value) ? value : void 0;
-  };
-  metadata.capture_status = stringProperty(head, "capture_status");
-  metadata.schema = stringProperty(edges, "schema");
-  metadata.schema_version = numberProperty(edges, "schema_version");
-  for (const key of Object.keys(metadata)) {
-    if (metadata[key] === void 0) delete metadata[key];
-  }
-  return JSON.stringify(metadata);
-}
-function parseWithoutLargeTrailingProperty(content, omittedKeys) {
-  if (content.length < TRAILING_OMISSION_FAST_PATH_MIN_LENGTH || omittedKeys.size !== 1) return null;
-  const [key] = omittedKeys;
-  const keyToken = JSON.stringify(key);
-  const keyStart = content.lastIndexOf(keyToken);
-  if (keyStart < 0) return null;
-  const beforeKey = content.slice(0, keyStart).trimEnd();
-  if (!beforeKey.endsWith(",")) return null;
-  let valueStart = skipWhitespace(content, keyStart + keyToken.length);
-  if (content[valueStart] !== ":") return null;
-  valueStart = skipWhitespace(content, valueStart + 1);
-  if (content[valueStart] !== "{" && content[valueStart] !== "[") return null;
-  if (!content.trimEnd().endsWith("}")) return null;
-  try {
-    const prefix = `${beforeKey.slice(0, -1).trimEnd()}}`;
-    const record = JSON.parse(prefix);
-    if (!record || typeof record !== "object" || Array.isArray(record)) return null;
-    return {
-      record,
-      omittedValues: { [key]: compactTrailingMetadata(content, valueStart) }
-    };
-  } catch (e) {
-    return null;
-  }
-}
 function skipWhitespace(content, index) {
   while (index < content.length && /\s/.test(content[index])) index++;
   return index;
@@ -9875,8 +9820,6 @@ function topLevelJsonObjectProperties(content) {
   return null;
 }
 function parseJsonObjectExcluding(content, omittedKeys) {
-  const fastPath = parseWithoutLargeTrailingProperty(content, omittedKeys);
-  if (fastPath) return fastPath;
   const properties = topLevelJsonObjectProperties(content);
   if (!properties) return null;
   const record = {};
@@ -11486,6 +11429,22 @@ function getMoodDaySummary(day) {
 
 // src/parsers/json-parser.ts
 var OMITTED_ROOT_KEYS = /* @__PURE__ */ new Set(["healthkit_record_archive"]);
+var LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH = 512 * 1024;
+var ROOT_KEYS_AFTER_ARCHIVE = [
+  "hearing",
+  "heart",
+  "medications",
+  "mobility",
+  "other",
+  "raw_capture_status",
+  "schema",
+  "schema_version",
+  "time_context",
+  "type",
+  "unit_system",
+  "units",
+  "vitals"
+];
 var CAPTURE_STATUSES = /* @__PURE__ */ new Set([
   "complete",
   "partial",
@@ -11500,6 +11459,60 @@ function stringValue3(value) {
 }
 function numberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+}
+function compactArchiveMetadata(content, valueStart, valueEnd) {
+  const edges = `${content.slice(valueStart, Math.min(valueEnd, valueStart + 4096))}
+${content.slice(Math.max(valueStart, valueEnd - 4096), valueEnd)}`;
+  const stringProperty = (key) => {
+    const match = edges.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*("(?:\\\\.|[^"\\\\])*")`));
+    if (!match) return void 0;
+    try {
+      return JSON.parse(match[1]);
+    } catch (e) {
+      return void 0;
+    }
+  };
+  const numberProperty = (key) => {
+    const match = edges.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`));
+    if (!match) return void 0;
+    const value = Number(match[1]);
+    return Number.isFinite(value) ? value : void 0;
+  };
+  const metadata = {
+    capture_status: stringProperty("capture_status"),
+    schema: stringProperty("schema"),
+    schema_version: numberProperty("schema_version")
+  };
+  for (const key of Object.keys(metadata)) if (metadata[key] === void 0) delete metadata[key];
+  return JSON.stringify(metadata);
+}
+function parseLargeHealthDataEnvelope(content) {
+  var _a;
+  if (content.length < LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH) return null;
+  const archiveKey = JSON.stringify("healthkit_record_archive");
+  const keyStart = content.indexOf(archiveKey);
+  if (keyStart < 0) return null;
+  const beforeKey = content.slice(0, keyStart);
+  if (!beforeKey.trimEnd().endsWith(",")) return null;
+  let valueStart = keyStart + archiveKey.length;
+  while (/\s/.test(content[valueStart])) valueStart++;
+  if (content[valueStart++] !== ":") return null;
+  while (/\s/.test(content[valueStart])) valueStart++;
+  if (content[valueStart] !== "{") return null;
+  const suffixStart = (_a = ROOT_KEYS_AFTER_ARCHIVE.map((key) => content.lastIndexOf(JSON.stringify(key))).find((index) => index > valueStart)) != null ? _a : -1;
+  if (suffixStart < 0 || content.slice(valueStart, suffixStart).trimEnd().at(-1) !== ",") return null;
+  try {
+    const record = JSON.parse(`${beforeKey}${content.slice(suffixStart)}`);
+    if (!isRecord4(record) || record.type !== "health-data") return null;
+    return {
+      record,
+      omittedValues: {
+        healthkit_record_archive: compactArchiveMetadata(content, valueStart, suffixStart)
+      }
+    };
+  } catch (e) {
+    return null;
+  }
 }
 function captureStatus(value) {
   return typeof value === "string" && CAPTURE_STATUSES.has(value) ? value : void 0;
@@ -11638,8 +11651,9 @@ function normalizedMedicationSource(root) {
   };
 }
 function parseJSON(content) {
+  var _a;
   try {
-    const selective = parseJsonObjectExcluding(content, OMITTED_ROOT_KEYS);
+    const selective = (_a = parseLargeHealthDataEnvelope(content)) != null ? _a : parseJsonObjectExcluding(content, OMITTED_ROOT_KEYS);
     if (!selective) return null;
     const parsed = selective.record;
     if (parsed.schema === HEALTHMD_ROLLUP_SCHEMA || parsed.type === "health_rollup") return null;
