@@ -51,9 +51,87 @@ function normalizePeriod(value: unknown): HealthRollupPeriod | undefined {
 }
 
 function isValidVersionPeriod(version: number, period: HealthRollupPeriod): boolean {
+	if (!Number.isInteger(version) || version < 0 || version > 9) return false;
 	if (version === 9) return period === "range";
-	if (period === "range") return false;
-	return CALENDAR_ROLLUP_PERIODS.has(period);
+	if (version === 0) return CALENDAR_ROLLUP_PERIODS.has(period); // Explicit legacy/unversioned behavior.
+	return version <= 8 && CALENDAR_ROLLUP_PERIODS.has(period);
+}
+
+const DAY_MILLISECONDS = 24 * 60 * 60 * 1000;
+
+interface IsoDate {
+	year: number;
+	month: number;
+	day: number;
+	timestamp: number;
+}
+
+function parseIsoDate(value: string | undefined): IsoDate | undefined {
+	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
+	if (!match) return undefined;
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	const date = new Date(0);
+	date.setUTCHours(0, 0, 0, 0);
+	date.setUTCFullYear(year, month - 1, day);
+	if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+		return undefined;
+	}
+	return { year, month, day, timestamp: date.getTime() };
+}
+
+function daysInMonth(year: number, month: number): number {
+	if (month === 2) return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
+	return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function isoWeekStart(year: number, week: number): number | undefined {
+	if (week < 1 || week > 53) return undefined;
+	const januaryFourth = parseIsoDate(`${String(year).padStart(4, "0")}-01-04`);
+	if (!januaryFourth) return undefined;
+	const weekday = new Date(januaryFourth.timestamp).getUTCDay() || 7;
+	const start = januaryFourth.timestamp - (weekday - 1) * DAY_MILLISECONDS + (week - 1) * 7 * DAY_MILLISECONDS;
+	const thursday = new Date(start + 3 * DAY_MILLISECONDS);
+	return thursday.getUTCFullYear() === year ? start : undefined;
+}
+
+function isValidPeriodIdentity(
+	period: HealthRollupPeriod,
+	periodId: string,
+	startDateValue: string | undefined,
+	endDateValue: string | undefined
+): boolean {
+	const startDate = parseIsoDate(startDateValue);
+	const endDate = parseIsoDate(endDateValue);
+	if (!startDate || !endDate || startDate.timestamp > endDate.timestamp) return false;
+
+	if (period === "range") {
+		const match = /^(\d{4}-\d{2}-\d{2})_to_(\d{4}-\d{2}-\d{2})$/.exec(periodId);
+		return match !== null && match[1] === startDateValue && match[2] === endDateValue;
+	}
+	if (period === "weekly") {
+		const match = /^(\d{4})-W(\d{2})$/.exec(periodId);
+		if (!match) return false;
+		const expectedStart = isoWeekStart(Number(match[1]), Number(match[2]));
+		return expectedStart !== undefined
+			&& startDate.timestamp === expectedStart
+			&& endDate.timestamp === expectedStart + 6 * DAY_MILLISECONDS;
+	}
+	if (period === "monthly") {
+		const match = /^(\d{4})-(\d{2})$/.exec(periodId);
+		if (!match) return false;
+		const year = Number(match[1]);
+		const month = Number(match[2]);
+		return month >= 1 && month <= 12
+			&& startDate.year === year && startDate.month === month && startDate.day === 1
+			&& endDate.year === year && endDate.month === month && endDate.day === daysInMonth(year, month);
+	}
+	const match = /^(\d{4})$/.exec(periodId);
+	if (!match) return false;
+	const year = Number(match[1]);
+	return startDate.year === year && startDate.month === 1 && startDate.day === 1
+		&& endDate.year === year && endDate.month === 12 && endDate.day === 31;
 }
 
 function firstString(record: Record<string, unknown>, ...keys: string[]): string | undefined {
@@ -149,7 +227,9 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 
 	const rollupPeriod = normalizePeriod(record.rollup_period ?? record.rollupPeriod ?? record.period ?? record.Period);
 	const periodId = firstString(record, "period_id", "periodId", "Period ID", "periodID");
-	if (!rollupPeriod || !periodId) return null;
+	const startDate = firstString(record, "start_date", "startDate", "Start Date");
+	const endDate = firstString(record, "end_date", "endDate", "End Date");
+	if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
 
 	const schemaVersion = schemaVersionOf({
 		schemaVersion: record.schemaVersion,
@@ -170,10 +250,10 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 		rollup_period: rollupPeriod,
 		periodId,
 		period_id: periodId,
-		startDate: firstString(record, "start_date", "startDate", "Start Date"),
-		start_date: firstString(record, "start_date", "startDate", "Start Date"),
-		endDate: firstString(record, "end_date", "endDate", "End Date"),
-		end_date: firstString(record, "end_date", "endDate", "End Date"),
+		startDate,
+		start_date: startDate,
+		endDate,
+		end_date: endDate,
 		daysExpected: firstNumber(record, "days_expected", "daysExpected", "Days Expected"),
 		days_expected: firstNumber(record, "days_expected", "daysExpected", "Days Expected"),
 		daysCounted: firstNumber(record, "days_counted", "daysCounted", "Days Counted"),
@@ -349,7 +429,29 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 	const schemaVersion = numberValue(csvValue(firstRow, schemaVersionIndex)) ?? 0;
 	const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
 	const periodId = csvValue(firstRow, periodIdIndex);
-	if (!rollupPeriod || !periodId || !isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
+	const startDate = csvValue(firstRow, startDateIndex);
+	const endDate = csvValue(firstRow, endDateIndex);
+	if (!rollupPeriod || !periodId
+		|| !isValidVersionPeriod(schemaVersion, rollupPeriod)
+		|| !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
+
+	const consistentMetadataIndexes = [
+		schemaIndex,
+		schemaVersionIndex,
+		sourceSchemaIndex,
+		sourceSchemaVersionIndex,
+		rollupRulesVersionIndex,
+		periodIndex,
+		periodIdIndex,
+		startDateIndex,
+		endDateIndex,
+		daysExpectedIndex,
+		daysCountedIndex,
+		coveragePercentIndex,
+	];
+	for (const row of records.slice(2)) {
+		if (consistentMetadataIndexes.some((index) => csvValue(row, index) !== csvValue(firstRow, index))) return null;
+	}
 
 	const metrics: Record<string, HealthRollupMetric> = {};
 	const units: HealthMdUnitMap = {};
@@ -388,10 +490,10 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 		rollup_period: rollupPeriod,
 		periodId,
 		period_id: periodId,
-		startDate: csvValue(firstRow, startDateIndex),
-		start_date: csvValue(firstRow, startDateIndex),
-		endDate: csvValue(firstRow, endDateIndex),
-		end_date: csvValue(firstRow, endDateIndex),
+		startDate,
+		start_date: startDate,
+		endDate,
+		end_date: endDate,
 		daysExpected: numberValue(csvValue(firstRow, daysExpectedIndex)),
 		days_expected: numberValue(csvValue(firstRow, daysExpectedIndex)),
 		daysCounted: numberValue(csvValue(firstRow, daysCountedIndex)),

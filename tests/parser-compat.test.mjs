@@ -98,8 +98,12 @@ function readV7Fixture(name) {
 	return readFile(path.join(process.cwd(), "tests/fixtures/schema-v7", name), "utf8");
 }
 
+function readRollupFixture(version, name) {
+	return readFile(path.join(process.cwd(), `tests/fixtures/rollup-summary-v${version}`, name), "utf8");
+}
+
 function readV9RollupFixture(name) {
-	return readFile(path.join(process.cwd(), "tests/fixtures/rollup-summary-v9", name), "utf8");
+	return readRollupFixture(9, name);
 }
 
 test("JSON parser preserves the complete HealthDay data structure", async () => {
@@ -1367,26 +1371,73 @@ test("roll-up parsers dual-read canonical v9 ranges and historical v8 calendars"
 		rollup_period: "range",
 	}).isFutureVersion, false);
 
-	const v8CalendarContents = [
-		jsonContent.replace('"schema_version": 9', '"schema_version": 8').replace('"rollup_period": "range"', '"rollup_period": "weekly"'),
-		csvContent.replace("healthmd.rollup_summary,9", "healthmd.rollup_summary,8").replace(",range,", ",weekly,"),
-		basesContent.replace("schema_version: 9", "schema_version: 8").replace("rollup_period: range", "rollup_period: weekly"),
-		markdownContent.replace("schema_version: 9", "schema_version: 8").replace("rollup_period: range", "rollup_period: weekly"),
-	];
+	const [v8Json, v8Csv, v8Bases, v8Markdown] = await Promise.all([
+		readRollupFixture(8, "weekly.json"),
+		readRollupFixture(8, "weekly.csv"),
+		readRollupFixture(8, "weekly-bases.md"),
+		readRollupFixture(8, "weekly.md"),
+	]);
 	const v8CalendarRollups = [
-		parseRollupJSON(v8CalendarContents[0]),
-		parseRollupCSV(v8CalendarContents[1]),
-		parseRollupMarkdown(v8CalendarContents[2]),
-		parseRollupMarkdown(v8CalendarContents[3]),
+		parseRollupJSON(v8Json),
+		parseRollupCSV(v8Csv),
+		parseRollupMarkdown(v8Bases),
+		parseRollupMarkdown(v8Markdown),
 	];
-	for (const rollup of v8CalendarRollups) {
+	for (const [index, rollup] of v8CalendarRollups.entries()) {
 		assert.ok(rollup);
-		assert.equal(rollup.schemaVersion, 8);
+		assert.equal(rollup.schemaVersion, index === 1 ? undefined : 8);
 		assert.equal(rollup.rollupPeriod, "weekly");
+		assert.equal(rollup.periodId, "2026-W28");
+		assert.equal(rollup.startDate, "2026-07-06");
+		assert.equal(rollup.endDate, "2026-07-12");
+		assert.equal(rollup.metrics?.steps.primaryValue, 17500);
 	}
 });
 
 test("roll-up parsers reject invalid schema-version and period combinations in every format", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const [v9Json, v9Csv, v9Bases, v9Markdown, v8Json, v8Csv, v8Bases, v8Markdown] = await Promise.all([
+		readV9RollupFixture("range-v9.json"),
+		readV9RollupFixture("range-v9.csv"),
+		readV9RollupFixture("range-v9-bases.md"),
+		readV9RollupFixture("range-v9.md"),
+		readRollupFixture(8, "weekly.json"),
+		readRollupFixture(8, "weekly.csv"),
+		readRollupFixture(8, "weekly-bases.md"),
+		readRollupFixture(8, "weekly.md"),
+	]);
+
+	const invalidV9Calendars = [
+		parseRollupJSON(v9Json
+			.replace('"rollup_period": "range"', '"rollup_period": "weekly"')
+			.replace('"period_id": "2026-07-06_to_2026-07-11"', '"period_id": "2026-W28"')
+			.replace('"end_date": "2026-07-11"', '"end_date": "2026-07-12"')),
+		parseRollupCSV(v9Csv.replace(",range,2026-07-06_to_2026-07-11,2026-07-06,2026-07-11,", ",weekly,2026-W28,2026-07-06,2026-07-12,")),
+		parseRollupMarkdown(v9Bases
+			.replace("rollup_period: range", "rollup_period: weekly")
+			.replace('period_id: "2026-07-06_to_2026-07-11"', 'period_id: "2026-W28"')
+			.replace("end_date: 2026-07-11", "end_date: 2026-07-12")),
+		parseRollupMarkdown(v9Markdown
+			.replace("rollup_period: range", "rollup_period: weekly")
+			.replace("period_id: 2026-07-06_to_2026-07-11", "period_id: 2026-W28")
+			.replace("end_date: 2026-07-11", "end_date: 2026-07-12")),
+	];
+	const invalidV8Ranges = [
+		parseRollupJSON(v8Json
+			.replace('"rollup_period" : "weekly"', '"rollup_period" : "range"')
+			.replace('"period_id" : "2026-W28"', '"period_id" : "2026-07-06_to_2026-07-12"')),
+		parseRollupCSV(v8Csv.replaceAll("weekly,2026-W28,2026-07-06,2026-07-12,", "range,2026-07-06_to_2026-07-12,2026-07-06,2026-07-12,")),
+		parseRollupMarkdown(v8Bases
+			.replace("rollup_period: weekly", "rollup_period: range")
+			.replace('period_id: "2026-W28"', 'period_id: "2026-07-06_to_2026-07-12"')),
+		parseRollupMarkdown(v8Markdown
+			.replace("rollup_period: weekly", "rollup_period: range")
+			.replace("period_id: 2026-W28", "period_id: 2026-07-06_to_2026-07-12")),
+	];
+	for (const rollup of [...invalidV9Calendars, ...invalidV8Ranges]) assert.equal(rollup, null);
+});
+
+test("roll-up parsers reject unknown future versions above v9 in every format", async () => {
 	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
 	const [jsonContent, csvContent, basesContent, markdownContent] = await Promise.all([
 		readV9RollupFixture("range-v9.json"),
@@ -1394,20 +1445,83 @@ test("roll-up parsers reject invalid schema-version and period combinations in e
 		readV9RollupFixture("range-v9-bases.md"),
 		readV9RollupFixture("range-v9.md"),
 	]);
+	const futureRollups = [
+		parseRollupJSON(jsonContent.replace('"schema_version": 9', '"schema_version": 10')),
+		parseRollupCSV(csvContent.replace("healthmd.rollup_summary,9", "healthmd.rollup_summary,10")),
+		parseRollupMarkdown(basesContent.replace("schema_version: 9", "schema_version: 10")),
+		parseRollupMarkdown(markdownContent.replace("schema_version: 9", "schema_version: 10")),
+	];
+	for (const rollup of futureRollups) assert.equal(rollup, null);
+});
 
-	const invalidV9Calendars = [
-		parseRollupJSON(jsonContent.replace('"rollup_period": "range"', '"rollup_period": "weekly"')),
-		parseRollupCSV(csvContent.replace(",range,", ",weekly,")),
-		parseRollupMarkdown(basesContent.replace("rollup_period: range", "rollup_period: weekly")),
-		parseRollupMarkdown(markdownContent.replace("rollup_period: range", "rollup_period: weekly")),
+test("roll-up period IDs use canonical grammar and exactly match their date spans", async () => {
+	const { parseRollupJSON } = await loadParsers();
+	const rollup = (schemaVersion, rollupPeriod, periodId, startDate, endDate) => JSON.stringify({
+		type: "health_rollup",
+		schema: "healthmd.rollup_summary",
+		...(schemaVersion === undefined ? {} : { schema_version: schemaVersion }),
+		rollup_period: rollupPeriod,
+		period_id: periodId,
+		start_date: startDate,
+		end_date: endDate,
+	});
+
+	const valid = [
+		rollup(8, "weekly", "2020-W53", "2020-12-28", "2021-01-03"),
+		rollup(8, "monthly", "2024-02", "2024-02-01", "2024-02-29"),
+		rollup(8, "yearly", "2024", "2024-01-01", "2024-12-31"),
+		rollup(9, "range", "2024-02-01_to_2024-02-29", "2024-02-01", "2024-02-29"),
+		rollup(undefined, "weekly", "2026-W28", "2026-07-06", "2026-07-12"),
 	];
-	const invalidV8Ranges = [
-		parseRollupJSON(jsonContent.replace('"schema_version": 9', '"schema_version": 8')),
-		parseRollupCSV(csvContent.replace("healthmd.rollup_summary,9", "healthmd.rollup_summary,8")),
-		parseRollupMarkdown(basesContent.replace("schema_version: 9", "schema_version: 8")),
-		parseRollupMarkdown(markdownContent.replace("schema_version: 9", "schema_version: 8")),
+	for (const content of valid) assert.ok(parseRollupJSON(content));
+
+	const invalid = [
+		rollup(8, "weekly", "2020-W54", "2020-12-28", "2021-01-03"),
+		rollup(8, "weekly", "2020-W53", "2020-12-29", "2021-01-04"),
+		rollup(8, "monthly", "2024-2", "2024-02-01", "2024-02-29"),
+		rollup(8, "monthly", "2024-02", "2024-02-01", "2024-02-28"),
+		rollup(8, "yearly", "24", "2024-01-01", "2024-12-31"),
+		rollup(8, "yearly", "2024", "2024-01-02", "2024-12-31"),
+		rollup(9, "range", "2024-02-01-to-2024-02-29", "2024-02-01", "2024-02-29"),
+		rollup(9, "range", "2024-02-01_to_2024-02-28", "2024-02-01", "2024-02-29"),
+		rollup(9, "range", "2024-02-30_to_2024-03-01", "2024-02-30", "2024-03-01"),
+		rollup(9, "range", "2024-03-02_to_2024-03-01", "2024-03-02", "2024-03-01"),
 	];
-	for (const rollup of [...invalidV9Calendars, ...invalidV8Ranges]) assert.equal(rollup, null);
+	for (const content of invalid) assert.equal(parseRollupJSON(content), null);
+});
+
+test("roll-up CSV requires every row to retain first-row contract metadata", async () => {
+	const { parseRollupCSV } = await loadParsers();
+	const content = (await readV9RollupFixture("range-v9.csv")).trimEnd();
+	const [headerLine, firstRowLine] = content.split("\n");
+	assert.ok(parseRollupCSV(`${headerLine}\n${firstRowLine}\n${firstRowLine}\n`));
+
+	const headers = headerLine.split(",");
+	const metadataColumns = [
+		"Schema",
+		"Schema Version",
+		"Source Schema",
+		"Source Schema Version",
+		"Rollup Rules Version",
+		"Period",
+		"Period ID",
+		"Start Date",
+		"End Date",
+		"Days Expected",
+		"Days Counted",
+		"Coverage Percent",
+	];
+	for (const column of metadataColumns) {
+		const secondRow = firstRowLine.split(",");
+		const index = headers.indexOf(column);
+		assert.notEqual(index, -1);
+		secondRow[index] = `${secondRow[index]}-mismatch`;
+		assert.equal(
+			parseRollupCSV(`${headerLine}\n${firstRowLine}\n${secondRow.join(",")}\n`),
+			null,
+			`${column} must match the first row`
+		);
+	}
 });
 
 test("high-record-count CSV archives collapse to compact counts", async () => {

@@ -89,10 +89,10 @@ test("roll-up explorer renders v9 ranges while retaining historical calendar fil
 	);
 	const range = parseRollupJSON(content);
 	assert.ok(range);
-	const weekly = parseRollupJSON(content
-		.replace('"schema_version": 9', '"schema_version": 8')
-		.replace('"rollup_period": "range"', '"rollup_period": "weekly"')
-		.replaceAll("2026-07-06_to_2026-07-11", "2026-W28"));
+	const weekly = parseRollupJSON(await readFile(
+		path.join(process.cwd(), "tests/fixtures/rollup-summary-v8/weekly.json"),
+		"utf8"
+	));
 	assert.ok(weekly);
 
 	const rangeText = renderWithPeriod(renderRollupExplorer, [range, weekly], "range");
