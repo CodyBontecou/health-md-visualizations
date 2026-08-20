@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { after, test } from "node:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
@@ -1092,6 +1093,15 @@ test("canonical daily schema v8 provider fixtures are current and accepted in ev
 		readV8Fixture("provider-day-bases.md"),
 		readV8Fixture("provider-day.md"),
 	]);
+	const fixtureHashes = [
+		["provider-day.json", jsonContent, "067736bf621aa3620aa99f39442526d99752f6da25325a72939937c8fc96bb41"],
+		["provider-day.csv", csvContent, "4de16a7b0d40729ebe83fc2ca8ba3fd9fe8c35e045b9d84acde111547758abe9"],
+		["provider-day-bases.md", basesContent, "da3e5520aa73c2a12623957354596505a241ed861a5a2b2b17049a30705da559"],
+		["provider-day.md", markdownContent, "81ffc3ef864489c072172b9a7ce8e409174e116fda5fbfc46d36128e52496f91"],
+	];
+	for (const [name, content, expectedHash] of fixtureHashes) {
+		assert.equal(createHash("sha256").update(content).digest("hex"), expectedHash, `${name} byte identity`);
+	}
 
 	assert.equal(SUPPORTED_HEALTHMD_SCHEMA_VERSION, 8);
 	assert.equal(schemaIsFutureVersion(8), false);
@@ -1114,7 +1124,11 @@ test("canonical daily schema v8 provider fixtures are current and accepted in ev
 		assert.equal(day.date, "2026-03-15");
 		assert.equal(day.activity?.steps, 1);
 		assert.equal(day.timeContext?.calendarTimezone, "UTC");
+		assert.equal(day.raw_capture_status, "not_requested");
+		assert.equal(day.rawCapture?.status, "not_requested");
+		assert.equal(day.rawCapture?.validationIssues, undefined);
 	}
+	assert.equal(Object.hasOwn(JSON.parse(jsonContent), "healthkit_record_archive"), false);
 	assert.equal(jsonDay.providers?.whoop?.schema, "healthmd.provider.whoop_daily");
 	assert.equal(jsonDay.providers?.whoop?.schema_version, 1);
 	assert.equal(jsonDay.providers?.whoop?.recoveries?.[0]?.recovery_score_percent, 82);
@@ -1263,6 +1277,21 @@ test("CSV preserves already-scaled low mobility percentages", async () => {
 	assert.equal(day.mobility?.walkingAsymmetryPercentage, 0.5);
 	assert.equal(day.mobility?.walkingDoubleSupportPercentage, 1);
 	assert.equal(day.vitals?.bloodOxygenAvg, 1);
+});
+
+test("JSON flags complete and partial capture statuses when the archive is absent", async () => {
+	const { parseJSON } = await loadParsers();
+	for (const status of ["complete", "partial"]) {
+		const day = parseJSON(JSON.stringify({
+			schema: "healthmd.health_data",
+			schema_version: 8,
+			type: "health-data",
+			date: "2026-07-16",
+			raw_capture_status: status,
+		}));
+		assert.equal(day?.rawCapture?.status, status);
+		assert.ok(day?.rawCapture?.validationIssues?.some((issue) => issue.includes("no source-record archive")));
+	}
 });
 
 test("complete capture status rejects non-success queries and partial failures", async () => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -42,6 +42,11 @@ function assertVisualizationCoverage(day) {
 	}
 }
 
+function assertPrivacySafeCapture(day) {
+	assert.equal(day.raw_capture_status, "not_requested");
+	assert.equal(Object.hasOwn(day, "healthkit_record_archive"), false);
+}
+
 function assertRollupCoverage(rollup, period = "monthly") {
 	assert.equal(rollup.schema, "healthmd.rollup_summary");
 	assert.equal(rollup.schema_version, period === "range" ? 9 : 8);
@@ -62,12 +67,19 @@ after(async () => {
 });
 
 test("bundled mock data pairs daily v8 with a source-compatible range v9 summary", async () => {
-	const [day, rollup, range] = await Promise.all([
+	const [day, rollup, range, bundledFiles] = await Promise.all([
 		readFile(bundledDayPath, "utf8").then(JSON.parse),
 		readFile(bundledRollupPath, "utf8").then(JSON.parse),
 		readFile(bundledRangePath, "utf8").then(JSON.parse),
+		readdir(path.join(process.cwd(), "examples", "Health")),
 	]);
 	assertVisualizationCoverage(day);
+	const dailyFiles = bundledFiles.filter((file) => /^\d{4}-\d{2}-\d{2}\.json$/.test(file));
+	assert.equal(dailyFiles.length, 408);
+	const bundledDays = await Promise.all(
+		dailyFiles.map((file) => readFile(path.join(process.cwd(), "examples", "Health", file), "utf8").then(JSON.parse))
+	);
+	for (const bundledDay of bundledDays) assertPrivacySafeCapture(bundledDay);
 	assertRollupCoverage(rollup);
 	assertRollupCoverage(range, "range");
 	assert.equal(range.start_date, "2025-11-19");
@@ -87,12 +99,19 @@ test("mock generator writes daily summaries and roll-ups to a clean output direc
 		},
 	});
 
-	const [day, rollup, range] = await Promise.all([
+	const [day, rollup, range, generatedFiles] = await Promise.all([
 		readFile(path.join(outputDir, "2026-07-17.json"), "utf8").then(JSON.parse),
 		readFile(path.join(outputDir, "Rollups", "Monthly", "2026-07.json"), "utf8").then(JSON.parse),
 		readFile(path.join(outputDir, "Rollups", "Range", "2026-07-01_to_2026-07-31.json"), "utf8").then(JSON.parse),
+		readdir(outputDir),
 	]);
 	assertVisualizationCoverage(day);
+	const dailyFiles = generatedFiles.filter((file) => /^\d{4}-\d{2}-\d{2}\.json$/.test(file));
+	assert.equal(dailyFiles.length, 31);
+	const generatedDays = await Promise.all(
+		dailyFiles.map((file) => readFile(path.join(outputDir, file), "utf8").then(JSON.parse))
+	);
+	for (const generatedDay of generatedDays) assertPrivacySafeCapture(generatedDay);
 	assertRollupCoverage(rollup);
 	assertRollupCoverage(range, "range");
 	assert.equal(range.period_id, "2026-07-01_to_2026-07-31");
