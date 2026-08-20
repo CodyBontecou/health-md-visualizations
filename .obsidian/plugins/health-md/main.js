@@ -9883,8 +9883,8 @@ var HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
 var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
 var HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
-var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 7;
-var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 7;
+var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 8;
+var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 9;
 var SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 function schemaVersionOf(value) {
   var _a;
@@ -9987,14 +9987,32 @@ function detectFrontmatterSchema(frontmatter) {
   return { kind: "unknown", version, format: "markdown", reason: "Frontmatter is not a Health.md daily export" };
 }
 function detectCsvSchema(content) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d;
   const records = iterateCsvRecords(content);
   let first = records.next();
   while (!first.done && isBlankCsvRecord(first.value)) first = records.next();
   if (first.done) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
   const header = first.value.map(normalizeCsvLabel);
-  if (header[0] === "period" && header[1] === "period id") {
-    return { kind: "rollup-summary", version: 0, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+  const periodIndex = header.indexOf("period");
+  const periodIdIndex = header.indexOf("period id");
+  if (periodIndex >= 0 && periodIdIndex >= 0) {
+    const schemaIndex = header.indexOf("schema");
+    const schemaVersionIndex = header.indexOf("schema version");
+    let firstDataRow = records.next();
+    while (!firstDataRow.done && isBlankCsvRecord(firstDataRow.value)) firstDataRow = records.next();
+    const schema2 = !firstDataRow.done && schemaIndex >= 0 ? ((_a = firstDataRow.value[schemaIndex]) == null ? void 0 : _a.trim()) || void 0 : void 0;
+    const parsedVersion = !firstDataRow.done && schemaVersionIndex >= 0 ? Number(firstDataRow.value[schemaVersionIndex]) : 0;
+    const version2 = Number.isFinite(parsedVersion) ? parsedVersion : 0;
+    if (version2 === 9 && schema2 !== HEALTHMD_ROLLUP_SCHEMA) {
+      return {
+        kind: "unknown",
+        version: version2,
+        format: "csv",
+        schema: schema2,
+        reason: "Health.md roll-up CSV v9 requires Schema healthmd.rollup_summary"
+      };
+    }
+    return detectKnownSchema("csv", schema2 != null ? schema2 : HEALTHMD_ROLLUP_SCHEMA, version2);
   }
   if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
     return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };
@@ -10005,9 +10023,9 @@ function detectCsvSchema(content) {
   for (const parts of records) {
     if (isBlankCsvRecord(parts)) continue;
     if (++inspected > 40) break;
-    if (normalizeCsvLabel((_a = parts[1]) != null ? _a : "") !== "metadata") continue;
-    const metric = normalizeCsvLabel((_b = parts[2]) != null ? _b : "");
-    const value = ((_c = parts[3]) != null ? _c : "").trim();
+    if (normalizeCsvLabel((_b = parts[1]) != null ? _b : "") !== "metadata") continue;
+    const metric = normalizeCsvLabel((_c = parts[2]) != null ? _c : "");
+    const value = ((_d = parts[3]) != null ? _d : "").trim();
     if (metric === "schema") schema = value;
     else if (metric === "schema version" || metric === "schema_version") {
       const parsed = Number(value);
@@ -13836,7 +13854,10 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
 }
 
 // src/parsers/rollup-parser.ts
-var SUPPORTED_ROLLUP_PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
+var CALENDAR_ROLLUP_PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
+var SUPPORTED_ROLLUP_PERIODS = /* @__PURE__ */ new Set([...CALENDAR_ROLLUP_PERIODS, "range"]);
+var V9_SOURCE_SCHEMA_VERSION = 8;
+var V9_ROLLUP_RULES_VERSION = 8;
 function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -13867,6 +13888,66 @@ function normalizePeriod(value) {
   const period = (_a = stringValue4(value)) == null ? void 0 : _a.trim().toLowerCase();
   return period && SUPPORTED_ROLLUP_PERIODS.has(period) ? period : void 0;
 }
+function isValidVersionPeriod(version, period) {
+  if (!Number.isInteger(version) || version < 0 || version > 9) return false;
+  if (version === 9) return period === "range";
+  if (version === 0) return CALENDAR_ROLLUP_PERIODS.has(period);
+  return version <= 8 && CALENDAR_ROLLUP_PERIODS.has(period);
+}
+var DAY_MILLISECONDS = 24 * 60 * 60 * 1e3;
+function parseIsoDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value != null ? value : "");
+  if (!match) return void 0;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = /* @__PURE__ */ new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return void 0;
+  }
+  return { year, month, day, timestamp: date.getTime() };
+}
+function daysInMonth(year, month) {
+  if (month === 2) return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+function isoWeekStart(year, week) {
+  if (week < 1 || week > 53) return void 0;
+  const januaryFourth = parseIsoDate(`${String(year).padStart(4, "0")}-01-04`);
+  if (!januaryFourth) return void 0;
+  const weekday = new Date(januaryFourth.timestamp).getUTCDay() || 7;
+  const start = januaryFourth.timestamp - (weekday - 1) * DAY_MILLISECONDS + (week - 1) * 7 * DAY_MILLISECONDS;
+  const thursday = new Date(start + 3 * DAY_MILLISECONDS);
+  return thursday.getUTCFullYear() === year ? start : void 0;
+}
+function isValidPeriodIdentity(period, periodId, startDateValue, endDateValue) {
+  const startDate = parseIsoDate(startDateValue);
+  const endDate = parseIsoDate(endDateValue);
+  if (!startDate || !endDate || startDate.timestamp > endDate.timestamp) return false;
+  if (period === "range") {
+    const match2 = /^(\d{4}-\d{2}-\d{2})_to_(\d{4}-\d{2}-\d{2})$/.exec(periodId);
+    return match2 !== null && match2[1] === startDateValue && match2[2] === endDateValue;
+  }
+  if (period === "weekly") {
+    const match2 = /^(\d{4})-W(\d{2})$/.exec(periodId);
+    if (!match2) return false;
+    const expectedStart = isoWeekStart(Number(match2[1]), Number(match2[2]));
+    return expectedStart !== void 0 && startDate.timestamp === expectedStart && endDate.timestamp === expectedStart + 6 * DAY_MILLISECONDS;
+  }
+  if (period === "monthly") {
+    const match2 = /^(\d{4})-(\d{2})$/.exec(periodId);
+    if (!match2) return false;
+    const year2 = Number(match2[1]);
+    const month = Number(match2[2]);
+    return month >= 1 && month <= 12 && startDate.year === year2 && startDate.month === month && startDate.day === 1 && endDate.year === year2 && endDate.month === month && endDate.day === daysInMonth(year2, month);
+  }
+  const match = /^(\d{4})$/.exec(periodId);
+  if (!match) return false;
+  const year = Number(match[1]);
+  return startDate.year === year && startDate.month === 1 && startDate.day === 1 && endDate.year === year && endDate.month === 12 && endDate.day === 31;
+}
 function firstString3(record, ...keys) {
   for (const key of keys) {
     const value = stringValue4(record[key]);
@@ -13880,6 +13961,59 @@ function firstNumber3(record, ...keys) {
     if (value !== void 0) return value;
   }
   return void 0;
+}
+function hasOwn(record, key) {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+function readAliasedValue(record, keys, parse, equals = (left, right) => left === right) {
+  let parsedValue;
+  for (const key of keys) {
+    if (!hasOwn(record, key)) continue;
+    const current = parse(record[key]);
+    if (current === void 0 || parsedValue !== void 0 && !equals(parsedValue, current)) {
+      return { valid: false };
+    }
+    parsedValue = current;
+  }
+  return { valid: true, value: parsedValue };
+}
+function nonBlankString(value) {
+  const parsed = stringValue4(value);
+  return parsed !== void 0 && parsed !== "" ? parsed : void 0;
+}
+function stringArraysEqual(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+function validateIdentityField(record, keys, expected) {
+  let present = false;
+  for (const key of keys) {
+    if (!hasOwn(record, key)) continue;
+    present = true;
+    if (record[key] !== expected) return { present, valid: false };
+  }
+  return { present, valid: true };
+}
+function strictSchemaVersion(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || value.trim() === "") return void 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : void 0;
+}
+function readOptionalSchemaVersion(record) {
+  var _a;
+  const parsed = readAliasedValue(record, ["schemaVersion", "schema_version"], strictSchemaVersion);
+  return { valid: parsed.valid, version: (_a = parsed.value) != null ? _a : 0 };
+}
+function validCalendarTimezone(value) {
+  const trimmed = value == null ? void 0 : value.trim();
+  return trimmed && trimmed.length <= 64 ? trimmed : void 0;
+}
+function readOptionalCalendarTimezone(record) {
+  return readAliasedValue(
+    record,
+    ["calendarTimezone", "calendar_timezone"],
+    (value) => typeof value === "string" ? validCalendarTimezone(value) : void 0
+  );
 }
 function stringArray(value) {
   if (!Array.isArray(value)) return void 0;
@@ -13950,21 +14084,54 @@ function normalizeMetrics(record) {
   return Object.keys(result).length ? result : void 0;
 }
 function buildRollupSummary(record) {
-  var _a, _b, _c, _d;
-  const schema = firstString3(record, "schema", "Schema");
-  const type = firstString3(record, "type", "Type");
-  if (schema !== HEALTHMD_ROLLUP_SCHEMA && type !== "health_rollup") return null;
-  const rollupPeriod = normalizePeriod((_c = (_b = (_a = record.rollup_period) != null ? _a : record.rollupPeriod) != null ? _b : record.period) != null ? _c : record.Period);
-  const periodId = firstString3(record, "period_id", "periodId", "Period ID", "periodID");
-  if (!rollupPeriod || !periodId) return null;
-  const schemaVersion = schemaVersionOf({
-    schemaVersion: record.schemaVersion,
-    schema_version: record.schema_version
-  });
-  const sourceSchemaVersion = firstNumber3(record, "source_schema_version", "sourceSchemaVersion");
-  const rollupRulesVersion = firstNumber3(record, "rollup_rules_version", "rollupRulesVersion");
-  const sourceDates = stringArray((_d = record.source_dates) != null ? _d : record.sourceDates);
-  const generatedAt = firstString3(record, "generated_at", "generatedAt");
+  const schemaIdentity = validateIdentityField(record, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
+  const typeIdentity = validateIdentityField(record, ["type", "Type"], "health_rollup");
+  if (!schemaIdentity.valid || !typeIdentity.valid || !schemaIdentity.present && !typeIdentity.present) return null;
+  const parsedRollupPeriod = readAliasedValue(record, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
+  const parsedPeriodId = readAliasedValue(record, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
+  const parsedStartDate = readAliasedValue(record, ["start_date", "startDate", "Start Date"], nonBlankString);
+  const parsedEndDate = readAliasedValue(record, ["end_date", "endDate", "End Date"], nonBlankString);
+  if (!parsedRollupPeriod.valid || !parsedPeriodId.valid || !parsedStartDate.valid || !parsedEndDate.valid) return null;
+  const rollupPeriod = parsedRollupPeriod.value;
+  const periodId = parsedPeriodId.value;
+  const startDate = parsedStartDate.value;
+  const endDate = parsedEndDate.value;
+  if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
+  const parsedSchemaVersion = readOptionalSchemaVersion(record);
+  if (!parsedSchemaVersion.valid) return null;
+  const schemaVersion = parsedSchemaVersion.version;
+  if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
+  const parsedCalendarTimezone = readOptionalCalendarTimezone(record);
+  const parsedDaysExpected = readAliasedValue(record, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
+  const parsedDaysCounted = readAliasedValue(record, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
+  const parsedCoveragePercent = readAliasedValue(record, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
+  const parsedSourceSchema = readAliasedValue(record, ["source_schema", "sourceSchema"], nonBlankString);
+  const parsedSourceSchemaVersion = readAliasedValue(record, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
+  const parsedRollupRulesVersion = readAliasedValue(record, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
+  const parsedGeneratedAt = readAliasedValue(record, ["generated_at", "generatedAt"], nonBlankString);
+  const parsedSourceDates = readAliasedValue(record, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
+  const contractValues = [
+    parsedCalendarTimezone,
+    parsedDaysExpected,
+    parsedDaysCounted,
+    parsedCoveragePercent,
+    parsedSourceSchema,
+    parsedSourceSchemaVersion,
+    parsedRollupRulesVersion,
+    parsedGeneratedAt,
+    parsedSourceDates
+  ];
+  if (contractValues.some((parsed) => !parsed.valid) || schemaVersion === 9 && !parsedCalendarTimezone.value) return null;
+  const calendarTimezone = parsedCalendarTimezone.value;
+  const daysExpected = parsedDaysExpected.value;
+  const daysCounted = parsedDaysCounted.value;
+  const coveragePercent = parsedCoveragePercent.value;
+  const sourceSchema = parsedSourceSchema.value;
+  const sourceSchemaVersion = parsedSourceSchemaVersion.value;
+  const rollupRulesVersion = parsedRollupRulesVersion.value;
+  if (schemaVersion === 9 && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== V9_SOURCE_SCHEMA_VERSION || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
+  const generatedAt = parsedGeneratedAt.value;
+  const sourceDates = parsedSourceDates.value;
   return {
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
@@ -13974,18 +14141,20 @@ function buildRollupSummary(record) {
     rollup_period: rollupPeriod,
     periodId,
     period_id: periodId,
-    startDate: firstString3(record, "start_date", "startDate", "Start Date"),
-    start_date: firstString3(record, "start_date", "startDate", "Start Date"),
-    endDate: firstString3(record, "end_date", "endDate", "End Date"),
-    end_date: firstString3(record, "end_date", "endDate", "End Date"),
-    daysExpected: firstNumber3(record, "days_expected", "daysExpected", "Days Expected"),
-    days_expected: firstNumber3(record, "days_expected", "daysExpected", "Days Expected"),
-    daysCounted: firstNumber3(record, "days_counted", "daysCounted", "Days Counted"),
-    days_counted: firstNumber3(record, "days_counted", "daysCounted", "Days Counted"),
-    coveragePercent: firstNumber3(record, "coverage_percent", "coveragePercent", "Coverage Percent"),
-    coverage_percent: firstNumber3(record, "coverage_percent", "coveragePercent", "Coverage Percent"),
-    sourceSchema: firstString3(record, "source_schema", "sourceSchema"),
-    source_schema: firstString3(record, "source_schema", "sourceSchema"),
+    startDate,
+    start_date: startDate,
+    endDate,
+    end_date: endDate,
+    calendarTimezone,
+    calendar_timezone: calendarTimezone,
+    daysExpected,
+    days_expected: daysExpected,
+    daysCounted,
+    days_counted: daysCounted,
+    coveragePercent,
+    coverage_percent: coveragePercent,
+    sourceSchema,
+    source_schema: sourceSchema,
     sourceSchemaVersion,
     source_schema_version: sourceSchemaVersion,
     rollupRulesVersion,
@@ -14096,25 +14265,50 @@ function indexOfHeader(header, ...names) {
   const normalizedNames = names.map(normalizeCsvLabel2);
   return header.findIndex((item) => normalizedNames.includes(item));
 }
+function csvAliasIndexes(header, names) {
+  const normalizedNames = names.map(normalizeCsvLabel2);
+  return header.flatMap((item, index) => normalizedNames.includes(item) ? [index] : []);
+}
 function csvValue(row, index) {
   var _a;
   if (index < 0) return void 0;
   const value = (_a = row[index]) == null ? void 0 : _a.trim();
   return value ? value : void 0;
 }
+function hasConsistentCsvAliases(header, rows, names) {
+  const indexes = csvAliasIndexes(header, names);
+  if (indexes.length < 2) return true;
+  return rows.every((row) => indexes.every((index) => csvValue(row, index) === csvValue(row, indexes[0])));
+}
+var CSV_CONTRACT_ALIASES = [
+  ["Period"],
+  ["Period ID", "period_id", "periodId", "periodID"],
+  ["Start Date", "start_date", "startDate"],
+  ["End Date", "end_date", "endDate"],
+  ["Days Expected", "days_expected", "daysExpected"],
+  ["Days Counted", "days_counted", "daysCounted"],
+  ["Coverage Percent", "coverage_percent", "coveragePercent"],
+  ["Source Schema", "source_schema", "sourceSchema"],
+  ["Source Schema Version", "source_schema_version", "sourceSchemaVersion"],
+  ["Schema"],
+  ["Schema Version", "schema_version", "schemaVersion"],
+  ["Rollup Rules Version", "rollup_rules_version", "rollupRulesVersion"],
+  ["Calendar Timezone", "calendar_timezone", "calendarTimezone"]
+];
 function parseRollupCSV(content) {
   var _a, _b, _c;
   const records = Array.from(iterateCsvRecords(content)).filter((row) => !isBlankCsvRecord(row));
   if (records.length < 2) return null;
   const header = records[0].map(normalizeCsvLabel2);
+  if (CSV_CONTRACT_ALIASES.some((aliases) => !hasConsistentCsvAliases(header, records.slice(1), aliases))) return null;
   const periodIndex = indexOfHeader(header, "Period");
-  const periodIdIndex = indexOfHeader(header, "Period ID", "period_id");
+  const periodIdIndex = indexOfHeader(header, "Period ID", "period_id", "periodId", "periodID");
   if (periodIndex < 0 || periodIdIndex < 0) return null;
-  const startDateIndex = indexOfHeader(header, "Start Date", "start_date");
-  const endDateIndex = indexOfHeader(header, "End Date", "end_date");
-  const daysExpectedIndex = indexOfHeader(header, "Days Expected", "days_expected");
-  const daysCountedIndex = indexOfHeader(header, "Days Counted", "days_counted");
-  const coveragePercentIndex = indexOfHeader(header, "Coverage Percent", "coverage_percent");
+  const startDateIndex = indexOfHeader(header, "Start Date", "start_date", "startDate");
+  const endDateIndex = indexOfHeader(header, "End Date", "end_date", "endDate");
+  const daysExpectedIndex = indexOfHeader(header, "Days Expected", "days_expected", "daysExpected");
+  const daysCountedIndex = indexOfHeader(header, "Days Counted", "days_counted", "daysCounted");
+  const coveragePercentIndex = indexOfHeader(header, "Coverage Percent", "coverage_percent", "coveragePercent");
   const categoryIndex = indexOfHeader(header, "Category");
   const metricIndex = indexOfHeader(header, "Metric");
   const keyIndex = indexOfHeader(header, "Key");
@@ -14126,13 +14320,49 @@ function parseRollupCSV(content) {
   const statisticIndex = indexOfHeader(header, "Statistic");
   const statisticValueIndex = indexOfHeader(header, "Statistic Value", "statistic_value");
   const notesIndex = indexOfHeader(header, "Notes");
-  const sourceSchemaIndex = indexOfHeader(header, "Source Schema", "source_schema");
-  const sourceSchemaVersionIndex = indexOfHeader(header, "Source Schema Version", "source_schema_version");
-  const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version");
+  const sourceSchemaIndex = indexOfHeader(header, "Source Schema", "source_schema", "sourceSchema");
+  const sourceSchemaVersionIndex = indexOfHeader(header, "Source Schema Version", "source_schema_version", "sourceSchemaVersion");
+  const schemaIndex = indexOfHeader(header, "Schema");
+  const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version", "schemaVersion");
+  const rollupRulesVersionIndex = indexOfHeader(header, "Rollup Rules Version", "rollup_rules_version", "rollupRulesVersion");
+  const calendarTimezoneIndex = indexOfHeader(header, "Calendar Timezone", "calendar_timezone", "calendarTimezone");
   const firstRow = records[1];
+  const schema = csvValue(firstRow, schemaIndex);
+  const rawSchemaVersion = csvValue(firstRow, schemaVersionIndex);
+  const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
+  if (schemaVersionIndex >= 0 && parsedSchemaVersion === void 0) return null;
+  const schemaVersion = parsedSchemaVersion != null ? parsedSchemaVersion : 0;
+  if (schemaVersion === 9 && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
+  if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
+  const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
+  if (schemaVersion === 9 && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
+  const sourceSchema = csvValue(firstRow, sourceSchemaIndex);
+  const sourceSchemaVersion = numberValue2(csvValue(firstRow, sourceSchemaVersionIndex));
+  const rollupRulesVersion = numberValue2(csvValue(firstRow, rollupRulesVersionIndex));
+  if (schemaVersion === 9 && (sourceSchemaIndex < 0 || sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersionIndex < 0 || sourceSchemaVersion !== V9_SOURCE_SCHEMA_VERSION || rollupRulesVersionIndex < 0 || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
   const periodId = csvValue(firstRow, periodIdIndex);
-  if (!rollupPeriod || !periodId) return null;
+  const startDate = csvValue(firstRow, startDateIndex);
+  const endDate = csvValue(firstRow, endDateIndex);
+  if (!rollupPeriod || !periodId || !isValidVersionPeriod(schemaVersion, rollupPeriod) || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
+  const consistentMetadataIndexes = [
+    schemaIndex,
+    schemaVersionIndex,
+    sourceSchemaIndex,
+    sourceSchemaVersionIndex,
+    rollupRulesVersionIndex,
+    calendarTimezoneIndex,
+    periodIndex,
+    periodIdIndex,
+    startDateIndex,
+    endDateIndex,
+    daysExpectedIndex,
+    daysCountedIndex,
+    coveragePercentIndex
+  ];
+  for (const row of records.slice(2)) {
+    if (consistentMetadataIndexes.some((index) => csvValue(row, index) !== csvValue(firstRow, index))) return null;
+  }
   const metrics = {};
   const units = {};
   for (const row of records.slice(1)) {
@@ -14158,31 +14388,33 @@ function parseRollupCSV(content) {
     metrics[metricKey] = existing;
     if (existing.unit !== void 0) units[metricKey] = existing.unit;
   }
-  const schemaVersion = numberValue2(csvValue(firstRow, schemaVersionIndex));
-  const sourceSchemaVersion = numberValue2(csvValue(firstRow, sourceSchemaVersionIndex));
   return {
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
-    schemaVersion,
-    schema_version: schemaVersion,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
     rollupPeriod,
     rollup_period: rollupPeriod,
     periodId,
     period_id: periodId,
-    startDate: csvValue(firstRow, startDateIndex),
-    start_date: csvValue(firstRow, startDateIndex),
-    endDate: csvValue(firstRow, endDateIndex),
-    end_date: csvValue(firstRow, endDateIndex),
+    startDate,
+    start_date: startDate,
+    endDate,
+    end_date: endDate,
+    calendarTimezone,
+    calendar_timezone: calendarTimezone,
     daysExpected: numberValue2(csvValue(firstRow, daysExpectedIndex)),
     days_expected: numberValue2(csvValue(firstRow, daysExpectedIndex)),
     daysCounted: numberValue2(csvValue(firstRow, daysCountedIndex)),
     days_counted: numberValue2(csvValue(firstRow, daysCountedIndex)),
     coveragePercent: numberValue2(csvValue(firstRow, coveragePercentIndex)),
     coverage_percent: numberValue2(csvValue(firstRow, coveragePercentIndex)),
-    sourceSchema: csvValue(firstRow, sourceSchemaIndex),
-    source_schema: csvValue(firstRow, sourceSchemaIndex),
+    sourceSchema,
+    source_schema: sourceSchema,
     sourceSchemaVersion,
     source_schema_version: sourceSchemaVersion,
+    rollupRulesVersion,
+    rollup_rules_version: rollupRulesVersion,
     units: Object.keys(units).length ? units : void 0,
     metrics: Object.keys(metrics).length ? metrics : void 0
   };
@@ -22345,7 +22577,7 @@ var renderCycleTimeline = (ctx, data, W, H, config, theme, statsEl, hits, contex
 };
 
 // src/visualizations/rollup-explorer.ts
-var PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
+var PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly", "range"]);
 var DEFAULT_LIMIT = 12;
 var MAX_LIMIT = 100;
 var MAX_VALUE_LENGTH = 500;
@@ -25188,10 +25420,10 @@ var VISUALIZATION_CATALOG = [
     type: "rollup-explorer",
     label: "Roll-up explorer",
     category: "summary",
-    description: "Inspect exported weekly, monthly, and yearly primary values, rules, coverage, and statistics.",
+    description: "Inspect exported range and historical calendar primary values, rules, coverage, and statistics.",
     defaultLast: 365,
     params: [
-      { kind: "select", key: "period", label: "Period", desc: "Choose which exported roll-up periods to show.", options: [{ value: "all", label: "All" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "yearly", label: "Yearly" }], defaultValue: "all" },
+      { kind: "select", key: "period", label: "Period", desc: "Choose which exported roll-up periods to show.", options: [{ value: "all", label: "All" }, { value: "range", label: "Range" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "yearly", label: "Yearly" }], defaultValue: "all" },
       { kind: "text", key: "metric", label: "Canonical metric", desc: "Optional canonical key to filter, such as vo2_max.", optional: true },
       { kind: "text", key: "statistic", label: "Highlight statistic", desc: "Optional exported statistic name, such as latest or daily_average.", optional: true },
       { kind: "text", key: "limit", label: "Maximum periods", desc: "Maximum number of period cards.", defaultValue: "12", validation: "positive-integer" }

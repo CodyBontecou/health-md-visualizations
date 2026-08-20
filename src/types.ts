@@ -128,7 +128,7 @@ export interface HealthMdCaptureSummary {
 	validationIssues?: string[];
 }
 
-export type HealthRollupPeriod = "weekly" | "monthly" | "yearly";
+export type HealthRollupPeriod = "weekly" | "monthly" | "yearly" | "range";
 
 export interface HealthRollupStatistic {
 	name: string;
@@ -162,6 +162,8 @@ export interface HealthRollupSummary {
 	start_date?: string;
 	endDate?: string;
 	end_date?: string;
+	calendarTimezone?: string;
+	calendar_timezone?: string;
 	daysExpected?: number;
 	days_expected?: number;
 	daysCounted?: number;
@@ -291,6 +293,8 @@ export interface HealthDay {
 	/** Compact lossless-capture diagnostics. Canonical record payloads are never cached here. */
 	rawCapture?: HealthMdCaptureSummary;
 	raw_capture_status?: RawCaptureStatus;
+	/** Provider-native daily sections introduced by Apple daily schema v8. */
+	providers?: Record<string, unknown>;
 	/** Scalar daily summary values keyed by Health.md canonical metric key. */
 	canonicalMetrics?: Record<string, HealthMetricScalar>;
 	activity?: {

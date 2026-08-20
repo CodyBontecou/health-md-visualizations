@@ -809,23 +809,18 @@ function buildDay(dateIso, dayIndex, totalDays) {
 	};
 	const medication = buildMedication(dateIso, rngFor(dateIso, "medication"), dayIndex, recoveryFlag);
 	const extended = buildExtendedSummaries(dateIso, dayIndex, totalDays);
-	const rawCaptureStatus = dayIndex % 19 === 0
-		? "not_requested"
-		: dayIndex % 11 === 0
-			? "partial"
-			: "complete";
 	const day = {
 		type: "health-data",
 		schema: "healthmd.health_data",
-		schema_version: 7,
+		schema_version: 8,
 		date: dateIso,
-		raw_capture_status: rawCaptureStatus,
+		raw_capture_status: "not_requested",
 		time_context: {
 			calendar_timezone: "UTC",
 			timestamp_timezone: "UTC",
 		},
 		units: {
-			steps: "count",
+			steps: "steps",
 			walking_running_km: "km",
 			active_calories: "kcal",
 			exercise_minutes: "min",
@@ -952,7 +947,7 @@ const ROLLUP_METRICS = [
 		key: "steps",
 		category: "Activity",
 		displayName: "Steps",
-		unit: "count",
+		unit: "steps",
 		rule: "sum",
 		value: (day) => day.activity?.steps,
 		notes: "Sum the daily values in the period. Daily averages divide by days with data.",
@@ -1019,10 +1014,11 @@ function buildRollup(period, descriptor, days) {
 		const metric = buildRollupMetric(definition, days);
 		if (metric) metrics[definition.key] = metric;
 	}
+	const isRange = period === "range";
 	return {
 		type: "health_rollup",
 		schema: "healthmd.rollup_summary",
-		schema_version: 7,
+		schema_version: isRange ? 9 : 8,
 		rollup_period: period,
 		period_id: descriptor.periodId,
 		start_date: descriptor.startDate,
@@ -1031,8 +1027,9 @@ function buildRollup(period, descriptor, days) {
 		days_counted: days.length,
 		coverage_percent: round(days.length / descriptor.daysExpected * 100, 2),
 		source_schema: "healthmd.health_data",
-		source_schema_version: 7,
-		rollup_rules_version: 7,
+		source_schema_version: 8,
+		rollup_rules_version: 8,
+		...(isRange ? { calendar_timezone: "UTC" } : {}),
 		generated_at: `${descriptor.endDate}T23:59:59Z`,
 		source_dates: days.map((day) => day.date),
 		units: Object.fromEntries(ROLLUP_METRICS.map((definition) => [definition.key, definition.unit])),
@@ -1059,7 +1056,20 @@ async function writeMockRollups(days) {
 			count++;
 		}
 	}
-	return count;
+
+	const rangeDescriptor = {
+		periodId: `${days[0].date}_to_${days.at(-1).date}`,
+		startDate: days[0].date,
+		endDate: days.at(-1).date,
+		daysExpected: days.length,
+	};
+	const rangeFolder = path.join(rollupsRoot, "Range");
+	await mkdir(rangeFolder, { recursive: true });
+	await writeFile(
+		path.join(rangeFolder, `${rangeDescriptor.periodId}.json`),
+		`${JSON.stringify(buildRollup("range", rangeDescriptor, days))}\n`
+	);
+	return count + 1;
 }
 
 async function cleanOutputDir() {
@@ -1083,7 +1093,7 @@ async function main() {
 	}
 	const rollupCount = await writeMockRollups(days);
 
-	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one \`health-data\` JSON document per day, plus weekly/monthly/yearly summaries under \`Rollups/\`\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, blood pressure, glucose, body composition, nutrition, symptoms, cycle summaries, hearing, running/cycling summaries, mood / State of Mind entries under \`mindfulness.stateOfMindEntries\`, schema v7 medication inventory/dose events, sample workouts, capture status, and roll-up statistics\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
+	const readme = `# Mock Health.md export\n\nThis folder contains deterministic, privacy-safe mock Apple Health data for the example dashboards in \`examples/\`. It is not real user data.\n\n- Files: one daily \`healthmd.health_data\` v8 JSON document per day, one \`healthmd.rollup_summary\` v9 range summary, plus historical-compatible v8 weekly/monthly/yearly summaries under \`Rollups/\`\n- Range: \`${START_DATE}\` through \`${END_DATE}\`\n- Includes: activity, heart rate samples, HRV, sleep stages, blood oxygen, blood pressure, glucose, body composition, nutrition, symptoms, cycle summaries, hearing, running/cycling summaries, mood / State of Mind entries under \`mindfulness.stateOfMindEntries\`, medication inventory/dose events, sample workouts, capture status, and roll-up statistics\n- Raw capture: not requested; privacy-safe daily samples omit \`healthkit_record_archive\`\n- Note: ${SAMPLE_TIMEZONE_NOTE}\n\nTo preview the bundled examples after cloning this repo, open the repo as an Obsidian vault, enable the plugin, and set **Settings → Health.md Visualizations → Data folder** to \`examples/Health\`.\n\nRegenerate with:\n\n\`\`\`bash\nnpm run generate:mock-health\n\`\`\`\n`;
 	await writeFile(path.join(OUT_DIR, "README.md"), readme);
 
 	console.log(`Wrote ${days.length} mock Health.md JSON files and ${rollupCount} roll-ups to ${path.relative(REPO_ROOT, OUT_DIR)}`);

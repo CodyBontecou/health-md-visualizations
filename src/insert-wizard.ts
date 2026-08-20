@@ -1026,10 +1026,10 @@ export const VISUALIZATION_CATALOG: VisualizationOption[] = [
 		type: "rollup-explorer",
 		label: "Roll-up explorer",
 		category: "summary",
-		description: "Inspect exported weekly, monthly, and yearly primary values, rules, coverage, and statistics.",
+		description: "Inspect exported range and historical calendar primary values, rules, coverage, and statistics.",
 		defaultLast: 365,
 		params: [
-			{ kind: "select", key: "period", label: "Period", desc: "Choose which exported roll-up periods to show.", options: [{ value: "all", label: "All" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "yearly", label: "Yearly" }], defaultValue: "all" },
+			{ kind: "select", key: "period", label: "Period", desc: "Choose which exported roll-up periods to show.", options: [{ value: "all", label: "All" }, { value: "range", label: "Range" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "yearly", label: "Yearly" }], defaultValue: "all" },
 			{ kind: "text", key: "metric", label: "Canonical metric", desc: "Optional canonical key to filter, such as vo2_max.", optional: true },
 			{ kind: "text", key: "statistic", label: "Highlight statistic", desc: "Optional exported statistic name, such as latest or daily_average.", optional: true },
 			{ kind: "text", key: "limit", label: "Maximum periods", desc: "Maximum number of period cards.", defaultValue: "12", validation: "positive-integer" },

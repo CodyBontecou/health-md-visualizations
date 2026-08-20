@@ -6,9 +6,9 @@ export const HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 export const HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
 export const HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
 /** Latest Health.md daily export schema supported by this plugin. */
-export const SUPPORTED_HEALTHMD_SCHEMA_VERSION = 7;
+export const SUPPORTED_HEALTHMD_SCHEMA_VERSION = 8;
 /** Latest Health.md roll-up summary schema supported by this plugin. */
-export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 7;
+export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 9;
 /** The source-record archive advances independently from the daily schema. */
 export const SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 
@@ -202,9 +202,32 @@ export function detectCsvSchema(content: string): DetectedSchema {
 	if (first.done) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
 
 	const header = first.value.map(normalizeCsvLabel);
-	if (header[0] === "period" && header[1] === "period id") {
-		// The roll-up CSV contract currently has no schema-version column.
-		return { kind: "rollup-summary", version: 0, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+	const periodIndex = header.indexOf("period");
+	const periodIdIndex = header.indexOf("period id");
+	if (periodIndex >= 0 && periodIdIndex >= 0) {
+		const schemaIndex = header.indexOf("schema");
+		const schemaVersionIndex = header.indexOf("schema version");
+		let firstDataRow = records.next();
+		while (!firstDataRow.done && isBlankCsvRecord(firstDataRow.value)) firstDataRow = records.next();
+		const schema = !firstDataRow.done && schemaIndex >= 0
+			? firstDataRow.value[schemaIndex]?.trim() || undefined
+			: undefined;
+		const parsedVersion = !firstDataRow.done && schemaVersionIndex >= 0
+			? Number(firstDataRow.value[schemaVersionIndex])
+			: 0;
+		const version = Number.isFinite(parsedVersion) ? parsedVersion : 0;
+		if (version === 9 && schema !== HEALTHMD_ROLLUP_SCHEMA) {
+			return {
+				kind: "unknown",
+				version,
+				format: "csv",
+				schema,
+				reason: "Health.md roll-up CSV v9 requires Schema healthmd.rollup_summary",
+			};
+		}
+		// Historical roll-up CSVs may be structural and unversioned, without a
+		// Schema column. Preserve that explicit legacy detection behavior.
+		return detectKnownSchema("csv", schema ?? HEALTHMD_ROLLUP_SCHEMA, version);
 	}
 	if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
 		return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };

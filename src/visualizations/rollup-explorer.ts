@@ -7,7 +7,7 @@ import type {
 	VizConfig,
 } from "../types";
 
-const PERIODS = new Set<HealthRollupPeriod>(["weekly", "monthly", "yearly"]);
+const PERIODS = new Set<HealthRollupPeriod>(["weekly", "monthly", "yearly", "range"]);
 const DEFAULT_LIMIT = 12;
 const MAX_LIMIT = 100;
 const MAX_VALUE_LENGTH = 500;

@@ -10,6 +10,7 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "node esbuild.config.mjs production",
+		"typecheck": "tsc --noEmit",
 		"test": "node scripts/check-data-folder-layout.mjs && node --test tests/*.test.mjs",
 		"generate:mock-health": "node scripts/generate-mock-health-data.mjs",
 		"generate:mock-android": "node scripts/generate-mock-android-export.mjs",
