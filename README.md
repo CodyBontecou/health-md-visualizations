@@ -109,7 +109,7 @@ The plugin supports legacy/unversioned Health.md daily exports as schema `v0` an
 
 Health.md v6 and v7 can include a `healthmd.healthkit_records` v1 source archive. The plugin reads only its compact capture status, schema version, record counts, query status counts, and warning counts. Canonical records, UUID relationships, routes, waveforms, clinical payloads, and binary data do not enter dashboard metric summaries or the in-memory day cache. This avoids double counting the daily summary layer and keeps large lossless exports usable.
 
-Health.md roll-up files under `Health/Rollups/` are indexed separately from daily records. The plugin supports v7 JSON, Markdown, and Bases roll-ups, including every statistic and the v7 VO2 Max `latest` rule. Roll-up CSV is accepted as an unversioned structural format because its public header does not contain a schema-version column. The plugin also reads `_healthmd_data_dictionary.json` for canonical aliases, units, metric IDs, and metric types.
+Health.md roll-up files under `Health/Rollups/` are indexed separately from daily records. The plugin dual-reads historical weekly/monthly/yearly roll-ups through v8 and v9 range roll-ups in JSON, Markdown, Bases, and CSV. Historical CSV without contract metadata remains accepted as an unversioned structural format; v9 CSV reads its stable leading schema, source, and roll-up-rules columns. The plugin also reads `_healthmd_data_dictionary.json` for canonical aliases, units, metric IDs, and metric types.
 
 The v7 visualization suite uses only ordinary daily summary fields, exported roll-up summaries, top-level medication dose events, and compact capture diagnostics. It does **not** require Apple's Health Records or Verifiable Health Records entitlement and never reads clinical/FHIR/CDA records from the lossless archive. Blood pressure, blood glucose, body composition, activity, nutrition, symptoms, reproductive summaries, and hearing levels are ordinary HealthKit summary data whose availability still depends on the user's selected metrics and authorization.
 
@@ -178,7 +178,7 @@ The following types are backed by the canonical summary metric layer and data di
 
 - `metric-trend` — any observed numeric canonical key, with optional rolling average and user reference line
 - `cardio-fitness-freshness` — VO₂ Max measured-vs-carried-forward provenance
-- `rollup-explorer` — exported weekly/monthly/yearly rules, coverage, and statistics
+- `rollup-explorer` — exported v9 range and historical weekly/monthly/yearly rules, coverage, and statistics
 - `capture-coverage-calendar` — compact export completeness only
 - `blood-pressure-bands`, `glucose-range`, and `body-composition`
 - `running-form`, `cycling-performance`, and `hearing-exposure`
@@ -598,7 +598,7 @@ The plugin auto-detects the data format from the file extension. Each file shoul
 - `.md`: Markdown with Health.md YAML frontmatter, or metadata-free Markdown containing supported granular tables and an ISO date. Schema v7 capture fields and timezone context are retained when present. Human-readable prose is not guessed into canonical units.
 - Obsidian Bases: YAML frontmatter using the same daily schema. The parser reads v7 `workout_details`, medication details, compact capture diagnostics, and canonical units.
 
-Weekly, monthly, and yearly `healthmd.rollup_summary` files under `Health/Rollups/` are indexed separately and never treated as daily chart points.
+V9 range and historical weekly, monthly, and yearly `healthmd.rollup_summary` files under `Health/Rollups/` are indexed separately and never treated as daily chart points.
 
 The top-level `date` field on each day must be a `YYYY-MM-DD` ISO date — the date filter does fast lexicographic comparisons against this field.
 

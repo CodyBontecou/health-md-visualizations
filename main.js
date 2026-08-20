@@ -9884,7 +9884,7 @@ var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
 var HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
 var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 7;
-var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 7;
+var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 9;
 var SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 function schemaVersionOf(value) {
   var _a;
@@ -9987,14 +9987,23 @@ function detectFrontmatterSchema(frontmatter) {
   return { kind: "unknown", version, format: "markdown", reason: "Frontmatter is not a Health.md daily export" };
 }
 function detectCsvSchema(content) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d;
   const records = iterateCsvRecords(content);
   let first = records.next();
   while (!first.done && isBlankCsvRecord(first.value)) first = records.next();
   if (first.done) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
   const header = first.value.map(normalizeCsvLabel);
-  if (header[0] === "period" && header[1] === "period id") {
-    return { kind: "rollup-summary", version: 0, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+  const periodIndex = header.indexOf("period");
+  const periodIdIndex = header.indexOf("period id");
+  if (periodIndex >= 0 && periodIdIndex >= 0) {
+    const schemaIndex = header.indexOf("schema");
+    const schemaVersionIndex = header.indexOf("schema version");
+    let firstDataRow = records.next();
+    while (!firstDataRow.done && isBlankCsvRecord(firstDataRow.value)) firstDataRow = records.next();
+    const schema2 = !firstDataRow.done && schemaIndex >= 0 ? ((_a = firstDataRow.value[schemaIndex]) == null ? void 0 : _a.trim()) || HEALTHMD_ROLLUP_SCHEMA : HEALTHMD_ROLLUP_SCHEMA;
+    const parsedVersion = !firstDataRow.done && schemaVersionIndex >= 0 ? Number(firstDataRow.value[schemaVersionIndex]) : 0;
+    const version2 = Number.isFinite(parsedVersion) ? parsedVersion : 0;
+    return detectKnownSchema("csv", schema2, version2);
   }
   if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
     return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };
@@ -10005,9 +10014,9 @@ function detectCsvSchema(content) {
   for (const parts of records) {
     if (isBlankCsvRecord(parts)) continue;
     if (++inspected > 40) break;
-    if (normalizeCsvLabel((_a = parts[1]) != null ? _a : "") !== "metadata") continue;
-    const metric = normalizeCsvLabel((_b = parts[2]) != null ? _b : "");
-    const value = ((_c = parts[3]) != null ? _c : "").trim();
+    if (normalizeCsvLabel((_b = parts[1]) != null ? _b : "") !== "metadata") continue;
+    const metric = normalizeCsvLabel((_c = parts[2]) != null ? _c : "");
+    const value = ((_d = parts[3]) != null ? _d : "").trim();
     if (metric === "schema") schema = value;
     else if (metric === "schema version" || metric === "schema_version") {
       const parsed = Number(value);
@@ -13836,7 +13845,8 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
 }
 
 // src/parsers/rollup-parser.ts
-var SUPPORTED_ROLLUP_PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
+var CALENDAR_ROLLUP_PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
+var SUPPORTED_ROLLUP_PERIODS = /* @__PURE__ */ new Set([...CALENDAR_ROLLUP_PERIODS, "range"]);
 function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -13866,6 +13876,11 @@ function normalizePeriod(value) {
   var _a;
   const period = (_a = stringValue4(value)) == null ? void 0 : _a.trim().toLowerCase();
   return period && SUPPORTED_ROLLUP_PERIODS.has(period) ? period : void 0;
+}
+function isValidVersionPeriod(version, period) {
+  if (version === 9) return period === "range";
+  if (period === "range") return false;
+  return CALENDAR_ROLLUP_PERIODS.has(period);
 }
 function firstString3(record, ...keys) {
   for (const key of keys) {
@@ -13961,6 +13976,7 @@ function buildRollupSummary(record) {
     schemaVersion: record.schemaVersion,
     schema_version: record.schema_version
   });
+  if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
   const sourceSchemaVersion = firstNumber3(record, "source_schema_version", "sourceSchemaVersion");
   const rollupRulesVersion = firstNumber3(record, "rollup_rules_version", "rollupRulesVersion");
   const sourceDates = stringArray((_d = record.source_dates) != null ? _d : record.sourceDates);
@@ -14103,7 +14119,7 @@ function csvValue(row, index) {
   return value ? value : void 0;
 }
 function parseRollupCSV(content) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d;
   const records = Array.from(iterateCsvRecords(content)).filter((row) => !isBlankCsvRecord(row));
   if (records.length < 2) return null;
   const header = records[0].map(normalizeCsvLabel2);
@@ -14128,17 +14144,22 @@ function parseRollupCSV(content) {
   const notesIndex = indexOfHeader(header, "Notes");
   const sourceSchemaIndex = indexOfHeader(header, "Source Schema", "source_schema");
   const sourceSchemaVersionIndex = indexOfHeader(header, "Source Schema Version", "source_schema_version");
+  const schemaIndex = indexOfHeader(header, "Schema");
   const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version");
+  const rollupRulesVersionIndex = indexOfHeader(header, "Rollup Rules Version", "rollup_rules_version");
   const firstRow = records[1];
+  const schema = csvValue(firstRow, schemaIndex);
+  if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
+  const schemaVersion = (_a = numberValue2(csvValue(firstRow, schemaVersionIndex))) != null ? _a : 0;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
   const periodId = csvValue(firstRow, periodIdIndex);
-  if (!rollupPeriod || !periodId) return null;
+  if (!rollupPeriod || !periodId || !isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
   const metrics = {};
   const units = {};
   for (const row of records.slice(1)) {
-    const metricKey = (_b = (_a = csvValue(row, canonicalKeyIndex)) != null ? _a : csvValue(row, keyIndex)) != null ? _b : csvValue(row, metricIndex);
+    const metricKey = (_c = (_b = csvValue(row, canonicalKeyIndex)) != null ? _b : csvValue(row, keyIndex)) != null ? _c : csvValue(row, metricIndex);
     if (!metricKey) continue;
-    const existing = (_c = metrics[metricKey]) != null ? _c : {
+    const existing = (_d = metrics[metricKey]) != null ? _d : {
       key: csvValue(row, keyIndex),
       canonicalKey: metricKey,
       category: csvValue(row, categoryIndex),
@@ -14158,13 +14179,13 @@ function parseRollupCSV(content) {
     metrics[metricKey] = existing;
     if (existing.unit !== void 0) units[metricKey] = existing.unit;
   }
-  const schemaVersion = numberValue2(csvValue(firstRow, schemaVersionIndex));
   const sourceSchemaVersion = numberValue2(csvValue(firstRow, sourceSchemaVersionIndex));
+  const rollupRulesVersion = numberValue2(csvValue(firstRow, rollupRulesVersionIndex));
   return {
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
-    schemaVersion,
-    schema_version: schemaVersion,
+    schemaVersion: schemaVersion || void 0,
+    schema_version: schemaVersion || void 0,
     rollupPeriod,
     rollup_period: rollupPeriod,
     periodId,
@@ -14183,6 +14204,8 @@ function parseRollupCSV(content) {
     source_schema: csvValue(firstRow, sourceSchemaIndex),
     sourceSchemaVersion,
     source_schema_version: sourceSchemaVersion,
+    rollupRulesVersion,
+    rollup_rules_version: rollupRulesVersion,
     units: Object.keys(units).length ? units : void 0,
     metrics: Object.keys(metrics).length ? metrics : void 0
   };
@@ -22345,7 +22368,7 @@ var renderCycleTimeline = (ctx, data, W, H, config, theme, statsEl, hits, contex
 };
 
 // src/visualizations/rollup-explorer.ts
-var PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
+var PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly", "range"]);
 var DEFAULT_LIMIT = 12;
 var MAX_LIMIT = 100;
 var MAX_VALUE_LENGTH = 500;
@@ -25188,10 +25211,10 @@ var VISUALIZATION_CATALOG = [
     type: "rollup-explorer",
     label: "Roll-up explorer",
     category: "summary",
-    description: "Inspect exported weekly, monthly, and yearly primary values, rules, coverage, and statistics.",
+    description: "Inspect exported range and historical calendar primary values, rules, coverage, and statistics.",
     defaultLast: 365,
     params: [
-      { kind: "select", key: "period", label: "Period", desc: "Choose which exported roll-up periods to show.", options: [{ value: "all", label: "All" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "yearly", label: "Yearly" }], defaultValue: "all" },
+      { kind: "select", key: "period", label: "Period", desc: "Choose which exported roll-up periods to show.", options: [{ value: "all", label: "All" }, { value: "range", label: "Range" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "yearly", label: "Yearly" }], defaultValue: "all" },
       { kind: "text", key: "metric", label: "Canonical metric", desc: "Optional canonical key to filter, such as vo2_max.", optional: true },
       { kind: "text", key: "statistic", label: "Highlight statistic", desc: "Optional exported statistic name, such as latest or daily_average.", optional: true },
       { kind: "text", key: "limit", label: "Maximum periods", desc: "Maximum number of period cards.", defaultValue: "12", validation: "positive-integer" }

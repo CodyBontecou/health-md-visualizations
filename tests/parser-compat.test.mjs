@@ -98,6 +98,10 @@ function readV7Fixture(name) {
 	return readFile(path.join(process.cwd(), "tests/fixtures/schema-v7", name), "utf8");
 }
 
+function readV9RollupFixture(name) {
+	return readFile(path.join(process.cwd(), "tests/fixtures/rollup-summary-v9", name), "utf8");
+}
+
 test("JSON parser preserves the complete HealthDay data structure", async () => {
 	const { parseJSON } = await loadParsers();
 	const completeDay = {
@@ -1305,6 +1309,105 @@ test("schema v7 roll-up formats preserve latest VO2 and every statistic", async 
 	}
 	assert.deepEqual(rollups[0].sourceDates, ["2026-07-06", "2026-07-08", "2026-07-11"]);
 	assert.equal(rollups[0].rollupRulesVersion, 7);
+});
+
+test("roll-up parsers dual-read canonical v9 ranges and historical v8 calendars", async () => {
+	const {
+		parseRollupJSON,
+		parseRollupCSV,
+		parseRollupMarkdown,
+		detectJsonSchema,
+		detectCsvSchema,
+		detectFrontmatterSchema,
+	} = await loadParsers();
+	const [jsonContent, csvContent, basesContent, markdownContent] = await Promise.all([
+		readV9RollupFixture("range-v9.json"),
+		readV9RollupFixture("range-v9.csv"),
+		readV9RollupFixture("range-v9-bases.md"),
+		readV9RollupFixture("range-v9.md"),
+	]);
+
+	const rangeRollups = [
+		parseRollupJSON(jsonContent),
+		parseRollupCSV(csvContent),
+		parseRollupMarkdown(basesContent),
+		parseRollupMarkdown(markdownContent),
+	];
+	for (const rollup of rangeRollups) {
+		assert.ok(rollup);
+		assert.equal(rollup.schemaVersion, 9);
+		assert.equal(rollup.rollupPeriod, "range");
+		assert.equal(rollup.periodId, "2026-07-06_to_2026-07-11");
+		assert.equal(rollup.sourceSchemaVersion, 8);
+		assert.equal(rollup.rollupRulesVersion, 8);
+	}
+	assert.equal(rangeRollups[0].metrics?.steps.primaryValue, 3000);
+	assert.equal(rangeRollups[0].metrics?.steps.statistics.sum, 3000);
+	assert.equal(rangeRollups[1].metrics?.steps.primaryValue, 3000);
+	assert.equal(rangeRollups[2].metrics?.steps.primaryValue, 3000);
+	assert.deepEqual(rangeRollups[0].sourceDates, ["2026-07-06", "2026-07-08", "2026-07-11"]);
+
+	assert.deepEqual(detectJsonSchema(jsonContent), {
+		kind: "rollup-summary",
+		version: 9,
+		format: "json",
+		schema: "healthmd.rollup_summary",
+		isFutureVersion: false,
+	});
+	assert.deepEqual(detectCsvSchema(csvContent), {
+		kind: "rollup-summary",
+		version: 9,
+		format: "csv",
+		schema: "healthmd.rollup_summary",
+		isFutureVersion: false,
+	});
+	assert.equal(detectFrontmatterSchema({
+		schema: "healthmd.rollup_summary",
+		schema_version: 9,
+		rollup_period: "range",
+	}).isFutureVersion, false);
+
+	const v8CalendarContents = [
+		jsonContent.replace('"schema_version": 9', '"schema_version": 8').replace('"rollup_period": "range"', '"rollup_period": "weekly"'),
+		csvContent.replace("healthmd.rollup_summary,9", "healthmd.rollup_summary,8").replace(",range,", ",weekly,"),
+		basesContent.replace("schema_version: 9", "schema_version: 8").replace("rollup_period: range", "rollup_period: weekly"),
+		markdownContent.replace("schema_version: 9", "schema_version: 8").replace("rollup_period: range", "rollup_period: weekly"),
+	];
+	const v8CalendarRollups = [
+		parseRollupJSON(v8CalendarContents[0]),
+		parseRollupCSV(v8CalendarContents[1]),
+		parseRollupMarkdown(v8CalendarContents[2]),
+		parseRollupMarkdown(v8CalendarContents[3]),
+	];
+	for (const rollup of v8CalendarRollups) {
+		assert.ok(rollup);
+		assert.equal(rollup.schemaVersion, 8);
+		assert.equal(rollup.rollupPeriod, "weekly");
+	}
+});
+
+test("roll-up parsers reject invalid schema-version and period combinations in every format", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const [jsonContent, csvContent, basesContent, markdownContent] = await Promise.all([
+		readV9RollupFixture("range-v9.json"),
+		readV9RollupFixture("range-v9.csv"),
+		readV9RollupFixture("range-v9-bases.md"),
+		readV9RollupFixture("range-v9.md"),
+	]);
+
+	const invalidV9Calendars = [
+		parseRollupJSON(jsonContent.replace('"rollup_period": "range"', '"rollup_period": "weekly"')),
+		parseRollupCSV(csvContent.replace(",range,", ",weekly,")),
+		parseRollupMarkdown(basesContent.replace("rollup_period: range", "rollup_period: weekly")),
+		parseRollupMarkdown(markdownContent.replace("rollup_period: range", "rollup_period: weekly")),
+	];
+	const invalidV8Ranges = [
+		parseRollupJSON(jsonContent.replace('"schema_version": 9', '"schema_version": 8')),
+		parseRollupCSV(csvContent.replace("healthmd.rollup_summary,9", "healthmd.rollup_summary,8")),
+		parseRollupMarkdown(basesContent.replace("schema_version: 9", "schema_version: 8")),
+		parseRollupMarkdown(markdownContent.replace("schema_version: 9", "schema_version: 8")),
+	];
+	for (const rollup of [...invalidV9Calendars, ...invalidV8Ranges]) assert.equal(rollup, null);
 });
 
 test("high-record-count CSV archives collapse to compact counts", async () => {

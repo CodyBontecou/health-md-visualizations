@@ -128,7 +128,7 @@ export interface HealthMdCaptureSummary {
 	validationIssues?: string[];
 }
 
-export type HealthRollupPeriod = "weekly" | "monthly" | "yearly";
+export type HealthRollupPeriod = "weekly" | "monthly" | "yearly" | "range";
 
 export interface HealthRollupStatistic {
 	name: string;

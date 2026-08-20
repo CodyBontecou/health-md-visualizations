@@ -8,7 +8,7 @@ export const HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
 /** Latest Health.md daily export schema supported by this plugin. */
 export const SUPPORTED_HEALTHMD_SCHEMA_VERSION = 7;
 /** Latest Health.md roll-up summary schema supported by this plugin. */
-export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 7;
+export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 9;
 /** The source-record archive advances independently from the daily schema. */
 export const SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 
@@ -202,9 +202,21 @@ export function detectCsvSchema(content: string): DetectedSchema {
 	if (first.done) return { kind: "unknown", version: 0, format: "csv", reason: "Empty CSV" };
 
 	const header = first.value.map(normalizeCsvLabel);
-	if (header[0] === "period" && header[1] === "period id") {
-		// The roll-up CSV contract currently has no schema-version column.
-		return { kind: "rollup-summary", version: 0, format: "csv", schema: HEALTHMD_ROLLUP_SCHEMA };
+	const periodIndex = header.indexOf("period");
+	const periodIdIndex = header.indexOf("period id");
+	if (periodIndex >= 0 && periodIdIndex >= 0) {
+		const schemaIndex = header.indexOf("schema");
+		const schemaVersionIndex = header.indexOf("schema version");
+		let firstDataRow = records.next();
+		while (!firstDataRow.done && isBlankCsvRecord(firstDataRow.value)) firstDataRow = records.next();
+		const schema = !firstDataRow.done && schemaIndex >= 0
+			? firstDataRow.value[schemaIndex]?.trim() || HEALTHMD_ROLLUP_SCHEMA
+			: HEALTHMD_ROLLUP_SCHEMA;
+		const parsedVersion = !firstDataRow.done && schemaVersionIndex >= 0
+			? Number(firstDataRow.value[schemaVersionIndex])
+			: 0;
+		const version = Number.isFinite(parsedVersion) ? parsedVersion : 0;
+		return detectKnownSchema("csv", schema, version);
 	}
 	if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
 		return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };
