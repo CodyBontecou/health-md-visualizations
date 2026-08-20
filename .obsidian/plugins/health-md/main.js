@@ -9883,7 +9883,7 @@ var HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
 var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
 var HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
-var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 7;
+var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 8;
 var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 9;
 var SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 function schemaVersionOf(value) {

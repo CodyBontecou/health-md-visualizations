@@ -293,6 +293,8 @@ export interface HealthDay {
 	/** Compact lossless-capture diagnostics. Canonical record payloads are never cached here. */
 	rawCapture?: HealthMdCaptureSummary;
 	raw_capture_status?: RawCaptureStatus;
+	/** Provider-native daily sections introduced by Apple daily schema v8. */
+	providers?: Record<string, unknown>;
 	/** Scalar daily summary values keyed by Health.md canonical metric key. */
 	canonicalMetrics?: Record<string, HealthMetricScalar>;
 	activity?: {

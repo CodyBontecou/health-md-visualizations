@@ -82,6 +82,8 @@ async function loadParsers() {
 			detectCsvSchema: schemaModule.detectCsvSchema,
 			detectFrontmatterSchema: schemaModule.detectFrontmatterSchema,
 			parseHealthMetricDataDictionaryDetails: schemaModule.parseHealthMetricDataDictionaryDetails,
+			SUPPORTED_HEALTHMD_SCHEMA_VERSION: schemaModule.SUPPORTED_HEALTHMD_SCHEMA_VERSION,
+			schemaIsFutureVersion: schemaModule.schemaIsFutureVersion,
 		};
 	})();
 
@@ -96,6 +98,10 @@ after(async () => {
 
 function readV7Fixture(name) {
 	return readFile(path.join(process.cwd(), "tests/fixtures/schema-v7", name), "utf8");
+}
+
+function readV8Fixture(name) {
+	return readFile(path.join(process.cwd(), "tests/fixtures/schema-v8", name), "utf8");
 }
 
 function readRollupFixture(version, name) {
@@ -1068,6 +1074,50 @@ test("Markdown parser reads granular Health.md tables and derives aggregates", a
 	assert.equal(day.vitals?.bloodOxygenAvg, 96.5);
 	assert.equal(day.vitals?.respiratoryRateSamples?.length, 2);
 	assert.equal(day.vitals?.respiratoryRateAvg, 15);
+});
+
+test("canonical daily schema v8 provider fixtures are current and accepted in every format", async () => {
+	const {
+		parseJSON,
+		parseCSV,
+		parseMarkdown,
+		detectJsonSchema,
+		detectCsvSchema,
+		SUPPORTED_HEALTHMD_SCHEMA_VERSION,
+		schemaIsFutureVersion,
+	} = await loadParsers();
+	const [jsonContent, csvContent, basesContent, markdownContent] = await Promise.all([
+		readV8Fixture("provider-day.json"),
+		readV8Fixture("provider-day.csv"),
+		readV8Fixture("provider-day-bases.md"),
+		readV8Fixture("provider-day.md"),
+	]);
+
+	assert.equal(SUPPORTED_HEALTHMD_SCHEMA_VERSION, 8);
+	assert.equal(schemaIsFutureVersion(8), false);
+	assert.equal(schemaIsFutureVersion(9), true);
+	assert.deepEqual(
+		[detectJsonSchema(jsonContent), detectCsvSchema(csvContent)].map(({ kind, version, isFutureVersion }) => ({ kind, version, isFutureVersion })),
+		[
+			{ kind: "health-data", version: 8, isFutureVersion: false },
+			{ kind: "health-data", version: 8, isFutureVersion: false },
+		]
+	);
+
+	const jsonDay = parseJSON(jsonContent);
+	const [csvDay] = parseCSV(csvContent);
+	const basesDay = parseMarkdown(basesContent);
+	const markdownDay = parseMarkdown(markdownContent);
+	for (const day of [jsonDay, csvDay, basesDay, markdownDay]) {
+		assert.ok(day);
+		assert.equal(day.schemaVersion, 8);
+		assert.equal(day.date, "2026-03-15");
+		assert.equal(day.activity?.steps, 1);
+		assert.equal(day.timeContext?.calendarTimezone, "UTC");
+	}
+	assert.equal(jsonDay.providers?.whoop?.schema, "healthmd.provider.whoop_daily");
+	assert.equal(jsonDay.providers?.whoop?.schema_version, 1);
+	assert.equal(jsonDay.providers?.whoop?.recoveries?.[0]?.recovery_score_percent, 82);
 });
 
 test("schema v7 lossless JSON stays compact and normalizes current summaries", async () => {
