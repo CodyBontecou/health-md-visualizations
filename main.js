@@ -13856,6 +13856,8 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
 // src/parsers/rollup-parser.ts
 var CALENDAR_ROLLUP_PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly"]);
 var SUPPORTED_ROLLUP_PERIODS = /* @__PURE__ */ new Set([...CALENDAR_ROLLUP_PERIODS, "range"]);
+var V9_SOURCE_SCHEMA_VERSION = 8;
+var V9_ROLLUP_RULES_VERSION = 8;
 function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -14127,6 +14129,7 @@ function buildRollupSummary(record) {
   const sourceSchema = parsedSourceSchema.value;
   const sourceSchemaVersion = parsedSourceSchemaVersion.value;
   const rollupRulesVersion = parsedRollupRulesVersion.value;
+  if (schemaVersion === 9 && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== V9_SOURCE_SCHEMA_VERSION || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
   const generatedAt = parsedGeneratedAt.value;
   const sourceDates = parsedSourceDates.value;
   return {
@@ -14333,6 +14336,10 @@ function parseRollupCSV(content) {
   if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
   const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
   if (schemaVersion === 9 && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
+  const sourceSchema = csvValue(firstRow, sourceSchemaIndex);
+  const sourceSchemaVersion = numberValue2(csvValue(firstRow, sourceSchemaVersionIndex));
+  const rollupRulesVersion = numberValue2(csvValue(firstRow, rollupRulesVersionIndex));
+  if (schemaVersion === 9 && (sourceSchemaIndex < 0 || sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersionIndex < 0 || sourceSchemaVersion !== V9_SOURCE_SCHEMA_VERSION || rollupRulesVersionIndex < 0 || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
   const periodId = csvValue(firstRow, periodIdIndex);
   const startDate = csvValue(firstRow, startDateIndex);
@@ -14381,8 +14388,6 @@ function parseRollupCSV(content) {
     metrics[metricKey] = existing;
     if (existing.unit !== void 0) units[metricKey] = existing.unit;
   }
-  const sourceSchemaVersion = numberValue2(csvValue(firstRow, sourceSchemaVersionIndex));
-  const rollupRulesVersion = numberValue2(csvValue(firstRow, rollupRulesVersionIndex));
   return {
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
@@ -14404,8 +14409,8 @@ function parseRollupCSV(content) {
     days_counted: numberValue2(csvValue(firstRow, daysCountedIndex)),
     coveragePercent: numberValue2(csvValue(firstRow, coveragePercentIndex)),
     coverage_percent: numberValue2(csvValue(firstRow, coveragePercentIndex)),
-    sourceSchema: csvValue(firstRow, sourceSchemaIndex),
-    source_schema: csvValue(firstRow, sourceSchemaIndex),
+    sourceSchema,
+    source_schema: sourceSchema,
     sourceSchemaVersion,
     source_schema_version: sourceSchemaVersion,
     rollupRulesVersion,

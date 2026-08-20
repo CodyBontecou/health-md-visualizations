@@ -1511,6 +1511,134 @@ test("v9 roll-up parsers require calendar_timezone while v8 remains historical-c
 	}
 });
 
+test("v9 roll-up parsers require the exact v8 source identity contract", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const [v9JsonContent, v9Csv, v9Bases, v9Markdown, v8JsonContent, v8Bases, v8Markdown] = await Promise.all([
+		readV9RollupFixture("range-v9.json"),
+		readV9RollupFixture("range-v9.csv"),
+		readV9RollupFixture("range-v9-bases.md"),
+		readV9RollupFixture("range-v9.md"),
+		readRollupFixture(8, "weekly.json"),
+		readRollupFixture(8, "weekly-bases.md"),
+		readRollupFixture(8, "weekly.md"),
+	]);
+	const v9Json = JSON.parse(v9JsonContent);
+	const sourceFields = [
+		{
+			canonical: "source_schema",
+			alias: "sourceSchema",
+			header: "Source Schema",
+			csvAlias: "sourceSchema",
+			expected: "healthmd.health_data",
+			blank: " ",
+			incompatible: "healthmd.other",
+		},
+		{
+			canonical: "source_schema_version",
+			alias: "sourceSchemaVersion",
+			header: "Source Schema Version",
+			csvAlias: "sourceSchemaVersion",
+			expected: 8,
+			blank: "",
+			incompatible: 7,
+		},
+		{
+			canonical: "rollup_rules_version",
+			alias: "rollupRulesVersion",
+			header: "Rollup Rules Version",
+			csvAlias: "rollupRulesVersion",
+			expected: 8,
+			blank: "",
+			incompatible: 9,
+		},
+	];
+
+	const editCsvColumn = (content, headerName, replacement, remove = false) => {
+		const rows = content.trimEnd().split("\n").map((line) => line.split(","));
+		const index = rows[0].indexOf(headerName);
+		assert.notEqual(index, -1);
+		for (const [rowIndex, row] of rows.entries()) {
+			if (remove) row.splice(index, 1);
+			else if (rowIndex > 0) row[index] = String(replacement);
+		}
+		return `${rows.map((row) => row.join(",")).join("\n")}\n`;
+	};
+
+	for (const field of sourceFields) {
+		const missing = { ...v9Json };
+		delete missing[field.canonical];
+		assert.equal(parseRollupJSON(JSON.stringify(missing)), null, `${field.canonical} is required in JSON`);
+		assert.equal(parseRollupJSON(JSON.stringify({ ...v9Json, [field.canonical]: field.blank })), null);
+		assert.equal(parseRollupJSON(JSON.stringify({ ...v9Json, [field.canonical]: field.incompatible })), null);
+
+		for (const markdown of [v9Bases, v9Markdown]) {
+			assert.equal(parseRollupMarkdown(markdown.replace(new RegExp(`^${field.canonical}:.*\\n`, "m"), "")), null);
+			assert.equal(
+				parseRollupMarkdown(markdown.replace(new RegExp(`^${field.canonical}:.*$`, "m"), `${field.canonical}: ""`)),
+				null
+			);
+			assert.equal(
+				parseRollupMarkdown(markdown.replace(new RegExp(`^${field.canonical}:.*$`, "m"), `${field.canonical}: ${field.incompatible}`)),
+				null
+			);
+		}
+
+		assert.equal(parseRollupCSV(editCsvColumn(v9Csv, field.header, "", true)), null);
+		assert.equal(parseRollupCSV(editCsvColumn(v9Csv, field.header, "")), null);
+		assert.equal(parseRollupCSV(editCsvColumn(v9Csv, field.header, field.incompatible)), null);
+	}
+
+	const aliasOnlyJson = { ...v9Json };
+	for (const field of sourceFields) {
+		delete aliasOnlyJson[field.canonical];
+		aliasOnlyJson[field.alias] = field.expected;
+	}
+	assert.ok(parseRollupJSON(JSON.stringify(aliasOnlyJson)), "camelCase source aliases remain supported");
+	for (const markdown of [v9Bases, v9Markdown]) {
+		const aliasOnly = sourceFields.reduce(
+			(content, field) => content.replace(field.canonical, field.alias),
+			markdown
+		);
+		assert.ok(parseRollupMarkdown(aliasOnly));
+	}
+	const aliasOnlyCsv = sourceFields.reduce(
+		(content, field) => content.replace(field.header, field.csvAlias),
+		v9Csv
+	);
+	assert.ok(parseRollupCSV(aliasOnlyCsv));
+
+	const matchingAliasesJson = {
+		...v9Json,
+		...Object.fromEntries(sourceFields.map((field) => [field.alias, field.expected])),
+	};
+	assert.ok(parseRollupJSON(JSON.stringify(matchingAliasesJson)));
+	for (const markdown of [v9Bases, v9Markdown]) {
+		assert.ok(parseRollupMarkdown(markdown, Object.fromEntries(
+			sourceFields.map((field) => [field.alias, field.expected])
+		)));
+	}
+	const csvLines = v9Csv.trimEnd().split("\n");
+	const matchingCsvAliases = csvLines.map((line, index) => `${line},${sourceFields
+		.map((field) => index === 0 ? field.csvAlias : field.expected)
+		.join(",")}`).join("\n");
+	assert.ok(parseRollupCSV(matchingCsvAliases));
+	for (const field of sourceFields) {
+		const conflictingCsvAlias = csvLines.map((line, index) => `${line},${index === 0 ? field.csvAlias : field.incompatible}`).join("\n");
+		assert.equal(parseRollupCSV(conflictingCsvAlias), null, `${field.csvAlias} must equal its CSV alias`);
+	}
+
+	const v8Json = JSON.parse(v8JsonContent);
+	for (const field of sourceFields) delete v8Json[field.canonical];
+	assert.ok(parseRollupJSON(JSON.stringify(v8Json)), "v8 JSON remains compatible without source identity metadata");
+	for (const markdown of [v8Bases, v8Markdown]) {
+		const withoutSourceIdentity = sourceFields.reduce(
+			(content, field) => content.replace(new RegExp(`^${field.canonical}:.*\\n`, "m"), ""),
+			markdown
+		);
+		assert.ok(parseRollupMarkdown(withoutSourceIdentity), "v8 Markdown/Bases remain historical-compatible");
+	}
+});
+
 test("roll-up object parsers reject contradictory contract aliases", async () => {
 	const { parseRollupJSON, parseRollupMarkdown } = await loadParsers();
 	const [jsonContent, basesContent, markdownContent] = await Promise.all([
@@ -1727,7 +1855,12 @@ test("roll-up period IDs use canonical grammar and exactly match their date span
 		type: "health_rollup",
 		schema: "healthmd.rollup_summary",
 		...(schemaVersion === undefined ? {} : { schema_version: schemaVersion }),
-		...(schemaVersion === 9 ? { calendar_timezone: "UTC" } : {}),
+		...(schemaVersion === 9 ? {
+			calendar_timezone: "UTC",
+			source_schema: "healthmd.health_data",
+			source_schema_version: 8,
+			rollup_rules_version: 8,
+		} : {}),
 		rollup_period: rollupPeriod,
 		period_id: periodId,
 		start_date: startDate,
