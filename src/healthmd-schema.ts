@@ -210,13 +210,24 @@ export function detectCsvSchema(content: string): DetectedSchema {
 		let firstDataRow = records.next();
 		while (!firstDataRow.done && isBlankCsvRecord(firstDataRow.value)) firstDataRow = records.next();
 		const schema = !firstDataRow.done && schemaIndex >= 0
-			? firstDataRow.value[schemaIndex]?.trim() || HEALTHMD_ROLLUP_SCHEMA
-			: HEALTHMD_ROLLUP_SCHEMA;
+			? firstDataRow.value[schemaIndex]?.trim() || undefined
+			: undefined;
 		const parsedVersion = !firstDataRow.done && schemaVersionIndex >= 0
 			? Number(firstDataRow.value[schemaVersionIndex])
 			: 0;
 		const version = Number.isFinite(parsedVersion) ? parsedVersion : 0;
-		return detectKnownSchema("csv", schema, version);
+		if (version === 9 && schema !== HEALTHMD_ROLLUP_SCHEMA) {
+			return {
+				kind: "unknown",
+				version,
+				format: "csv",
+				schema,
+				reason: "Health.md roll-up CSV v9 requires Schema healthmd.rollup_summary",
+			};
+		}
+		// Historical roll-up CSVs may be structural and unversioned, without a
+		// Schema column. Preserve that explicit legacy detection behavior.
+		return detectKnownSchema("csv", schema ?? HEALTHMD_ROLLUP_SCHEMA, version);
 	}
 	if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
 		return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };

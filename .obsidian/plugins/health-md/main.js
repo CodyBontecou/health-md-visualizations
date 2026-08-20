@@ -10000,10 +10000,19 @@ function detectCsvSchema(content) {
     const schemaVersionIndex = header.indexOf("schema version");
     let firstDataRow = records.next();
     while (!firstDataRow.done && isBlankCsvRecord(firstDataRow.value)) firstDataRow = records.next();
-    const schema2 = !firstDataRow.done && schemaIndex >= 0 ? ((_a = firstDataRow.value[schemaIndex]) == null ? void 0 : _a.trim()) || HEALTHMD_ROLLUP_SCHEMA : HEALTHMD_ROLLUP_SCHEMA;
+    const schema2 = !firstDataRow.done && schemaIndex >= 0 ? ((_a = firstDataRow.value[schemaIndex]) == null ? void 0 : _a.trim()) || void 0 : void 0;
     const parsedVersion = !firstDataRow.done && schemaVersionIndex >= 0 ? Number(firstDataRow.value[schemaVersionIndex]) : 0;
     const version2 = Number.isFinite(parsedVersion) ? parsedVersion : 0;
-    return detectKnownSchema("csv", schema2, version2);
+    if (version2 === 9 && schema2 !== HEALTHMD_ROLLUP_SCHEMA) {
+      return {
+        kind: "unknown",
+        version: version2,
+        format: "csv",
+        schema: schema2,
+        reason: "Health.md roll-up CSV v9 requires Schema healthmd.rollup_summary"
+      };
+    }
+    return detectKnownSchema("csv", schema2 != null ? schema2 : HEALTHMD_ROLLUP_SCHEMA, version2);
   }
   if (header[0] !== "date" || header[1] !== "category" || header[2] !== "metric" || header[3] !== "value" || header[4] !== "unit") {
     return { kind: "unknown", version: 0, format: "csv", reason: "CSV header is not a Health.md daily export" };
@@ -13954,6 +13963,25 @@ function firstNumber3(record, ...keys) {
 function hasOwn(record, key) {
   return Object.prototype.hasOwnProperty.call(record, key);
 }
+function readAliasedValue(record, keys, parse, equals = (left, right) => left === right) {
+  let parsedValue;
+  for (const key of keys) {
+    if (!hasOwn(record, key)) continue;
+    const current = parse(record[key]);
+    if (current === void 0 || parsedValue !== void 0 && !equals(parsedValue, current)) {
+      return { valid: false };
+    }
+    parsedValue = current;
+  }
+  return { valid: true, value: parsedValue };
+}
+function nonBlankString(value) {
+  const parsed = stringValue4(value);
+  return parsed !== void 0 && parsed !== "" ? parsed : void 0;
+}
+function stringArraysEqual(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
 function validateIdentityField(record, keys, expected) {
   let present = false;
   for (const key of keys) {
@@ -13970,31 +13998,20 @@ function strictSchemaVersion(value) {
   return Number.isFinite(parsed) ? parsed : void 0;
 }
 function readOptionalSchemaVersion(record) {
-  let version;
-  for (const key of ["schemaVersion", "schema_version"]) {
-    if (!hasOwn(record, key)) continue;
-    const parsed = strictSchemaVersion(record[key]);
-    if (parsed === void 0 || version !== void 0 && parsed !== version) {
-      return { valid: false, version: 0 };
-    }
-    version = parsed;
-  }
-  return { valid: true, version: version != null ? version : 0 };
+  var _a;
+  const parsed = readAliasedValue(record, ["schemaVersion", "schema_version"], strictSchemaVersion);
+  return { valid: parsed.valid, version: (_a = parsed.value) != null ? _a : 0 };
 }
 function validCalendarTimezone(value) {
   const trimmed = value == null ? void 0 : value.trim();
   return trimmed && trimmed.length <= 64 ? trimmed : void 0;
 }
 function readOptionalCalendarTimezone(record) {
-  let timezone;
-  for (const key of ["calendarTimezone", "calendar_timezone"]) {
-    if (!hasOwn(record, key)) continue;
-    if (typeof record[key] !== "string") return { valid: false };
-    const parsed = validCalendarTimezone(record[key]);
-    if (parsed === void 0 || timezone !== void 0 && parsed !== timezone) return { valid: false };
-    timezone = parsed;
-  }
-  return { valid: true, value: timezone };
+  return readAliasedValue(
+    record,
+    ["calendarTimezone", "calendar_timezone"],
+    (value) => typeof value === "string" ? validCalendarTimezone(value) : void 0
+  );
 }
 function stringArray(value) {
   if (!Array.isArray(value)) return void 0;
@@ -14065,26 +14082,53 @@ function normalizeMetrics(record) {
   return Object.keys(result).length ? result : void 0;
 }
 function buildRollupSummary(record) {
-  var _a, _b, _c, _d;
   const schemaIdentity = validateIdentityField(record, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
   const typeIdentity = validateIdentityField(record, ["type", "Type"], "health_rollup");
   if (!schemaIdentity.valid || !typeIdentity.valid || !schemaIdentity.present && !typeIdentity.present) return null;
-  const rollupPeriod = normalizePeriod((_c = (_b = (_a = record.rollup_period) != null ? _a : record.rollupPeriod) != null ? _b : record.period) != null ? _c : record.Period);
-  const periodId = firstString3(record, "period_id", "periodId", "Period ID", "periodID");
-  const startDate = firstString3(record, "start_date", "startDate", "Start Date");
-  const endDate = firstString3(record, "end_date", "endDate", "End Date");
+  const parsedRollupPeriod = readAliasedValue(record, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
+  const parsedPeriodId = readAliasedValue(record, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
+  const parsedStartDate = readAliasedValue(record, ["start_date", "startDate", "Start Date"], nonBlankString);
+  const parsedEndDate = readAliasedValue(record, ["end_date", "endDate", "End Date"], nonBlankString);
+  if (!parsedRollupPeriod.valid || !parsedPeriodId.valid || !parsedStartDate.valid || !parsedEndDate.valid) return null;
+  const rollupPeriod = parsedRollupPeriod.value;
+  const periodId = parsedPeriodId.value;
+  const startDate = parsedStartDate.value;
+  const endDate = parsedEndDate.value;
   if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
   const parsedSchemaVersion = readOptionalSchemaVersion(record);
   if (!parsedSchemaVersion.valid) return null;
   const schemaVersion = parsedSchemaVersion.version;
   if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
   const parsedCalendarTimezone = readOptionalCalendarTimezone(record);
-  if (!parsedCalendarTimezone.valid || schemaVersion === 9 && !parsedCalendarTimezone.value) return null;
+  const parsedDaysExpected = readAliasedValue(record, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
+  const parsedDaysCounted = readAliasedValue(record, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
+  const parsedCoveragePercent = readAliasedValue(record, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
+  const parsedSourceSchema = readAliasedValue(record, ["source_schema", "sourceSchema"], nonBlankString);
+  const parsedSourceSchemaVersion = readAliasedValue(record, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
+  const parsedRollupRulesVersion = readAliasedValue(record, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
+  const parsedGeneratedAt = readAliasedValue(record, ["generated_at", "generatedAt"], nonBlankString);
+  const parsedSourceDates = readAliasedValue(record, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
+  const contractValues = [
+    parsedCalendarTimezone,
+    parsedDaysExpected,
+    parsedDaysCounted,
+    parsedCoveragePercent,
+    parsedSourceSchema,
+    parsedSourceSchemaVersion,
+    parsedRollupRulesVersion,
+    parsedGeneratedAt,
+    parsedSourceDates
+  ];
+  if (contractValues.some((parsed) => !parsed.valid) || schemaVersion === 9 && !parsedCalendarTimezone.value) return null;
   const calendarTimezone = parsedCalendarTimezone.value;
-  const sourceSchemaVersion = firstNumber3(record, "source_schema_version", "sourceSchemaVersion");
-  const rollupRulesVersion = firstNumber3(record, "rollup_rules_version", "rollupRulesVersion");
-  const sourceDates = stringArray((_d = record.source_dates) != null ? _d : record.sourceDates);
-  const generatedAt = firstString3(record, "generated_at", "generatedAt");
+  const daysExpected = parsedDaysExpected.value;
+  const daysCounted = parsedDaysCounted.value;
+  const coveragePercent = parsedCoveragePercent.value;
+  const sourceSchema = parsedSourceSchema.value;
+  const sourceSchemaVersion = parsedSourceSchemaVersion.value;
+  const rollupRulesVersion = parsedRollupRulesVersion.value;
+  const generatedAt = parsedGeneratedAt.value;
+  const sourceDates = parsedSourceDates.value;
   return {
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
@@ -14100,14 +14144,14 @@ function buildRollupSummary(record) {
     end_date: endDate,
     calendarTimezone,
     calendar_timezone: calendarTimezone,
-    daysExpected: firstNumber3(record, "days_expected", "daysExpected", "Days Expected"),
-    days_expected: firstNumber3(record, "days_expected", "daysExpected", "Days Expected"),
-    daysCounted: firstNumber3(record, "days_counted", "daysCounted", "Days Counted"),
-    days_counted: firstNumber3(record, "days_counted", "daysCounted", "Days Counted"),
-    coveragePercent: firstNumber3(record, "coverage_percent", "coveragePercent", "Coverage Percent"),
-    coverage_percent: firstNumber3(record, "coverage_percent", "coveragePercent", "Coverage Percent"),
-    sourceSchema: firstString3(record, "source_schema", "sourceSchema"),
-    source_schema: firstString3(record, "source_schema", "sourceSchema"),
+    daysExpected,
+    days_expected: daysExpected,
+    daysCounted,
+    days_counted: daysCounted,
+    coveragePercent,
+    coverage_percent: coveragePercent,
+    sourceSchema,
+    source_schema: sourceSchema,
     sourceSchemaVersion,
     source_schema_version: sourceSchemaVersion,
     rollupRulesVersion,
@@ -14218,25 +14262,50 @@ function indexOfHeader(header, ...names) {
   const normalizedNames = names.map(normalizeCsvLabel2);
   return header.findIndex((item) => normalizedNames.includes(item));
 }
+function csvAliasIndexes(header, names) {
+  const normalizedNames = names.map(normalizeCsvLabel2);
+  return header.flatMap((item, index) => normalizedNames.includes(item) ? [index] : []);
+}
 function csvValue(row, index) {
   var _a;
   if (index < 0) return void 0;
   const value = (_a = row[index]) == null ? void 0 : _a.trim();
   return value ? value : void 0;
 }
+function hasConsistentCsvAliases(header, rows, names) {
+  const indexes = csvAliasIndexes(header, names);
+  if (indexes.length < 2) return true;
+  return rows.every((row) => indexes.every((index) => csvValue(row, index) === csvValue(row, indexes[0])));
+}
+var CSV_CONTRACT_ALIASES = [
+  ["Period"],
+  ["Period ID", "period_id", "periodId", "periodID"],
+  ["Start Date", "start_date", "startDate"],
+  ["End Date", "end_date", "endDate"],
+  ["Days Expected", "days_expected", "daysExpected"],
+  ["Days Counted", "days_counted", "daysCounted"],
+  ["Coverage Percent", "coverage_percent", "coveragePercent"],
+  ["Source Schema", "source_schema", "sourceSchema"],
+  ["Source Schema Version", "source_schema_version", "sourceSchemaVersion"],
+  ["Schema"],
+  ["Schema Version", "schema_version", "schemaVersion"],
+  ["Rollup Rules Version", "rollup_rules_version", "rollupRulesVersion"],
+  ["Calendar Timezone", "calendar_timezone", "calendarTimezone"]
+];
 function parseRollupCSV(content) {
   var _a, _b, _c;
   const records = Array.from(iterateCsvRecords(content)).filter((row) => !isBlankCsvRecord(row));
   if (records.length < 2) return null;
   const header = records[0].map(normalizeCsvLabel2);
+  if (CSV_CONTRACT_ALIASES.some((aliases) => !hasConsistentCsvAliases(header, records.slice(1), aliases))) return null;
   const periodIndex = indexOfHeader(header, "Period");
-  const periodIdIndex = indexOfHeader(header, "Period ID", "period_id");
+  const periodIdIndex = indexOfHeader(header, "Period ID", "period_id", "periodId", "periodID");
   if (periodIndex < 0 || periodIdIndex < 0) return null;
-  const startDateIndex = indexOfHeader(header, "Start Date", "start_date");
-  const endDateIndex = indexOfHeader(header, "End Date", "end_date");
-  const daysExpectedIndex = indexOfHeader(header, "Days Expected", "days_expected");
-  const daysCountedIndex = indexOfHeader(header, "Days Counted", "days_counted");
-  const coveragePercentIndex = indexOfHeader(header, "Coverage Percent", "coverage_percent");
+  const startDateIndex = indexOfHeader(header, "Start Date", "start_date", "startDate");
+  const endDateIndex = indexOfHeader(header, "End Date", "end_date", "endDate");
+  const daysExpectedIndex = indexOfHeader(header, "Days Expected", "days_expected", "daysExpected");
+  const daysCountedIndex = indexOfHeader(header, "Days Counted", "days_counted", "daysCounted");
+  const coveragePercentIndex = indexOfHeader(header, "Coverage Percent", "coverage_percent", "coveragePercent");
   const categoryIndex = indexOfHeader(header, "Category");
   const metricIndex = indexOfHeader(header, "Metric");
   const keyIndex = indexOfHeader(header, "Key");
@@ -14248,19 +14317,20 @@ function parseRollupCSV(content) {
   const statisticIndex = indexOfHeader(header, "Statistic");
   const statisticValueIndex = indexOfHeader(header, "Statistic Value", "statistic_value");
   const notesIndex = indexOfHeader(header, "Notes");
-  const sourceSchemaIndex = indexOfHeader(header, "Source Schema", "source_schema");
-  const sourceSchemaVersionIndex = indexOfHeader(header, "Source Schema Version", "source_schema_version");
+  const sourceSchemaIndex = indexOfHeader(header, "Source Schema", "source_schema", "sourceSchema");
+  const sourceSchemaVersionIndex = indexOfHeader(header, "Source Schema Version", "source_schema_version", "sourceSchemaVersion");
   const schemaIndex = indexOfHeader(header, "Schema");
-  const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version");
-  const rollupRulesVersionIndex = indexOfHeader(header, "Rollup Rules Version", "rollup_rules_version");
-  const calendarTimezoneIndex = indexOfHeader(header, "Calendar Timezone", "calendar_timezone");
+  const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version", "schemaVersion");
+  const rollupRulesVersionIndex = indexOfHeader(header, "Rollup Rules Version", "rollup_rules_version", "rollupRulesVersion");
+  const calendarTimezoneIndex = indexOfHeader(header, "Calendar Timezone", "calendar_timezone", "calendarTimezone");
   const firstRow = records[1];
   const schema = csvValue(firstRow, schemaIndex);
-  if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
   const rawSchemaVersion = csvValue(firstRow, schemaVersionIndex);
   const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
   if (schemaVersionIndex >= 0 && parsedSchemaVersion === void 0) return null;
   const schemaVersion = parsedSchemaVersion != null ? parsedSchemaVersion : 0;
+  if (schemaVersion === 9 && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
+  if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
   const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
   if (schemaVersion === 9 && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));

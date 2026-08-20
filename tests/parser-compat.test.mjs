@@ -1432,6 +1432,72 @@ test("v9 roll-up parsers require calendar_timezone while v8 remains historical-c
 	}
 });
 
+test("roll-up object parsers reject contradictory contract aliases", async () => {
+	const { parseRollupJSON, parseRollupMarkdown } = await loadParsers();
+	const [jsonContent, basesContent, markdownContent] = await Promise.all([
+		readV9RollupFixture("range-v9.json"),
+		readV9RollupFixture("range-v9-bases.md"),
+		readV9RollupFixture("range-v9.md"),
+	]);
+	const json = JSON.parse(jsonContent);
+	const matchingAliases = {
+		...json,
+		Schema: json.schema,
+		Type: json.type,
+		schemaVersion: json.schema_version,
+		rollupPeriod: json.rollup_period,
+		periodId: json.period_id,
+		startDate: json.start_date,
+		endDate: json.end_date,
+		calendarTimezone: json.calendar_timezone,
+		daysExpected: json.days_expected,
+		daysCounted: json.days_counted,
+		coveragePercent: json.coverage_percent,
+		sourceSchema: json.source_schema,
+		sourceSchemaVersion: json.source_schema_version,
+		rollupRulesVersion: json.rollup_rules_version,
+		generatedAt: json.generated_at,
+		sourceDates: json.source_dates,
+	};
+	assert.ok(parseRollupJSON(JSON.stringify(matchingAliases)), "matching aliases remain valid");
+
+	const contradictoryAliases = [
+		["Schema", "healthmd.health_data"],
+		["Type", "health-data"],
+		["schemaVersion", 8],
+		["rollupPeriod", "weekly"],
+		["periodId", "2026-07-06_to_2026-07-10"],
+		["startDate", "2026-07-07"],
+		["endDate", "2026-07-12"],
+		["calendarTimezone", "America/New_York"],
+		["daysExpected", json.days_expected + 1],
+		["daysCounted", json.days_counted + 1],
+		["coveragePercent", json.coverage_percent + 1],
+		["sourceSchema", "healthmd.other"],
+		["sourceSchemaVersion", json.source_schema_version + 1],
+		["rollupRulesVersion", json.rollup_rules_version + 1],
+		["generatedAt", "2026-07-14T12:00:00Z"],
+		["sourceDates", [...json.source_dates, "2026-07-12"]],
+	];
+	for (const [alias, value] of contradictoryAliases) {
+		assert.equal(
+			parseRollupJSON(JSON.stringify({ ...json, [alias]: value })),
+			null,
+			`${alias} must agree with its canonical alias`
+		);
+	}
+
+	for (const content of [basesContent, markdownContent]) {
+		for (const [alias, value] of contradictoryAliases) {
+			assert.equal(
+				parseRollupMarkdown(content, { [alias]: value }),
+				null,
+				`${alias} must agree with frontmatter`
+			);
+		}
+	}
+});
+
 test("JSON, Markdown, and Bases roll-ups require every explicit identity field to match", async () => {
 	const { parseRollupJSON, parseRollupMarkdown } = await loadParsers();
 	const [jsonContent, basesContent, markdownContent] = await Promise.all([
@@ -1458,6 +1524,35 @@ test("JSON, Markdown, and Bases roll-ups require every explicit identity field t
 			null
 		);
 	}
+});
+
+test("v9 roll-up CSV requires the exact nonblank Schema contract while legacy CSV stays structural", async () => {
+	const { parseRollupCSV, detectCsvSchema } = await loadParsers();
+	const [v9Csv, v8Csv] = await Promise.all([
+		readV9RollupFixture("range-v9.csv"),
+		readRollupFixture(8, "weekly.csv"),
+	]);
+	const lines = v9Csv.trimEnd().split("\n");
+	const withoutSchema = lines.map((line) => line.split(",").slice(1).join(",")).join("\n");
+	const blankSchema = lines.map((line, index) => index === 0 ? line : line.replace(/^[^,]*/, "")).join("\n");
+	const wrongSchema = v9Csv.replaceAll("healthmd.rollup_summary,9", "healthmd.rollup-summary,9");
+
+	for (const content of [withoutSchema, blankSchema, wrongSchema]) {
+		assert.equal(parseRollupCSV(content), null);
+		assert.equal(detectCsvSchema(content).kind, "unknown");
+	}
+	assert.ok(parseRollupCSV(v8Csv), "historical unversioned CSV remains accepted");
+	assert.equal(detectCsvSchema(v8Csv).version, 0);
+});
+
+test("roll-up CSV rejects contradictory duplicate contract columns", async () => {
+	const { parseRollupCSV } = await loadParsers();
+	const content = (await readV9RollupFixture("range-v9.csv")).trimEnd();
+	const lines = content.split("\n");
+	const matching = lines.map((line, index) => `${line},${index === 0 ? "periodId" : "2026-07-06_to_2026-07-11"}`).join("\n");
+	const contradictory = lines.map((line, index) => `${line},${index === 0 ? "periodId" : "other-period"}`).join("\n");
+	assert.ok(parseRollupCSV(matching), "matching duplicate aliases remain valid");
+	assert.equal(parseRollupCSV(contradictory), null);
 });
 
 test("roll-up parsers reject explicit malformed schema versions instead of treating them as legacy", async () => {
