@@ -99,7 +99,7 @@ test("roll-up explorer renders v9 ranges while retaining historical calendar fil
 	assert.match(rangeText, /range · 1 shown/);
 	assert.match(rangeText, /2026-07-06_to_2026-07-11/);
 	assert.match(rangeText, /Steps/);
-	assert.match(rangeText, /3000/);
+	assert.match(rangeText, /17500/);
 	assert.doesNotMatch(rangeText, /2026-W28/);
 
 	const weeklyText = renderWithPeriod(renderRollupExplorer, [range, weekly], "weekly");

@@ -13981,6 +13981,21 @@ function readOptionalSchemaVersion(record) {
   }
   return { valid: true, version: version != null ? version : 0 };
 }
+function validCalendarTimezone(value) {
+  const trimmed = value == null ? void 0 : value.trim();
+  return trimmed && trimmed.length <= 64 ? trimmed : void 0;
+}
+function readOptionalCalendarTimezone(record) {
+  let timezone;
+  for (const key of ["calendarTimezone", "calendar_timezone"]) {
+    if (!hasOwn(record, key)) continue;
+    if (typeof record[key] !== "string") return { valid: false };
+    const parsed = validCalendarTimezone(record[key]);
+    if (parsed === void 0 || timezone !== void 0 && parsed !== timezone) return { valid: false };
+    timezone = parsed;
+  }
+  return { valid: true, value: timezone };
+}
 function stringArray(value) {
   if (!Array.isArray(value)) return void 0;
   const result = value.flatMap((item) => {
@@ -14063,6 +14078,9 @@ function buildRollupSummary(record) {
   if (!parsedSchemaVersion.valid) return null;
   const schemaVersion = parsedSchemaVersion.version;
   if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
+  const parsedCalendarTimezone = readOptionalCalendarTimezone(record);
+  if (!parsedCalendarTimezone.valid || schemaVersion === 9 && !parsedCalendarTimezone.value) return null;
+  const calendarTimezone = parsedCalendarTimezone.value;
   const sourceSchemaVersion = firstNumber3(record, "source_schema_version", "sourceSchemaVersion");
   const rollupRulesVersion = firstNumber3(record, "rollup_rules_version", "rollupRulesVersion");
   const sourceDates = stringArray((_d = record.source_dates) != null ? _d : record.sourceDates);
@@ -14080,6 +14098,8 @@ function buildRollupSummary(record) {
     start_date: startDate,
     endDate,
     end_date: endDate,
+    calendarTimezone,
+    calendar_timezone: calendarTimezone,
     daysExpected: firstNumber3(record, "days_expected", "daysExpected", "Days Expected"),
     days_expected: firstNumber3(record, "days_expected", "daysExpected", "Days Expected"),
     daysCounted: firstNumber3(record, "days_counted", "daysCounted", "Days Counted"),
@@ -14233,6 +14253,7 @@ function parseRollupCSV(content) {
   const schemaIndex = indexOfHeader(header, "Schema");
   const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version");
   const rollupRulesVersionIndex = indexOfHeader(header, "Rollup Rules Version", "rollup_rules_version");
+  const calendarTimezoneIndex = indexOfHeader(header, "Calendar Timezone", "calendar_timezone");
   const firstRow = records[1];
   const schema = csvValue(firstRow, schemaIndex);
   if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
@@ -14240,6 +14261,8 @@ function parseRollupCSV(content) {
   const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
   if (schemaVersionIndex >= 0 && parsedSchemaVersion === void 0) return null;
   const schemaVersion = parsedSchemaVersion != null ? parsedSchemaVersion : 0;
+  const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
+  if (schemaVersion === 9 && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
   const periodId = csvValue(firstRow, periodIdIndex);
   const startDate = csvValue(firstRow, startDateIndex);
@@ -14251,6 +14274,7 @@ function parseRollupCSV(content) {
     sourceSchemaIndex,
     sourceSchemaVersionIndex,
     rollupRulesVersionIndex,
+    calendarTimezoneIndex,
     periodIndex,
     periodIdIndex,
     startDateIndex,
@@ -14302,6 +14326,8 @@ function parseRollupCSV(content) {
     start_date: startDate,
     endDate,
     end_date: endDate,
+    calendarTimezone,
+    calendar_timezone: calendarTimezone,
     daysExpected: numberValue2(csvValue(firstRow, daysExpectedIndex)),
     days_expected: numberValue2(csvValue(firstRow, daysExpectedIndex)),
     daysCounted: numberValue2(csvValue(firstRow, daysCountedIndex)),

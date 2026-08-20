@@ -1342,13 +1342,15 @@ test("roll-up parsers dual-read canonical v9 ranges and historical v8 calendars"
 		assert.equal(rollup.schemaVersion, 9);
 		assert.equal(rollup.rollupPeriod, "range");
 		assert.equal(rollup.periodId, "2026-07-06_to_2026-07-11");
+		assert.equal(rollup.calendarTimezone, "UTC");
+		assert.equal(rollup.calendar_timezone, "UTC");
 		assert.equal(rollup.sourceSchemaVersion, 8);
 		assert.equal(rollup.rollupRulesVersion, 8);
 	}
-	assert.equal(rangeRollups[0].metrics?.steps.primaryValue, 3000);
-	assert.equal(rangeRollups[0].metrics?.steps.statistics.sum, 3000);
-	assert.equal(rangeRollups[1].metrics?.steps.primaryValue, 3000);
-	assert.equal(rangeRollups[2].metrics?.steps.primaryValue, 3000);
+	assert.equal(rangeRollups[0].metrics?.steps.primaryValue, 17500);
+	assert.equal(rangeRollups[0].metrics?.steps.statistics.sum, 17500);
+	assert.equal(rangeRollups[1].metrics?.steps.primaryValue, 17500);
+	assert.equal(rangeRollups[2].metrics?.steps.primaryValue, 17500);
 	assert.deepEqual(rangeRollups[0].sourceDates, ["2026-07-06", "2026-07-08", "2026-07-11"]);
 
 	assert.deepEqual(detectJsonSchema(jsonContent), {
@@ -1391,6 +1393,42 @@ test("roll-up parsers dual-read canonical v9 ranges and historical v8 calendars"
 		assert.equal(rollup.startDate, "2026-07-06");
 		assert.equal(rollup.endDate, "2026-07-12");
 		assert.equal(rollup.metrics?.steps.primaryValue, 17500);
+	}
+});
+
+test("v9 roll-up parsers require calendar_timezone while v8 remains historical-compatible", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const [v9Json, v9Csv, v9Bases, v9Markdown, v8Json, v8Csv, v8Bases, v8Markdown] = await Promise.all([
+		readV9RollupFixture("range-v9.json"),
+		readV9RollupFixture("range-v9.csv"),
+		readV9RollupFixture("range-v9-bases.md"),
+		readV9RollupFixture("range-v9.md"),
+		readRollupFixture(8, "weekly.json"),
+		readRollupFixture(8, "weekly.csv"),
+		readRollupFixture(8, "weekly-bases.md"),
+		readRollupFixture(8, "weekly.md"),
+	]);
+	const jsonWithoutTimezone = JSON.parse(v9Json);
+	delete jsonWithoutTimezone.calendar_timezone;
+	const csvWithoutTimezone = v9Csv
+		.replace(",Calendar Timezone,", ",")
+		.replaceAll(",8,UTC,range,", ",8,range,");
+
+	assert.equal(parseRollupJSON(JSON.stringify(jsonWithoutTimezone)), null);
+	assert.equal(parseRollupCSV(csvWithoutTimezone), null);
+	assert.equal(parseRollupMarkdown(v9Bases.replace(/^calendar_timezone:.*\n/m, "")), null);
+	assert.equal(parseRollupMarkdown(v9Markdown.replace(/^calendar_timezone:.*\n/m, "")), null);
+	assert.equal(parseRollupJSON(JSON.stringify({ ...JSON.parse(v9Json), calendarTimezone: "America/New_York" })), null);
+
+	for (const rollup of [
+		parseRollupJSON(v8Json),
+		parseRollupCSV(v8Csv),
+		parseRollupMarkdown(v8Bases),
+		parseRollupMarkdown(v8Markdown),
+	]) {
+		assert.ok(rollup);
+		assert.equal(rollup.calendarTimezone, undefined);
+		assert.equal(rollup.calendar_timezone, undefined);
 	}
 });
 
@@ -1464,9 +1502,9 @@ test("roll-up parsers reject invalid schema-version and period combinations in e
 
 	const invalidV9Calendars = [
 		parseRollupJSON(v9Json
-			.replace('"rollup_period": "range"', '"rollup_period": "weekly"')
-			.replace('"period_id": "2026-07-06_to_2026-07-11"', '"period_id": "2026-W28"')
-			.replace('"end_date": "2026-07-11"', '"end_date": "2026-07-12"')),
+			.replace('"rollup_period" : "range"', '"rollup_period" : "weekly"')
+			.replace('"period_id" : "2026-07-06_to_2026-07-11"', '"period_id" : "2026-W28"')
+			.replace('"end_date" : "2026-07-11"', '"end_date" : "2026-07-12"')),
 		parseRollupCSV(v9Csv.replace(",range,2026-07-06_to_2026-07-11,2026-07-06,2026-07-11,", ",weekly,2026-W28,2026-07-06,2026-07-12,")),
 		parseRollupMarkdown(v9Bases
 			.replace("rollup_period: range", "rollup_period: weekly")
@@ -1501,7 +1539,7 @@ test("roll-up parsers reject unknown future versions above v9 in every format", 
 		readV9RollupFixture("range-v9.md"),
 	]);
 	const futureRollups = [
-		parseRollupJSON(jsonContent.replace('"schema_version": 9', '"schema_version": 10')),
+		parseRollupJSON(jsonContent.replace('"schema_version" : 9', '"schema_version" : 10')),
 		parseRollupCSV(csvContent.replace("healthmd.rollup_summary,9", "healthmd.rollup_summary,10")),
 		parseRollupMarkdown(basesContent.replace("schema_version: 9", "schema_version: 10")),
 		parseRollupMarkdown(markdownContent.replace("schema_version: 9", "schema_version: 10")),
@@ -1515,6 +1553,7 @@ test("roll-up period IDs use canonical grammar and exactly match their date span
 		type: "health_rollup",
 		schema: "healthmd.rollup_summary",
 		...(schemaVersion === undefined ? {} : { schema_version: schemaVersion }),
+		...(schemaVersion === 9 ? { calendar_timezone: "UTC" } : {}),
 		rollup_period: rollupPeriod,
 		period_id: periodId,
 		start_date: startDate,
@@ -1558,6 +1597,7 @@ test("roll-up CSV requires every row to retain first-row contract metadata", asy
 		"Source Schema",
 		"Source Schema Version",
 		"Rollup Rules Version",
+		"Calendar Timezone",
 		"Period",
 		"Period ID",
 		"Start Date",

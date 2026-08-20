@@ -162,6 +162,8 @@ export interface HealthRollupSummary {
 	start_date?: string;
 	endDate?: string;
 	end_date?: string;
+	calendarTimezone?: string;
+	calendar_timezone?: string;
 	daysExpected?: number;
 	days_expected?: number;
 	daysCounted?: number;

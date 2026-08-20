@@ -187,6 +187,23 @@ function readOptionalSchemaVersion(record: Record<string, unknown>): { valid: bo
 	return { valid: true, version: version ?? 0 };
 }
 
+function validCalendarTimezone(value: string | undefined): string | undefined {
+	const trimmed = value?.trim();
+	return trimmed && trimmed.length <= 64 ? trimmed : undefined;
+}
+
+function readOptionalCalendarTimezone(record: Record<string, unknown>): { valid: boolean; value?: string } {
+	let timezone: string | undefined;
+	for (const key of ["calendarTimezone", "calendar_timezone"]) {
+		if (!hasOwn(record, key)) continue;
+		if (typeof record[key] !== "string") return { valid: false };
+		const parsed = validCalendarTimezone(record[key]);
+		if (parsed === undefined || (timezone !== undefined && parsed !== timezone)) return { valid: false };
+		timezone = parsed;
+	}
+	return { valid: true, value: timezone };
+}
+
 function stringArray(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const result = value.flatMap((item) => {
@@ -272,6 +289,9 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 	if (!parsedSchemaVersion.valid) return null;
 	const schemaVersion = parsedSchemaVersion.version;
 	if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
+	const parsedCalendarTimezone = readOptionalCalendarTimezone(record);
+	if (!parsedCalendarTimezone.valid || (schemaVersion === 9 && !parsedCalendarTimezone.value)) return null;
+	const calendarTimezone = parsedCalendarTimezone.value;
 	const sourceSchemaVersion = firstNumber(record, "source_schema_version", "sourceSchemaVersion");
 	const rollupRulesVersion = firstNumber(record, "rollup_rules_version", "rollupRulesVersion");
 	const sourceDates = stringArray(record.source_dates ?? record.sourceDates);
@@ -290,6 +310,8 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 		start_date: startDate,
 		endDate,
 		end_date: endDate,
+		calendarTimezone,
+		calendar_timezone: calendarTimezone,
 		daysExpected: firstNumber(record, "days_expected", "daysExpected", "Days Expected"),
 		days_expected: firstNumber(record, "days_expected", "daysExpected", "Days Expected"),
 		daysCounted: firstNumber(record, "days_counted", "daysCounted", "Days Counted"),
@@ -458,6 +480,7 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 	const schemaIndex = indexOfHeader(header, "Schema");
 	const schemaVersionIndex = indexOfHeader(header, "Schema Version", "schema_version");
 	const rollupRulesVersionIndex = indexOfHeader(header, "Rollup Rules Version", "rollup_rules_version");
+	const calendarTimezoneIndex = indexOfHeader(header, "Calendar Timezone", "calendar_timezone");
 
 	const firstRow = records[1];
 	const schema = csvValue(firstRow, schemaIndex);
@@ -466,6 +489,8 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 	const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
 	if (schemaVersionIndex >= 0 && parsedSchemaVersion === undefined) return null;
 	const schemaVersion = parsedSchemaVersion ?? 0;
+	const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
+	if (schemaVersion === 9 && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
 	const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
 	const periodId = csvValue(firstRow, periodIdIndex);
 	const startDate = csvValue(firstRow, startDateIndex);
@@ -480,6 +505,7 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 		sourceSchemaIndex,
 		sourceSchemaVersionIndex,
 		rollupRulesVersionIndex,
+		calendarTimezoneIndex,
 		periodIndex,
 		periodIdIndex,
 		startDateIndex,
@@ -533,6 +559,8 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 		start_date: startDate,
 		endDate,
 		end_date: endDate,
+		calendarTimezone,
+		calendar_timezone: calendarTimezone,
 		daysExpected: numberValue(csvValue(firstRow, daysExpectedIndex)),
 		days_expected: numberValue(csvValue(firstRow, daysExpectedIndex)),
 		daysCounted: numberValue(csvValue(firstRow, daysCountedIndex)),

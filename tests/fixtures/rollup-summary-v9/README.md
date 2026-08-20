@@ -5,16 +5,16 @@ These synthetic fixtures are pinned, byte-for-byte copies of Health.md's public 
 Upstream provenance:
 
 - Repository: `https://github.com/CodyBontecou/health-md.git`
-- Commit: `f7eca2d44bb80110aa00a91efebe45dfc60cd689`
+- Commit: `6cd6aa935327ecf111b300bf845d8a8a112e8b48`
 - Path: `packages/contracts/rollup-summary/v9/fixtures/`
 
 SHA-256 checksums:
 
 ```text
-7e33a665d18f0b671dea1548e7e11d5c03d420ae0ad308857754256a378eee78  range-v9-bases.md
-05a49bae67ef5e5eccec43262ce556d23fc57ecc91a5cc04f3940bb54da27809  range-v9.csv
-70ad121e1bd5cb1de03415792eed863e2060c5e20b266a67b4ef8d5edd7f40f3  range-v9.json
-0ff95a7c634f63f79e5e82f1652202ac159bf8fe158a7494a27daef68a06af31  range-v9.md
+8c09db1a0af44294ef051476f2ac727ed42ae66e7c51b693d5dfdaa4d9e136ec  range-v9-bases.md
+6e72ba48289c5302a44636427d3d9747fe9297eb86b482d544411b2167208eb7  range-v9.csv
+3dbf93498ee3ecd1dafde2408c40ebb66c01d42b6107973c48176893c6668b2b  range-v9.json
+1c9307fd17cd84bb3d99b6062a2de40718572a07ae891fb69c28b1eee14fe2a4  range-v9.md
 ```
 
-V9 uses `rollup_period: range`; historical weekly, monthly, and yearly artifacts remain on roll-up schema v8 and are covered separately by compatibility tests.
+V9 uses `rollup_period: range` and requires the requested range's `calendar_timezone`; historical weekly, monthly, and yearly artifacts remain on roll-up schema v8 and are covered separately by compatibility tests.
