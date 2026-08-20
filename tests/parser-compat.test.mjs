@@ -1394,6 +1394,61 @@ test("roll-up parsers dual-read canonical v9 ranges and historical v8 calendars"
 	}
 });
 
+test("JSON, Markdown, and Bases roll-ups require every explicit identity field to match", async () => {
+	const { parseRollupJSON, parseRollupMarkdown } = await loadParsers();
+	const [jsonContent, basesContent, markdownContent] = await Promise.all([
+		readV9RollupFixture("range-v9.json"),
+		readV9RollupFixture("range-v9-bases.md"),
+		readV9RollupFixture("range-v9.md"),
+	]);
+	const json = JSON.parse(jsonContent);
+
+	assert.ok(parseRollupJSON(JSON.stringify({ ...json, schema: undefined })));
+	assert.ok(parseRollupJSON(JSON.stringify({ ...json, type: undefined })));
+	assert.equal(parseRollupJSON(JSON.stringify({ ...json, schema: "healthmd.health_data" })), null);
+	assert.equal(parseRollupJSON(JSON.stringify({ ...json, type: "health-data" })), null);
+
+	for (const content of [basesContent, markdownContent]) {
+		assert.ok(parseRollupMarkdown(content.replace(/^schema:.*\n/m, "")));
+		assert.ok(parseRollupMarkdown(content.replace(/^type:.*\n/m, "")));
+		assert.equal(
+			parseRollupMarkdown(content.replace(/^schema:.*$/m, "schema: healthmd.health_data")),
+			null
+		);
+		assert.equal(
+			parseRollupMarkdown(content.replace(/^type:.*$/m, "type: health-data")),
+			null
+		);
+	}
+});
+
+test("roll-up parsers reject explicit malformed schema versions instead of treating them as legacy", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const [v8Json, v8Bases, v8Markdown, v9Csv] = await Promise.all([
+		readRollupFixture(8, "weekly.json"),
+		readRollupFixture(8, "weekly-bases.md"),
+		readRollupFixture(8, "weekly.md"),
+		readV9RollupFixture("range-v9.csv"),
+	]);
+	const malformedJson = JSON.parse(v8Json);
+	malformedJson.schema_version = "not-a-version";
+
+	const csvRows = v9Csv.trimEnd().split("\n").map((line) => line.split(","));
+	const csvHeader = csvRows[0];
+	for (const row of csvRows.slice(1)) {
+		row[csvHeader.indexOf("Schema Version")] = "not-a-version";
+		row[csvHeader.indexOf("Period")] = "weekly";
+		row[csvHeader.indexOf("Period ID")] = "2026-W28";
+		row[csvHeader.indexOf("End Date")] = "2026-07-12";
+	}
+	const malformedCsv = `${csvRows.map((row) => row.join(",")).join("\n")}\n`;
+
+	assert.equal(parseRollupJSON(JSON.stringify(malformedJson)), null);
+	assert.equal(parseRollupCSV(malformedCsv), null);
+	assert.equal(parseRollupMarkdown(v8Bases.replace("schema_version: 8", "schema_version: not-a-version")), null);
+	assert.equal(parseRollupMarkdown(v8Markdown.replace("schema_version: 8", "schema_version: not-a-version")), null);
+});
+
 test("roll-up parsers reject invalid schema-version and period combinations in every format", async () => {
 	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
 	const [v9Json, v9Csv, v9Bases, v9Markdown, v8Json, v8Csv, v8Bases, v8Markdown] = await Promise.all([

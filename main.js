@@ -13951,6 +13951,36 @@ function firstNumber3(record, ...keys) {
   }
   return void 0;
 }
+function hasOwn(record, key) {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+function validateIdentityField(record, keys, expected) {
+  let present = false;
+  for (const key of keys) {
+    if (!hasOwn(record, key)) continue;
+    present = true;
+    if (record[key] !== expected) return { present, valid: false };
+  }
+  return { present, valid: true };
+}
+function strictSchemaVersion(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || value.trim() === "") return void 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : void 0;
+}
+function readOptionalSchemaVersion(record) {
+  let version;
+  for (const key of ["schemaVersion", "schema_version"]) {
+    if (!hasOwn(record, key)) continue;
+    const parsed = strictSchemaVersion(record[key]);
+    if (parsed === void 0 || version !== void 0 && parsed !== version) {
+      return { valid: false, version: 0 };
+    }
+    version = parsed;
+  }
+  return { valid: true, version: version != null ? version : 0 };
+}
 function stringArray(value) {
   if (!Array.isArray(value)) return void 0;
   const result = value.flatMap((item) => {
@@ -14021,18 +14051,17 @@ function normalizeMetrics(record) {
 }
 function buildRollupSummary(record) {
   var _a, _b, _c, _d;
-  const schema = firstString3(record, "schema", "Schema");
-  const type = firstString3(record, "type", "Type");
-  if (schema !== HEALTHMD_ROLLUP_SCHEMA && type !== "health_rollup") return null;
+  const schemaIdentity = validateIdentityField(record, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
+  const typeIdentity = validateIdentityField(record, ["type", "Type"], "health_rollup");
+  if (!schemaIdentity.valid || !typeIdentity.valid || !schemaIdentity.present && !typeIdentity.present) return null;
   const rollupPeriod = normalizePeriod((_c = (_b = (_a = record.rollup_period) != null ? _a : record.rollupPeriod) != null ? _b : record.period) != null ? _c : record.Period);
   const periodId = firstString3(record, "period_id", "periodId", "Period ID", "periodID");
   const startDate = firstString3(record, "start_date", "startDate", "Start Date");
   const endDate = firstString3(record, "end_date", "endDate", "End Date");
   if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
-  const schemaVersion = schemaVersionOf({
-    schemaVersion: record.schemaVersion,
-    schema_version: record.schema_version
-  });
+  const parsedSchemaVersion = readOptionalSchemaVersion(record);
+  if (!parsedSchemaVersion.valid) return null;
+  const schemaVersion = parsedSchemaVersion.version;
   if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
   const sourceSchemaVersion = firstNumber3(record, "source_schema_version", "sourceSchemaVersion");
   const rollupRulesVersion = firstNumber3(record, "rollup_rules_version", "rollupRulesVersion");
@@ -14176,7 +14205,7 @@ function csvValue(row, index) {
   return value ? value : void 0;
 }
 function parseRollupCSV(content) {
-  var _a, _b, _c, _d;
+  var _a, _b, _c;
   const records = Array.from(iterateCsvRecords(content)).filter((row) => !isBlankCsvRecord(row));
   if (records.length < 2) return null;
   const header = records[0].map(normalizeCsvLabel2);
@@ -14207,7 +14236,10 @@ function parseRollupCSV(content) {
   const firstRow = records[1];
   const schema = csvValue(firstRow, schemaIndex);
   if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
-  const schemaVersion = (_a = numberValue2(csvValue(firstRow, schemaVersionIndex))) != null ? _a : 0;
+  const rawSchemaVersion = csvValue(firstRow, schemaVersionIndex);
+  const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
+  if (schemaVersionIndex >= 0 && parsedSchemaVersion === void 0) return null;
+  const schemaVersion = parsedSchemaVersion != null ? parsedSchemaVersion : 0;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
   const periodId = csvValue(firstRow, periodIdIndex);
   const startDate = csvValue(firstRow, startDateIndex);
@@ -14233,9 +14265,9 @@ function parseRollupCSV(content) {
   const metrics = {};
   const units = {};
   for (const row of records.slice(1)) {
-    const metricKey = (_c = (_b = csvValue(row, canonicalKeyIndex)) != null ? _b : csvValue(row, keyIndex)) != null ? _c : csvValue(row, metricIndex);
+    const metricKey = (_b = (_a = csvValue(row, canonicalKeyIndex)) != null ? _a : csvValue(row, keyIndex)) != null ? _b : csvValue(row, metricIndex);
     if (!metricKey) continue;
-    const existing = (_d = metrics[metricKey]) != null ? _d : {
+    const existing = (_c = metrics[metricKey]) != null ? _c : {
       key: csvValue(row, keyIndex),
       canonicalKey: metricKey,
       category: csvValue(row, categoryIndex),

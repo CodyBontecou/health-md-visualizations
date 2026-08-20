@@ -1,7 +1,6 @@
 import {
 	HEALTHMD_ROLLUP_SCHEMA,
 	HealthMdUnitMap,
-	schemaVersionOf,
 } from "../healthmd-schema";
 import { isBlankCsvRecord, iterateCsvRecords } from "../csv-utils";
 import {
@@ -150,6 +149,44 @@ function firstNumber(record: Record<string, unknown>, ...keys: string[]): number
 	return undefined;
 }
 
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+	return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function validateIdentityField(
+	record: Record<string, unknown>,
+	keys: string[],
+	expected: string
+): { present: boolean; valid: boolean } {
+	let present = false;
+	for (const key of keys) {
+		if (!hasOwn(record, key)) continue;
+		present = true;
+		if (record[key] !== expected) return { present, valid: false };
+	}
+	return { present, valid: true };
+}
+
+function strictSchemaVersion(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value !== "string" || value.trim() === "") return undefined;
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readOptionalSchemaVersion(record: Record<string, unknown>): { valid: boolean; version: number } {
+	let version: number | undefined;
+	for (const key of ["schemaVersion", "schema_version"]) {
+		if (!hasOwn(record, key)) continue;
+		const parsed = strictSchemaVersion(record[key]);
+		if (parsed === undefined || (version !== undefined && parsed !== version)) {
+			return { valid: false, version: 0 };
+		}
+		version = parsed;
+	}
+	return { valid: true, version: version ?? 0 };
+}
+
 function stringArray(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const result = value.flatMap((item) => {
@@ -221,9 +258,9 @@ function normalizeMetrics(record: Record<string, unknown>): Record<string, Healt
 }
 
 function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummary | null {
-	const schema = firstString(record, "schema", "Schema");
-	const type = firstString(record, "type", "Type");
-	if (schema !== HEALTHMD_ROLLUP_SCHEMA && type !== "health_rollup") return null;
+	const schemaIdentity = validateIdentityField(record, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
+	const typeIdentity = validateIdentityField(record, ["type", "Type"], "health_rollup");
+	if (!schemaIdentity.valid || !typeIdentity.valid || (!schemaIdentity.present && !typeIdentity.present)) return null;
 
 	const rollupPeriod = normalizePeriod(record.rollup_period ?? record.rollupPeriod ?? record.period ?? record.Period);
 	const periodId = firstString(record, "period_id", "periodId", "Period ID", "periodID");
@@ -231,10 +268,9 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 	const endDate = firstString(record, "end_date", "endDate", "End Date");
 	if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
 
-	const schemaVersion = schemaVersionOf({
-		schemaVersion: record.schemaVersion,
-		schema_version: record.schema_version,
-	});
+	const parsedSchemaVersion = readOptionalSchemaVersion(record);
+	if (!parsedSchemaVersion.valid) return null;
+	const schemaVersion = parsedSchemaVersion.version;
 	if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
 	const sourceSchemaVersion = firstNumber(record, "source_schema_version", "sourceSchemaVersion");
 	const rollupRulesVersion = firstNumber(record, "rollup_rules_version", "rollupRulesVersion");
@@ -426,7 +462,10 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 	const firstRow = records[1];
 	const schema = csvValue(firstRow, schemaIndex);
 	if (schema !== undefined && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
-	const schemaVersion = numberValue(csvValue(firstRow, schemaVersionIndex)) ?? 0;
+	const rawSchemaVersion = csvValue(firstRow, schemaVersionIndex);
+	const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
+	if (schemaVersionIndex >= 0 && parsedSchemaVersion === undefined) return null;
+	const schemaVersion = parsedSchemaVersion ?? 0;
 	const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
 	const periodId = csvValue(firstRow, periodIdIndex);
 	const startDate = csvValue(firstRow, startDateIndex);
