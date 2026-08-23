@@ -9838,6 +9838,74 @@ function parseJsonObjectExcluding(content, omittedKeys) {
     return null;
   }
 }
+function scanScalar(content, start) {
+  if (content[start] === '"') {
+    const stringEnd = scanStringEnd(content, start);
+    if (stringEnd === null || stringEnd - start > 256) return null;
+    try {
+      return { value: JSON.parse(content.slice(start, stringEnd)), end: stringEnd };
+    } catch (e) {
+      return null;
+    }
+  }
+  let index = start;
+  if (content[index] === "-") index++;
+  const digitsStart = index;
+  while (index < content.length && /[0-9.]/.test(content[index])) index++;
+  if (index === digitsStart) return null;
+  const value = Number(content.slice(start, index));
+  return Number.isFinite(value) ? { value, end: index } : null;
+}
+function scanStructuredValueCollectingScalars(content, start, scalarKeys) {
+  if (content[start] !== "{") return null;
+  const topLevelScalars = {};
+  let depth = 0;
+  let index = start;
+  let pendingKey = null;
+  while (index < content.length) {
+    const char = content[index];
+    if (char === '"') {
+      const stringEnd = scanStringEnd(content, index);
+      if (stringEnd === null) return null;
+      if (depth === 1) {
+        try {
+          const key = JSON.parse(content.slice(index, stringEnd));
+          pendingKey = scalarKeys.has(key) ? key : null;
+        } catch (e) {
+          pendingKey = null;
+        }
+      }
+      index = stringEnd;
+      continue;
+    }
+    if (char === ":" && depth === 1 && pendingKey) {
+      const valueStart = skipWhitespace(content, index + 1);
+      const scalar = scanScalar(content, valueStart);
+      if (scalar) {
+        topLevelScalars[pendingKey] = scalar.value;
+        index = scalar.end;
+      } else {
+        index = index + 1;
+      }
+      pendingKey = null;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      depth++;
+      index++;
+      continue;
+    }
+    if (char === "}" || char === "]") {
+      depth--;
+      index++;
+      if (depth === 0) return { valueEnd: index, topLevelScalars };
+      continue;
+    }
+    if (char === ",") pendingKey = null;
+    index++;
+  }
+  return null;
+}
 function parseTopLevelJsonProperty(rawObject, key) {
   var _a;
   const property = (_a = topLevelJsonObjectProperties(rawObject)) == null ? void 0 : _a.find((item) => item.key === key);
@@ -11430,21 +11498,7 @@ function getMoodDaySummary(day) {
 // src/parsers/json-parser.ts
 var OMITTED_ROOT_KEYS = /* @__PURE__ */ new Set(["healthkit_record_archive"]);
 var LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH = 512 * 1024;
-var ROOT_KEYS_AFTER_ARCHIVE = [
-  "hearing",
-  "heart",
-  "medications",
-  "mobility",
-  "other",
-  "raw_capture_status",
-  "schema",
-  "schema_version",
-  "time_context",
-  "type",
-  "unit_system",
-  "units",
-  "vitals"
-];
+var ARCHIVE_ENVELOPE_SCALAR_KEYS = /* @__PURE__ */ new Set(["schema", "schema_version", "capture_status"]);
 var CAPTURE_STATUSES = /* @__PURE__ */ new Set([
   "complete",
   "partial",
@@ -11460,34 +11514,7 @@ function stringValue3(value) {
 function numberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : void 0;
 }
-function compactArchiveMetadata(content, valueStart, valueEnd) {
-  const edges = `${content.slice(valueStart, Math.min(valueEnd, valueStart + 4096))}
-${content.slice(Math.max(valueStart, valueEnd - 4096), valueEnd)}`;
-  const stringProperty = (key) => {
-    const match = edges.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*("(?:\\\\.|[^"\\\\])*")`));
-    if (!match) return void 0;
-    try {
-      return JSON.parse(match[1]);
-    } catch (e) {
-      return void 0;
-    }
-  };
-  const numberProperty = (key) => {
-    const match = edges.match(new RegExp(`${JSON.stringify(key)}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`));
-    if (!match) return void 0;
-    const value = Number(match[1]);
-    return Number.isFinite(value) ? value : void 0;
-  };
-  const metadata = {
-    capture_status: stringProperty("capture_status"),
-    schema: stringProperty("schema"),
-    schema_version: numberProperty("schema_version")
-  };
-  for (const key of Object.keys(metadata)) if (metadata[key] === void 0) delete metadata[key];
-  return JSON.stringify(metadata);
-}
 function parseLargeHealthDataEnvelope(content) {
-  var _a;
   if (content.length < LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH) return null;
   const archiveKey = JSON.stringify("healthkit_record_archive");
   const keyStart = content.indexOf(archiveKey);
@@ -11498,16 +11525,26 @@ function parseLargeHealthDataEnvelope(content) {
   while (/\s/.test(content[valueStart])) valueStart++;
   if (content[valueStart++] !== ":") return null;
   while (/\s/.test(content[valueStart])) valueStart++;
-  if (content[valueStart] !== "{") return null;
-  const suffixStart = (_a = ROOT_KEYS_AFTER_ARCHIVE.map((key) => content.lastIndexOf(JSON.stringify(key))).find((index) => index > valueStart)) != null ? _a : -1;
-  if (suffixStart < 0 || content.slice(valueStart, suffixStart).trimEnd().at(-1) !== ",") return null;
+  const scan = scanStructuredValueCollectingScalars(content, valueStart, ARCHIVE_ENVELOPE_SCALAR_KEYS);
+  if (!scan) return null;
+  let head = beforeKey;
+  let restStart = scan.valueEnd;
+  while (/\s/.test(content[restStart])) restStart++;
+  if (content[restStart] === ",") {
+    restStart++;
+  } else if (content[restStart] === "}") {
+    head = beforeKey.trimEnd().slice(0, -1);
+  } else {
+    return null;
+  }
   try {
-    const record = JSON.parse(`${beforeKey}${content.slice(suffixStart)}`);
+    const record = JSON.parse(`${head}${content.slice(restStart)}`);
     if (!isRecord4(record) || record.type !== "health-data") return null;
+    if ("healthkit_record_archive" in record) return null;
     return {
       record,
       omittedValues: {
-        healthkit_record_archive: compactArchiveMetadata(content, valueStart, suffixStart)
+        healthkit_record_archive: JSON.stringify(scan.topLevelScalars)
       }
     };
   } catch (e) {
@@ -14311,6 +14348,7 @@ var DataLoader = class {
     this.metadataCache = metadataCache;
     this.cache = null;
     this.loadPromise = null;
+    this.loadGeneration = 0;
     this.rollupCache = [];
     this.dataDictionary = null;
     this.lastLoad = 0;
@@ -14324,14 +14362,15 @@ var DataLoader = class {
     if (this.loadPromise) {
       return this.loadPromise;
     }
-    this.loadPromise = this.loadFresh();
+    const generation = this.loadGeneration;
+    this.loadPromise = this.loadFresh(generation);
     try {
       return await this.loadPromise;
     } finally {
-      this.loadPromise = null;
+      if (this.loadGeneration === generation) this.loadPromise = null;
     }
   }
-  async loadFresh() {
+  async loadFresh(generation) {
     var _a, _b, _c, _d, _e, _f;
     const pattern = this.settings.filePattern || "*";
     const files = this.getDataFiles(pattern);
@@ -14339,7 +14378,7 @@ var DataLoader = class {
     const dictionaryLoad = await this.loadDataDictionaryAliases([...files, ...rollupFiles]);
     const frontmatterAliases = dictionaryLoad.dictionary.aliases;
     const dictionaryUnits = dictionaryLoad.dictionary.unitsByCanonicalKey;
-    this.dataDictionary = dictionaryLoad.loaded ? dictionaryLoad.dictionary : null;
+    const dataDictionary = dictionaryLoad.loaded ? dictionaryLoad.dictionary : null;
     const report = emptyLoadReport();
     report.dictionaryLoaded = dictionaryLoad.loaded;
     report.dictionaryEntries = dictionaryLoad.dictionary.entries.length;
@@ -14430,11 +14469,11 @@ var DataLoader = class {
         byDate.set(day.date, mergeDays(existing, day));
       }
     }
-    this.cache = Array.from(byDate.values()).sort(
+    const cache = Array.from(byDate.values()).sort(
       (a, b) => a.date.localeCompare(b.date)
     );
-    this.rollupCache = dedupeRollups(rollups);
-    for (const day of this.cache) {
+    const rollupCache = dedupeRollups(rollups);
+    for (const day of cache) {
       const capture = day.rawCapture;
       if (!capture) continue;
       report.captureStatuses[capture.status] = ((_e = report.captureStatuses[capture.status]) != null ? _e : 0) + 1;
@@ -14450,14 +14489,19 @@ var DataLoader = class {
       }
     }
     report.archiveSchemaVersions.sort((a, b) => a - b);
-    report.loadedDays = this.cache.length;
-    report.loadedRollups = this.rollupCache.length;
-    report.rollupPeriods = Array.from(new Set(this.rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
+    report.loadedDays = cache.length;
+    report.loadedRollups = rollupCache.length;
+    report.rollupPeriods = Array.from(new Set(rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
     report.schemaVersions = Array.from(schemaVersions).sort((a, b) => a - b);
     report.rollupSchemaVersions = Array.from(rollupSchemaVersions).sort((a, b) => a - b);
-    this.lastReport = report;
-    this.lastLoad = Date.now();
-    return this.cache;
+    if (this.loadGeneration === generation) {
+      this.cache = cache;
+      this.rollupCache = rollupCache;
+      this.dataDictionary = dataDictionary;
+      this.lastReport = report;
+      this.lastLoad = Date.now();
+    }
+    return cache;
   }
   async loadRollups() {
     await this.load();
@@ -14553,6 +14597,8 @@ var DataLoader = class {
     }
   }
   invalidate() {
+    this.loadGeneration++;
+    this.loadPromise = null;
     this.cache = null;
     this.rollupCache = [];
     this.dataDictionary = null;
