@@ -10,6 +10,7 @@ import {
 	countTopLevelJsonArrayProperty,
 	parseJsonObjectExcluding,
 	parseTopLevelJsonProperty,
+	scanStructuredValueCollectingScalars,
 } from "../json-utils";
 import { normalizeMedicationFields } from "../medication-utils";
 import { attachCanonicalMetrics } from "../summary-metric-normalizer";
@@ -23,6 +24,8 @@ import {
 } from "../types";
 
 const OMITTED_ROOT_KEYS = new Set(["healthkit_record_archive"]);
+const LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH = 512 * 1024;
+const ARCHIVE_ENVELOPE_SCALAR_KEYS = new Set(["schema", "schema_version", "capture_status"]);
 const CAPTURE_STATUSES = new Set<RawCaptureStatus>([
 	"complete",
 	"partial",
@@ -40,6 +43,61 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Splice an oversized embedded `healthkit_record_archive` out of a daily JSON
+ * document without walking it once per diagnostic lookup.
+ *
+ * A single bounded scan locates the archive's closing brace and lifts its
+ * scalar envelope (schema, schema_version, capture_status), so the fast path
+ * is layout-agnostic: the archive may be the first, middle, or final root
+ * property, and every sibling summary section around it is preserved exactly.
+ * Falls back to the selective parser when anything about the layout is
+ * unexpected.
+ */
+function parseLargeHealthDataEnvelope(content: string): { record: Record<string, unknown>; omittedValues: Record<string, string> } | null {
+	if (content.length < LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH) return null;
+	const archiveKey = JSON.stringify("healthkit_record_archive");
+	const keyStart = content.indexOf(archiveKey);
+	if (keyStart < 0) return null;
+	const beforeKey = content.slice(0, keyStart);
+	if (!beforeKey.trimEnd().endsWith(",")) return null;
+	let valueStart = keyStart + archiveKey.length;
+	while (/\s/.test(content[valueStart])) valueStart++;
+	if (content[valueStart++] !== ":") return null;
+	while (/\s/.test(content[valueStart])) valueStart++;
+
+	const scan = scanStructuredValueCollectingScalars(content, valueStart, ARCHIVE_ENVELOPE_SCALAR_KEYS);
+	if (!scan) return null;
+
+	let head = beforeKey;
+	let restStart = scan.valueEnd;
+	while (/\s/.test(content[restStart])) restStart++;
+	if (content[restStart] === ",") {
+		restStart++;
+	} else if (content[restStart] === "}") {
+		// The archive is the final root property; drop the comma that preceded it.
+		head = beforeKey.trimEnd().slice(0, -1);
+	} else {
+		return null;
+	}
+
+	try {
+		const record = JSON.parse(`${head}${content.slice(restStart)}`) as unknown;
+		if (!isRecord(record) || record.type !== "health-data") return null;
+		// The matched archive key was nested inside another section rather than
+		// a root property; the selective parser handles that document shape.
+		if ("healthkit_record_archive" in record) return null;
+		return {
+			record,
+			omittedValues: {
+				healthkit_record_archive: JSON.stringify(scan.topLevelScalars),
+			},
+		};
+	} catch {
+		return null;
+	}
 }
 
 function captureStatus(value: unknown): RawCaptureStatus | undefined {
@@ -215,7 +273,7 @@ function normalizedMedicationSource(root: Record<string, unknown>): Record<strin
 
 export function parseJSON(content: string): HealthDay | null {
 	try {
-		const selective = parseJsonObjectExcluding(content, OMITTED_ROOT_KEYS);
+		const selective = parseLargeHealthDataEnvelope(content) ?? parseJsonObjectExcluding(content, OMITTED_ROOT_KEYS);
 		if (!selective) return null;
 		const parsed = selective.record;
 

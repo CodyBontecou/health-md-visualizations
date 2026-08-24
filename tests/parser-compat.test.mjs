@@ -1952,6 +1952,9 @@ ${rawRows}`);
 test("large and future source-record archives never enter dashboard data", async () => {
 	const { parseJSON } = await loadParsers();
 	const marker = "private-payload-marker";
+	// Stays below the 512 KiB fast-path threshold so this test keeps covering the
+	// selective parser's detailed diagnostics (record counts, query manifests).
+	// Oversized archives are covered by the fast-path tests below.
 	const day = parseJSON(JSON.stringify({
 		schema: "healthmd.health_data",
 		schema_version: 7,
@@ -1963,7 +1966,7 @@ test("large and future source-record archives never enter dashboard data", async
 			schema: "healthmd.healthkit_records",
 			schema_version: 2,
 			capture_status: "complete",
-			records: [{ payload: marker.repeat(100000) }],
+			records: [{ payload: marker.repeat(20000) }],
 			external_records: [],
 			query_manifest: { results: [] },
 			integrity_warnings: [],
@@ -1972,8 +1975,192 @@ test("large and future source-record archives never enter dashboard data", async
 	assert.ok(day);
 	assert.equal(day.activity?.steps, 0);
 	assert.equal(day.rawCapture?.recordCount, 1);
+	assert.equal(day.rawCapture?.archiveVersion, 2);
 	assert.ok(day.rawCapture?.validationIssues?.some((issue) => issue.includes("archive v2")));
 	const cached = JSON.stringify(day);
 	assert.ok(cached.length < 5000);
 	assert.ok(!cached.includes(marker));
+});
+
+test("oversized source-record archives preserve summary fields that follow the archive", async () => {
+	const { parseJSON } = await loadParsers();
+	const archivePadding = "x".repeat(600_000);
+	const content = JSON.stringify({
+		type: "health-data",
+		date: "2026-08-10",
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		raw_capture_status: "complete",
+		activity: { steps: 1234 },
+		healthkit_record_archive: {
+			schema: "healthmd.healthkit_records",
+			schema_version: 1,
+			capture_status: "complete",
+			records: [{ metadata: archivePadding }],
+		},
+		heart: { restingHeartRate: 57 },
+		vitals: { respiratoryRate: 14 },
+	});
+
+	const day = parseJSON(content);
+	assert.equal(day?.activity?.steps, 1234);
+	assert.equal(day?.heart?.restingHeartRate, 57);
+	assert.equal(day?.vitals?.respiratoryRate, 14);
+	assert.equal(day?.rawCapture?.status, "complete");
+	assert.equal(day?.rawCapture?.archiveVersion, 1);
+	assert.equal(day?.rawCapture?.recordCount, undefined);
+	assert.ok(!JSON.stringify(day).includes(archivePadding));
+});
+
+test("oversized archive as the final root property engages the fast path (real exporter layout)", async () => {
+	const { parseJSON } = await loadParsers();
+	const archivePadding = "x".repeat(600_000);
+	// Mirrors apps/apple/HealthMd/Shared/Export/JSONExporter.swift: summary
+	// sections precede the archive; nothing (or only diagnostics) follows it.
+	const content = JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		date: "2026-08-10",
+		type: "health-data",
+		time_context: { calendar_timezone: "America/Chicago", timestamp_timezone: "UTC" },
+		unit_system: "metric",
+		units: { steps: "count" },
+		raw_capture_status: "complete",
+		sleep: { totalDuration: 28800 },
+		activity: { steps: 1234 },
+		heart: { restingHeartRate: 57 },
+		vitals: { respiratoryRate: 14 },
+		mobility: { walkingSpeed: 1.3 },
+		healthkit_record_archive: {
+			schema: "healthmd.healthkit_records",
+			schema_version: 2,
+			capture_status: "complete",
+			ownership: { device: { name: "iPhone" } },
+			records: [{ metadata: archivePadding }],
+			external_records: [],
+			query_manifest: { results: [] },
+			integrity_warnings: [],
+		},
+	});
+
+	const day = parseJSON(content);
+	assert.ok(day, "archive-last layout must parse");
+	assert.equal(day.date, "2026-08-10");
+	assert.equal(day.sleep?.totalDuration, 28800);
+	assert.equal(day.activity?.steps, 1234);
+	assert.equal(day.heart?.restingHeartRate, 57);
+	assert.equal(day.vitals?.respiratoryRate, 14);
+	assert.equal(day.mobility?.walkingSpeed, 1.3);
+	assert.equal(day.unitSystem, "metric");
+	assert.equal(day.timeContext?.calendarTimezone, "America/Chicago");
+	assert.equal(day.rawCapture?.status, "complete");
+	// Compact envelope diagnostics: identity and version survive, detailed
+	// record counts do not (that would require walking the archive).
+	assert.equal(day.rawCapture?.archiveVersion, 2);
+	assert.equal(day.rawCapture?.archiveSchema, "healthmd.healthkit_records");
+	assert.equal(day.rawCapture?.recordCount, undefined);
+	assert.ok(day.rawCapture?.validationIssues?.some((issue) => issue.includes("archive v2")));
+	const cached = JSON.stringify(day);
+	assert.ok(cached.length < 5000);
+	assert.ok(!cached.includes(archivePadding));
+});
+
+test("oversized archive followed only by diagnostics preserves them and the capture summary", async () => {
+	const { parseJSON } = await loadParsers();
+	const archivePadding = "x".repeat(600_000);
+	const content = JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		date: "2026-08-12",
+		type: "health-data",
+		raw_capture_status: "partial",
+		activity: { steps: 99 },
+		healthkit_record_archive: {
+			schema: "healthmd.healthkit_records",
+			schema_version: 1,
+			capture_status: "partial",
+			records: [{ metadata: archivePadding }],
+		},
+		diagnostics: { partial_failures: [{ query: "heartRate", error: "denied" }] },
+	});
+
+	const day = parseJSON(content);
+	assert.ok(day);
+	assert.equal(day.activity?.steps, 99);
+	assert.equal(day.rawCapture?.status, "partial");
+	assert.equal(day.rawCapture?.recordCount, undefined);
+	// Root diagnostics live outside the archive and must survive the splice.
+	assert.equal(day.rawCapture?.partialFailureCount, 1);
+	assert.ok(!JSON.stringify(day).includes(archivePadding));
+});
+
+test("oversized archive mid-file preserves following sections regardless of key order", async () => {
+	const { parseJSON } = await loadParsers();
+	const archivePadding = "x".repeat(600_000);
+	const content = JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		date: "2026-08-11",
+		type: "health-data",
+		raw_capture_status: "complete",
+		healthkit_record_archive: {
+			schema: "healthmd.healthkit_records",
+			schema_version: 1,
+			capture_status: "complete",
+			records: [{ metadata: archivePadding }],
+		},
+		// Sections ordered so that a key-list suffix heuristic anchored on the
+		// first alphabetically-listed root key would splice past "vitals".
+		vitals: { respiratoryRate: 14 },
+		heart: { restingHeartRate: 57 },
+		workouts: [{ type: "walking", startTimeISO: "2026-08-11T07:00:00Z", duration: 30 }],
+	});
+
+	const day = parseJSON(content);
+	assert.ok(day);
+	assert.equal(day.vitals?.respiratoryRate, 14);
+	assert.equal(day.heart?.restingHeartRate, 57);
+	assert.equal(day.workouts?.length, 1);
+	assert.equal(day.rawCapture?.status, "complete");
+	assert.equal(day.rawCapture?.recordCount, undefined);
+	assert.ok(!JSON.stringify(day).includes(archivePadding));
+});
+
+test("nested archive keys never hijack the fast path away from the real root archive", async () => {
+	const { parseJSON } = await loadParsers();
+	const archivePadding = "x".repeat(600_000);
+	const content = JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		date: "2026-08-13",
+		type: "health-data",
+		raw_capture_status: "complete",
+		notes: {
+			detail: "keep me",
+			healthkit_record_archive: {
+				schema: "healthmd.healthkit_records",
+				schema_version: 1,
+				capture_status: "complete",
+				records: [{ metadata: archivePadding }],
+			},
+		},
+		healthkit_record_archive: {
+			schema: "healthmd.healthkit_records",
+			schema_version: 1,
+			capture_status: "complete",
+			records: [{ payload: "real-archive-record" }],
+		},
+	});
+
+	const day = parseJSON(content);
+	assert.ok(day);
+	assert.equal(day.date, "2026-08-13");
+	// The fast path must decline so the real root archive drives capture
+	// diagnostics instead of the nested decoy: if the decoy hijacked the splice,
+	// the root archive would be materialized into the day and the decoy's compact
+	// metadata would answer for it.
+	assert.equal(day.rawCapture?.recordCount, 1);
+	assert.equal(day.rawCapture?.archiveVersion, 1);
+	const cached = JSON.stringify(day);
+	assert.ok(!cached.includes("real-archive-record"), "the root archive must stay out of dashboard data");
 });

@@ -90,6 +90,8 @@ function detectFormat(extension: string, configFormat: DataFormat): DataFormat {
 
 export class DataLoader {
 	private cache: HealthDay[] | null = null;
+	private loadPromise: Promise<HealthDay[]> | null = null;
+	private loadGeneration = 0;
 	private rollupCache: HealthRollupSummary[] = [];
 	private dataDictionary: ParsedHealthMetricDataDictionary | null = null;
 	private lastLoad = 0;
@@ -106,14 +108,27 @@ export class DataLoader {
 		if (this.cache && Date.now() - this.lastLoad < this.TTL) {
 			return this.cache;
 		}
+		if (this.loadPromise) {
+			return this.loadPromise;
+		}
 
+		const generation = this.loadGeneration;
+		this.loadPromise = this.loadFresh(generation);
+		try {
+			return await this.loadPromise;
+		} finally {
+			if (this.loadGeneration === generation) this.loadPromise = null;
+		}
+	}
+
+	private async loadFresh(generation: number): Promise<HealthDay[]> {
 		const pattern = this.settings.filePattern || "*";
 		const files = this.getDataFiles(pattern);
 		const rollupFiles = this.getRollupFiles(pattern);
 		const dictionaryLoad = await this.loadDataDictionaryAliases([...files, ...rollupFiles]);
 		const frontmatterAliases = dictionaryLoad.dictionary.aliases;
 		const dictionaryUnits = dictionaryLoad.dictionary.unitsByCanonicalKey;
-		this.dataDictionary = dictionaryLoad.loaded ? dictionaryLoad.dictionary : null;
+		const dataDictionary = dictionaryLoad.loaded ? dictionaryLoad.dictionary : null;
 		const report = emptyLoadReport();
 		report.dictionaryLoaded = dictionaryLoad.loaded;
 		report.dictionaryEntries = dictionaryLoad.dictionary.entries.length;
@@ -132,7 +147,7 @@ export class DataLoader {
 				});
 				continue;
 			}
-			const content = await this.vault.cachedRead(file);
+			const content = await this.vault.read(file);
 			const format = detectFormat(file.extension, this.settings.dataFormat);
 			const cachedFrontmatter = format === "markdown" || format === "bases"
 				? this.metadataCache?.getFileCache(file)?.frontmatter
@@ -179,7 +194,7 @@ export class DataLoader {
 		}
 
 		for (const file of rollupFiles) {
-			const content = await this.vault.cachedRead(file);
+			const content = await this.vault.read(file);
 			const format = detectFormat(file.extension, this.settings.dataFormat);
 			const cachedFrontmatter = format === "markdown" || format === "bases"
 				? this.metadataCache?.getFileCache(file)?.frontmatter
@@ -215,11 +230,11 @@ export class DataLoader {
 			}
 		}
 
-		this.cache = Array.from(byDate.values()).sort((a, b) =>
+		const cache = Array.from(byDate.values()).sort((a, b) =>
 			a.date.localeCompare(b.date)
 		);
-		this.rollupCache = dedupeRollups(rollups);
-		for (const day of this.cache) {
+		const rollupCache = dedupeRollups(rollups);
+		for (const day of cache) {
 			const capture = day.rawCapture;
 			if (!capture) continue;
 			report.captureStatuses[capture.status] = (report.captureStatuses[capture.status] ?? 0) + 1;
@@ -235,14 +250,22 @@ export class DataLoader {
 			}
 		}
 		report.archiveSchemaVersions.sort((a, b) => a - b);
-		report.loadedDays = this.cache.length;
-		report.loadedRollups = this.rollupCache.length;
-		report.rollupPeriods = Array.from(new Set(this.rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
+		report.loadedDays = cache.length;
+		report.loadedRollups = rollupCache.length;
+		report.rollupPeriods = Array.from(new Set(rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
 		report.schemaVersions = Array.from(schemaVersions).sort((a, b) => a - b);
 		report.rollupSchemaVersions = Array.from(rollupSchemaVersions).sort((a, b) => a - b);
-		this.lastReport = report;
-		this.lastLoad = Date.now();
-		return this.cache;
+
+		// An invalidate() that fired mid-scan supersedes this result: commit it
+		// only when no newer generation started, so stale data is never cached.
+		if (this.loadGeneration === generation) {
+			this.cache = cache;
+			this.rollupCache = rollupCache;
+			this.dataDictionary = dataDictionary;
+			this.lastReport = report;
+			this.lastLoad = Date.now();
+		}
+		return cache;
 	}
 
 	async loadRollups(): Promise<HealthRollupSummary[]> {
@@ -313,7 +336,7 @@ export class DataLoader {
 		let loaded = false;
 		for (const file of dictionaryFiles.values()) {
 			try {
-				const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.cachedRead(file));
+				const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.read(file));
 				mergedDictionary.entries.push(...dictionary.entries);
 				Object.assign(mergedDictionary.aliases, dictionary.aliases);
 				Object.assign(mergedDictionary.unitsByCanonicalKey, dictionary.unitsByCanonicalKey);
@@ -369,6 +392,10 @@ export class DataLoader {
 	}
 
 	invalidate(): void {
+		// Supersede any in-flight scan so its result is never cached and later
+		// callers start a fresh load instead of joining stale work.
+		this.loadGeneration++;
+		this.loadPromise = null;
 		this.cache = null;
 		this.rollupCache = [];
 		this.dataDictionary = null;

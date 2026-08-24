@@ -309,9 +309,12 @@ yearly,2026,2026-01-01,2026-12-31,365,166,45.5,Activity,Steps,steps,steps,123456
 			getAbstractFileByPath(filePath) {
 				return allByPath.get(filePath) ?? null;
 			},
-			async cachedRead(item) {
+			async read(item) {
 				readPaths.push(item.path);
 				return contentsByPath.get(item.path) ?? "";
+			},
+			async cachedRead() {
+				throw new Error("DataLoader should not retain raw Health exports in Obsidian's read cache");
 			},
 		},
 		readPaths,
@@ -426,4 +429,93 @@ test("DataLoader loads mixed Health.md schema vaults and indexes roll-ups separa
 	assert.equal(zeroDay?.canonicalMetrics?.steps, 0, "canonical metric merge must preserve the preferred explicit zero");
 	assert.equal(zeroDay?.rawCapture?.status, "not_requested", "v6 archive status must not replace the v7 user setting");
 	assert.equal(zeroDay?.rawCapture?.archiveVersion, undefined);
+});
+
+test("DataLoader shares one in-flight read across concurrent visualizations", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const contentsByPath = new Map();
+	const { vault, readPaths } = createMockVault({ TFile, TFolder, contentsByPath });
+	const loader = new DataLoader(vault, {
+		dataFolder: "Health",
+		filePattern: "*",
+		dataFormat: "auto",
+		dataFolderGranularity: "flat",
+		dataFolderCustomPathTemplate: "",
+	});
+
+	const [first, second, third] = await Promise.all([
+		loader.load(),
+		loader.load(),
+		loader.load(),
+	]);
+
+	assert.equal(first, second);
+	assert.equal(second, third);
+	const dailyPath = "Health/JSON/2026-06-17.json";
+	assert.equal(readPaths.filter((filePath) => filePath === dailyPath).length, 1);
+});
+
+test("invalidate during an in-flight load discards the stale scan instead of caching it", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const dayFile = new TFile("Health/JSON/2026-06-17.json");
+	const jsonFolder = new TFolder("Health/JSON", [dayFile]);
+	const rootFolder = new TFolder("Health", [jsonFolder]);
+	jsonFolder.parent = rootFolder;
+	dayFile.parent = jsonFolder;
+
+	const dailyV1 = JSON.stringify({
+		type: "health-data",
+		date: "2026-06-17",
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		activity: { steps: 111 },
+	});
+	const dailyV2 = JSON.stringify({
+		type: "health-data",
+		date: "2026-06-17",
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		activity: { steps: 222 },
+	});
+
+	let contents = dailyV1;
+	const pendingReads = [];
+	const vault = {
+		getAbstractFileByPath(filePath) {
+			return filePath === "Health" ? rootFolder : (filePath === "Health/JSON" ? jsonFolder : null);
+		},
+		read() {
+			// Reads only resolve when the test releases them, so invalidate() can
+		// be observed deterministically mid-scan.
+			return new Promise((resolve) => pendingReads.push(() => resolve(contents)));
+		},
+		async cachedRead() {
+			throw new Error("DataLoader should not retain raw Health exports in Obsidian's read cache");
+		},
+	};
+	const loader = new DataLoader(vault, {
+		dataFolder: "Health",
+		filePattern: "*",
+		dataFormat: "auto",
+		dataFolderGranularity: "flat",
+		dataFolderCustomPathTemplate: "",
+	});
+
+	const firstLoad = loader.load();
+	await new Promise((resolve) => setImmediate(resolve));
+	// The vault changes while the first scan is parked inside vault.read().
+	loader.invalidate();
+	pendingReads.shift()();
+	const staleDays = await firstLoad;
+	assert.equal(staleDays.length, 1);
+	assert.equal(staleDays[0].activity?.steps, 111, "the superseded caller still receives its scan");
+
+	contents = dailyV2;
+	const secondLoad = loader.load();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(pendingReads.length, 1, "a fresh scan must run after the invalidation");
+	pendingReads.shift()();
+	const freshDays = await secondLoad;
+	assert.equal(freshDays.length, 1);
+	assert.equal(freshDays[0].activity?.steps, 222, "the stale in-flight result must not serve later loads");
 });

@@ -9838,6 +9838,74 @@ function parseJsonObjectExcluding(content, omittedKeys) {
     return null;
   }
 }
+function scanScalar(content, start) {
+  if (content[start] === '"') {
+    const stringEnd = scanStringEnd(content, start);
+    if (stringEnd === null || stringEnd - start > 256) return null;
+    try {
+      return { value: JSON.parse(content.slice(start, stringEnd)), end: stringEnd };
+    } catch (e) {
+      return null;
+    }
+  }
+  let index = start;
+  if (content[index] === "-") index++;
+  const digitsStart = index;
+  while (index < content.length && /[0-9.]/.test(content[index])) index++;
+  if (index === digitsStart) return null;
+  const value = Number(content.slice(start, index));
+  return Number.isFinite(value) ? { value, end: index } : null;
+}
+function scanStructuredValueCollectingScalars(content, start, scalarKeys) {
+  if (content[start] !== "{") return null;
+  const topLevelScalars = {};
+  let depth = 0;
+  let index = start;
+  let pendingKey = null;
+  while (index < content.length) {
+    const char = content[index];
+    if (char === '"') {
+      const stringEnd = scanStringEnd(content, index);
+      if (stringEnd === null) return null;
+      if (depth === 1) {
+        try {
+          const key = JSON.parse(content.slice(index, stringEnd));
+          pendingKey = scalarKeys.has(key) ? key : null;
+        } catch (e) {
+          pendingKey = null;
+        }
+      }
+      index = stringEnd;
+      continue;
+    }
+    if (char === ":" && depth === 1 && pendingKey) {
+      const valueStart = skipWhitespace(content, index + 1);
+      const scalar = scanScalar(content, valueStart);
+      if (scalar) {
+        topLevelScalars[pendingKey] = scalar.value;
+        index = scalar.end;
+      } else {
+        index = index + 1;
+      }
+      pendingKey = null;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      depth++;
+      index++;
+      continue;
+    }
+    if (char === "}" || char === "]") {
+      depth--;
+      index++;
+      if (depth === 0) return { valueEnd: index, topLevelScalars };
+      continue;
+    }
+    if (char === ",") pendingKey = null;
+    index++;
+  }
+  return null;
+}
 function parseTopLevelJsonProperty(rawObject, key) {
   var _a;
   const property = (_a = topLevelJsonObjectProperties(rawObject)) == null ? void 0 : _a.find((item) => item.key === key);
@@ -11447,6 +11515,8 @@ function getMoodDaySummary(day) {
 
 // src/parsers/json-parser.ts
 var OMITTED_ROOT_KEYS = /* @__PURE__ */ new Set(["healthkit_record_archive"]);
+var LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH = 512 * 1024;
+var ARCHIVE_ENVELOPE_SCALAR_KEYS = /* @__PURE__ */ new Set(["schema", "schema_version", "capture_status"]);
 var CAPTURE_STATUSES = /* @__PURE__ */ new Set([
   "complete",
   "partial",
@@ -11461,6 +11531,43 @@ function stringValue3(value) {
 }
 function numberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+}
+function parseLargeHealthDataEnvelope(content) {
+  if (content.length < LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH) return null;
+  const archiveKey = JSON.stringify("healthkit_record_archive");
+  const keyStart = content.indexOf(archiveKey);
+  if (keyStart < 0) return null;
+  const beforeKey = content.slice(0, keyStart);
+  if (!beforeKey.trimEnd().endsWith(",")) return null;
+  let valueStart = keyStart + archiveKey.length;
+  while (/\s/.test(content[valueStart])) valueStart++;
+  if (content[valueStart++] !== ":") return null;
+  while (/\s/.test(content[valueStart])) valueStart++;
+  const scan = scanStructuredValueCollectingScalars(content, valueStart, ARCHIVE_ENVELOPE_SCALAR_KEYS);
+  if (!scan) return null;
+  let head = beforeKey;
+  let restStart = scan.valueEnd;
+  while (/\s/.test(content[restStart])) restStart++;
+  if (content[restStart] === ",") {
+    restStart++;
+  } else if (content[restStart] === "}") {
+    head = beforeKey.trimEnd().slice(0, -1);
+  } else {
+    return null;
+  }
+  try {
+    const record = JSON.parse(`${head}${content.slice(restStart)}`);
+    if (!isRecord4(record) || record.type !== "health-data") return null;
+    if ("healthkit_record_archive" in record) return null;
+    return {
+      record,
+      omittedValues: {
+        healthkit_record_archive: JSON.stringify(scan.topLevelScalars)
+      }
+    };
+  } catch (e) {
+    return null;
+  }
 }
 function captureStatus(value) {
   return typeof value === "string" && CAPTURE_STATUSES.has(value) ? value : void 0;
@@ -11599,8 +11706,9 @@ function normalizedMedicationSource(root) {
   };
 }
 function parseJSON(content) {
+  var _a;
   try {
-    const selective = parseJsonObjectExcluding(content, OMITTED_ROOT_KEYS);
+    const selective = (_a = parseLargeHealthDataEnvelope(content)) != null ? _a : parseJsonObjectExcluding(content, OMITTED_ROOT_KEYS);
     if (!selective) return null;
     const parsed = selective.record;
     if (parsed.schema === HEALTHMD_ROLLUP_SCHEMA || parsed.type === "health_rollup") return null;
@@ -14471,6 +14579,8 @@ var DataLoader = class {
     this.settings = settings;
     this.metadataCache = metadataCache;
     this.cache = null;
+    this.loadPromise = null;
+    this.loadGeneration = 0;
     this.rollupCache = [];
     this.dataDictionary = null;
     this.lastLoad = 0;
@@ -14478,17 +14588,29 @@ var DataLoader = class {
     this.lastReport = emptyLoadReport();
   }
   async load() {
-    var _a, _b, _c, _d, _e, _f;
     if (this.cache && Date.now() - this.lastLoad < this.TTL) {
       return this.cache;
     }
+    if (this.loadPromise) {
+      return this.loadPromise;
+    }
+    const generation = this.loadGeneration;
+    this.loadPromise = this.loadFresh(generation);
+    try {
+      return await this.loadPromise;
+    } finally {
+      if (this.loadGeneration === generation) this.loadPromise = null;
+    }
+  }
+  async loadFresh(generation) {
+    var _a, _b, _c, _d, _e, _f;
     const pattern = this.settings.filePattern || "*";
     const files = this.getDataFiles(pattern);
     const rollupFiles = this.getRollupFiles(pattern);
     const dictionaryLoad = await this.loadDataDictionaryAliases([...files, ...rollupFiles]);
     const frontmatterAliases = dictionaryLoad.dictionary.aliases;
     const dictionaryUnits = dictionaryLoad.dictionary.unitsByCanonicalKey;
-    this.dataDictionary = dictionaryLoad.loaded ? dictionaryLoad.dictionary : null;
+    const dataDictionary = dictionaryLoad.loaded ? dictionaryLoad.dictionary : null;
     const report = emptyLoadReport();
     report.dictionaryLoaded = dictionaryLoad.loaded;
     report.dictionaryEntries = dictionaryLoad.dictionary.entries.length;
@@ -14506,7 +14628,7 @@ var DataLoader = class {
         });
         continue;
       }
-      const content = await this.vault.cachedRead(file);
+      const content = await this.vault.read(file);
       const format = detectFormat(file.extension, this.settings.dataFormat);
       const cachedFrontmatter = format === "markdown" || format === "bases" ? (_b = (_a = this.metadataCache) == null ? void 0 : _a.getFileCache(file)) == null ? void 0 : _b.frontmatter : void 0;
       try {
@@ -14548,7 +14670,7 @@ var DataLoader = class {
       }
     }
     for (const file of rollupFiles) {
-      const content = await this.vault.cachedRead(file);
+      const content = await this.vault.read(file);
       const format = detectFormat(file.extension, this.settings.dataFormat);
       const cachedFrontmatter = format === "markdown" || format === "bases" ? (_d = (_c = this.metadataCache) == null ? void 0 : _c.getFileCache(file)) == null ? void 0 : _d.frontmatter : void 0;
       try {
@@ -14579,11 +14701,11 @@ var DataLoader = class {
         byDate.set(day.date, mergeDays(existing, day));
       }
     }
-    this.cache = Array.from(byDate.values()).sort(
+    const cache = Array.from(byDate.values()).sort(
       (a, b) => a.date.localeCompare(b.date)
     );
-    this.rollupCache = dedupeRollups(rollups);
-    for (const day of this.cache) {
+    const rollupCache = dedupeRollups(rollups);
+    for (const day of cache) {
       const capture = day.rawCapture;
       if (!capture) continue;
       report.captureStatuses[capture.status] = ((_e = report.captureStatuses[capture.status]) != null ? _e : 0) + 1;
@@ -14599,14 +14721,19 @@ var DataLoader = class {
       }
     }
     report.archiveSchemaVersions.sort((a, b) => a - b);
-    report.loadedDays = this.cache.length;
-    report.loadedRollups = this.rollupCache.length;
-    report.rollupPeriods = Array.from(new Set(this.rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
+    report.loadedDays = cache.length;
+    report.loadedRollups = rollupCache.length;
+    report.rollupPeriods = Array.from(new Set(rollupCache.map((rollup) => rollup.rollupPeriod))).sort();
     report.schemaVersions = Array.from(schemaVersions).sort((a, b) => a - b);
     report.rollupSchemaVersions = Array.from(rollupSchemaVersions).sort((a, b) => a - b);
-    this.lastReport = report;
-    this.lastLoad = Date.now();
-    return this.cache;
+    if (this.loadGeneration === generation) {
+      this.cache = cache;
+      this.rollupCache = rollupCache;
+      this.dataDictionary = dataDictionary;
+      this.lastReport = report;
+      this.lastLoad = Date.now();
+    }
+    return cache;
   }
   async loadRollups() {
     await this.load();
@@ -14659,7 +14786,7 @@ var DataLoader = class {
     let loaded = false;
     for (const file of dictionaryFiles.values()) {
       try {
-        const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.cachedRead(file));
+        const dictionary = parseHealthMetricDataDictionaryDetails(await this.vault.read(file));
         mergedDictionary.entries.push(...dictionary.entries);
         Object.assign(mergedDictionary.aliases, dictionary.aliases);
         Object.assign(mergedDictionary.unitsByCanonicalKey, dictionary.unitsByCanonicalKey);
@@ -14702,6 +14829,8 @@ var DataLoader = class {
     }
   }
   invalidate() {
+    this.loadGeneration++;
+    this.loadPromise = null;
     this.cache = null;
     this.rollupCache = [];
     this.dataDictionary = null;
