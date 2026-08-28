@@ -1,6 +1,7 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate } from "../canvas-utils";
 import { renderStatBoxes } from "../dom-utils";
+import { effectiveUnitSystem, kmToMi } from "../units";
 
 type Metric =
 	| "steps"
@@ -13,10 +14,14 @@ type Metric =
 interface MetricMeta {
 	label: string;
 	unit: string;
+	/** Per-unit-system unit override (used when values are converted for display). */
+	unitFor?: (theme: ResolvedTheme) => string;
 	color: (t: ResolvedTheme) => string;
 	extract(day: HealthDay): number;
-	formatTotal(sum: number): string;
-	formatValue(v: number): string;
+	/** Converts a raw extracted value into display units before plotting. */
+	toDisplay?: (value: number, theme: ResolvedTheme) => number;
+	formatTotal(sum: number, theme: ResolvedTheme): string;
+	formatValue(v: number, theme: ResolvedTheme): string;
 	aggregate: "sum" | "avg";
 }
 
@@ -51,8 +56,11 @@ const METRICS: Record<Metric, MetricMeta> = {
 	distance: {
 		label: "Distance",
 		unit: "km",
+		unitFor: (theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? "mi" : "km",
 		color: (t) => t.colors.secondary,
 		extract: (d) => d.activity?.walkingRunningDistanceKm ?? 0,
+		toDisplay: (value, theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? kmToMi(value) : value,
+		// Values arrive already converted to display units; the unit is rendered separately.
 		formatTotal: (sum) => sum.toFixed(1),
 		formatValue: (v) => v.toFixed(2),
 		aggregate: "sum",
@@ -115,7 +123,11 @@ export const renderBarChart: RenderFn = (
 		return;
 	}
 
-	const values = days.map((d) => meta.extract(d));
+	const unit = meta.unitFor ? meta.unitFor(theme) : meta.unit;
+	const values = days.map((d) => {
+		const raw = meta.extract(d);
+		return meta.toDisplay ? meta.toDisplay(raw, theme) : raw;
+	});
 	const n = values.length;
 	const max = Math.max(...values, 0);
 	const nonZero = values.filter((v) => v > 0);
@@ -139,7 +151,7 @@ export const renderBarChart: RenderFn = (
 	const plotH = H - plotTop - padB;
 
 	// KPI: headline = total (sum metrics) or average (sleep); subtitle = date range
-	const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average);
+	const headline = meta.aggregate === "sum" ? meta.formatTotal(total, theme) : meta.formatValue(average, theme);
 	const subtitle = `${formatDate(days[0].date)} – ${formatDate(days[n - 1].date)}`;
 
 	ctx.textAlign = "left";
@@ -150,7 +162,7 @@ export const renderBarChart: RenderFn = (
 	ctx.fillText(headline, padL, padT + 22);
 	ctx.fillStyle = theme.muted;
 	ctx.font = "11px sans-serif";
-	ctx.fillText(` ${meta.unit}`, padL + headlineMetrics.width + 2, padT + 22);
+	ctx.fillText(` ${unit}`, padL + headlineMetrics.width + 2, padT + 22);
 	ctx.fillText(subtitle, padL, padT + 40);
 
 	// Chart plot area
@@ -162,7 +174,7 @@ export const renderBarChart: RenderFn = (
 		ctx.font = "10px sans-serif";
 		ctx.textAlign = "right";
 		ctx.textBaseline = "top";
-		ctx.fillText(meta.formatValue(chartEffectiveMax), W - 4, plotTop);
+		ctx.fillText(meta.formatValue(chartEffectiveMax, theme), W - 4, plotTop);
 	}
 
 	// Average dashed line
@@ -182,7 +194,7 @@ export const renderBarChart: RenderFn = (
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "right";
 		ctx.textBaseline = "middle";
-		ctx.fillText(`avg ${meta.formatValue(average)}`, W - padR - 4, labelY);
+		ctx.fillText(`avg ${meta.formatValue(average, theme)}`, W - padR - 4, labelY);
 	}
 
 	// Goal dashed line — always drawn when goal participates in the y-axis scale.
@@ -202,7 +214,7 @@ export const renderBarChart: RenderFn = (
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "left";
 		ctx.textBaseline = "middle";
-		ctx.fillText(`goal ${meta.formatValue(goal)}`, padL + 2, labelY);
+		ctx.fillText(`goal ${meta.formatValue(goal, theme)}`, padL + 2, labelY);
 	}
 
 	const chartW = W - padL - padR;
@@ -239,7 +251,7 @@ export const renderBarChart: RenderFn = (
 			h: plotH + axisH,
 			title: formatDate(days[i].date),
 			details: [
-				{ label: meta.label, value: `${meta.formatValue(v)} ${meta.unit}` },
+				{ label: meta.label, value: `${meta.formatValue(v, theme)} ${unit}` },
 			],
 			payload: days[i],
 		});
@@ -285,11 +297,11 @@ export const renderBarChart: RenderFn = (
 		{
 			value:
 				meta.aggregate === "sum"
-					? meta.formatTotal(total)
-					: meta.formatValue(total),
-			label: `Total ${meta.unit}`,
+					? meta.formatTotal(total, theme)
+					: meta.formatValue(total, theme),
+			label: `Total ${unit}`,
 		},
-		{ value: meta.formatValue(average), label: "Daily avg" },
-		{ value: meta.formatValue(best), label: `Best (${bestLabel})` },
+		{ value: meta.formatValue(average, theme), label: "Daily avg" },
+		{ value: meta.formatValue(best, theme), label: `Best (${bestLabel})` },
 	]);
 };

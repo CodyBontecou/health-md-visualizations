@@ -49,6 +49,7 @@ Lines beginning with `#` are comments and are ignored by the plugin.
 | `colorScheme` / `palette` | all | plugin setting | `theme`, `default`, `ocean`, `forest`, `sunset`, `aurora`, or `monochrome`. |
 | `background` / `bg`, `foreground` / `fg`, `muted` | all | resolved theme | Override chart surface and label colors. |
 | `accent`, `secondary`, `heart`, `sleepDeep`, `sleepRem`, `sleepCore`, `sleepAwake` | all | resolved palette | Override semantic health colors for one block. |
+| `units` | all | plugin setting | `auto`, `metric`, or `imperial`. `auto` follows each export's declared unit system; `metric`/`imperial` force display units for distance, pace, speed, elevation, and convertible body metrics. |
 
 Notes:
 

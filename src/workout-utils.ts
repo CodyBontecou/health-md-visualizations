@@ -1,4 +1,7 @@
 import { HealthDay, VizConfig, WorkoutEntry, WorkoutInterval } from "./types";
+import type { UnitSystem } from "./units";
+
+export type { UnitSystem };
 
 export interface PickedWorkout {
 	day: HealthDay;
@@ -42,11 +45,20 @@ export function pickWorkout(
 }
 
 // "imperial" → miles/feet, anything else (default) → kilometers/meters.
-export type UnitSystem = "metric" | "imperial";
-
-export function resolveUnits(day: HealthDay): UnitSystem {
+// An explicit user preference (from settings or a per-chart `units:` key)
+// overrides the unit system declared by the data itself.
+export function resolveUnits(day: HealthDay, preference?: UnitSystem): UnitSystem {
+	if (preference) return preference;
 	const unitSystem = day.unitSystem ?? day.unit_system ?? (typeof day.units === "string" ? day.units : undefined);
 	return unitSystem === "imperial" ? "imperial" : "metric";
+}
+
+// Pre-formatted strings from the export are only trustworthy when they match
+// the effective unit system. When the user preference overrides the day's own
+// declared system, recompute from raw values instead.
+function preferPreFormatted(day: HealthDay, preFormatted: string | undefined, preference?: UnitSystem): boolean {
+	if (!preFormatted) return false;
+	return preference === undefined || resolveUnits(day) === preference;
 }
 
 function parseDistanceFormatted(value: string | undefined): number | undefined {
@@ -80,10 +92,16 @@ export function workoutDistanceMeters(workout: WorkoutEntry): number | undefined
 export function formatDistance(
 	meters: number,
 	day: HealthDay,
-	preFormatted?: string
+	preFormatted?: string,
+	preference?: UnitSystem
 ): string {
-	if (preFormatted) return preFormatted;
-	if (resolveUnits(day) === "imperial") {
+	if (preferPreFormatted(day, preFormatted, preference)) return preFormatted as string;
+	return formatDistanceMeters(meters, resolveUnits(day, preference));
+}
+
+/** Day-independent distance formatting from meters under an explicit system. */
+export function formatDistanceMeters(meters: number, system: UnitSystem): string {
+	if (system === "imperial") {
 		const mi = meters / 1609.344;
 		return mi >= 10 ? `${mi.toFixed(1)} mi` : `${mi.toFixed(2)} mi`;
 	}
@@ -91,9 +109,9 @@ export function formatDistance(
 	return km >= 10 ? `${km.toFixed(1)} km` : `${km.toFixed(2)} km`;
 }
 
-export function formatWorkoutDistance(workout: WorkoutEntry, day: HealthDay): string | undefined {
+export function formatWorkoutDistance(workout: WorkoutEntry, day: HealthDay, preference?: UnitSystem): string | undefined {
 	const meters = workoutDistanceMeters(workout);
-	return meters == null ? undefined : formatDistance(meters, day, workout.distanceFormatted);
+	return meters == null ? undefined : formatDistance(meters, day, workout.distanceFormatted, preference);
 }
 
 export function intervalRateDisplay(interval: WorkoutInterval): string | undefined {
@@ -105,15 +123,16 @@ export function formatPace(
 	meters: number,
 	seconds: number,
 	day: HealthDay,
-	preFormatted?: string
+	preFormatted?: string,
+	preference?: UnitSystem
 ): string {
-	if (preFormatted) return preFormatted;
+	if (preferPreFormatted(day, preFormatted, preference)) return preFormatted as string;
 	if (!meters || !seconds) return "—";
-	const unitDistance = resolveUnits(day) === "imperial" ? 1609.344 : 1000;
+	const unitDistance = resolveUnits(day, preference) === "imperial" ? 1609.344 : 1000;
 	const secPerUnit = seconds / (meters / unitDistance);
 	const m = Math.floor(secPerUnit / 60);
 	const s = Math.round(secPerUnit % 60);
-	const suffix = resolveUnits(day) === "imperial" ? "/mi" : "/km";
+	const suffix = resolveUnits(day, preference) === "imperial" ? "/mi" : "/km";
 	return `${m}:${s.toString().padStart(2, "0")}${suffix}`;
 }
 
@@ -121,18 +140,19 @@ export function formatPace(
 export function formatSpeed(
 	mps: number,
 	day: HealthDay,
-	preFormatted?: string
+	preFormatted?: string,
+	preference?: UnitSystem
 ): string {
-	if (preFormatted) return preFormatted;
-	if (resolveUnits(day) === "imperial") {
+	if (preferPreFormatted(day, preFormatted, preference)) return preFormatted as string;
+	if (resolveUnits(day, preference) === "imperial") {
 		return `${(mps * 2.236936).toFixed(1)} mph`;
 	}
 	return `${(mps * 3.6).toFixed(1)} km/h`;
 }
 
 // Elevation: meters → ft for imperial, otherwise meters as-is (rounded).
-export function formatElevation(meters: number, day: HealthDay): string {
-	if (resolveUnits(day) === "imperial") {
+export function formatElevation(meters: number, day: HealthDay, preference?: UnitSystem): string {
+	if (resolveUnits(day, preference) === "imperial") {
 		return `${Math.round(meters * 3.28084)} ft`;
 	}
 	return `${Math.round(meters)} m`;

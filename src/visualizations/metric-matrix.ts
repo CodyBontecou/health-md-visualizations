@@ -162,7 +162,7 @@ function renderMatrix(
 			const definition = resolveMetricDefinition(row.key, context?.dictionary, days);
 			const displayValue = value === undefined
 				? "Missing"
-				: formatMetricValue(value, { ...definition, unit: row.unit ?? definition.unit });
+				: formatMetricValue(value, { ...definition, unit: row.unit ?? definition.unit }, theme.unitPreference);
 			hits.add({
 				shape: "rect",
 				x,

@@ -4,6 +4,7 @@ import {
 	ResolvedTheme,
 	VizConfig,
 } from "./types";
+import { normalizeUnitPreference } from "./units";
 
 export interface ColorScheme {
 	label: string;
@@ -313,5 +314,8 @@ export function resolveTheme(settings: HealthMdSettings, config?: VizConfig): Re
 		mapTilesEnabled: settings.mapTilesEnabled,
 		mapTileUrl: settings.mapTileUrl,
 		mapTileAttribution: settings.mapTileAttribution,
+		unitPreference:
+			normalizeUnitPreference(config?.units ?? config?.unitSystem) ??
+			normalizeUnitPreference(settings.unitSystem),
 	};
 }

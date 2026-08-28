@@ -2,6 +2,7 @@ import type { ParsedHealthMetricDataDictionary } from "./healthmd-schema";
 import { isUnitMap } from "./healthmd-schema";
 import { builtinMetricDefinition, type MetricDefinition } from "./metric-catalog";
 import { canonicalMetricsFromTypedDay } from "./summary-metric-normalizer";
+import { convertToDisplayUnit, type UnitSystem } from "./units";
 import type { HealthDay, HealthMetricScalar } from "./types";
 
 export interface ResolvedMetricDefinition extends MetricDefinition {
@@ -99,14 +100,28 @@ export function resolveMetricDefinition(
 	};
 }
 
-export function formatMetricValue(value: HealthMetricScalar, definition: MetricDefinition): string {
+export function formatMetricValue(value: HealthMetricScalar, definition: MetricDefinition, unitSystem?: UnitSystem): string {
 	if (typeof value === "boolean") return value ? "Yes" : "No";
 	if (typeof value === "string") return value;
-	const precision = definition.precision ?? (Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 ? 1 : 2);
-	const formatted = value.toLocaleString(undefined, { maximumFractionDigits: precision, minimumFractionDigits: 0 });
-	return definition.unit && definition.unit !== "boolean" && definition.unit !== "datetime"
-		? `${formatted} ${definition.unit}`
+	let displayValue = value;
+	let unit = definition.unit;
+	if (unitSystem && unit && unit !== "boolean" && unit !== "datetime") {
+		const converted = convertToDisplayUnit(value, unit, unitSystem);
+		displayValue = converted.value;
+		unit = converted.unit;
+	}
+	const precision = definition.precision ?? (Math.abs(displayValue) >= 100 ? 0 : Math.abs(displayValue) >= 10 ? 1 : 2);
+	const formatted = displayValue.toLocaleString(undefined, { maximumFractionDigits: precision, minimumFractionDigits: 0 });
+	return unit && unit !== "boolean" && unit !== "datetime"
+		? `${formatted} ${unit}`
 		: formatted;
+}
+
+/** Effective display unit label for a metric definition under a unit system. */
+export function displayMetricUnit(definition: MetricDefinition, unitSystem?: UnitSystem): string | undefined {
+	if (!unitSystem || !definition.unit) return definition.unit;
+	if (definition.unit === "boolean" || definition.unit === "datetime") return definition.unit;
+	return convertToDisplayUnit(0, definition.unit, unitSystem).unit;
 }
 
 export function observedCanonicalKeys(days: HealthDay[]): string[] {

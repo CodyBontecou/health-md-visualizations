@@ -1228,6 +1228,7 @@ function parseWorkoutEntry(
 		heartRateZones: zones.length ? zones : undefined,
 		laps: laps.length ? laps : undefined,
 		splits: splits.length ? splits : undefined,
+		routePointCount: getFirstNum(fm, "route_points", "routePoints"),
 	};
 
 	return workout;

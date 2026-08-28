@@ -1,4 +1,7 @@
 import type { HealthMdUnitMap, ParsedHealthMetricDataDictionary } from "./healthmd-schema";
+import type { UnitPreference, UnitSystem } from "./units";
+
+export type { UnitPreference, UnitSystem };
 
 export type HealthMetricScalar = number | string | boolean;
 
@@ -94,6 +97,8 @@ export interface WorkoutEntry {
 	laps?: WorkoutLap[];
 	splits?: WorkoutSplit[];
 	route?: RoutePoint[];
+	/** Markdown/Bases exports record only the point count; coordinates arrive via JSON exports. */
+	routePointCount?: number;
 	timeSeries?: WorkoutTimeSeries;
 }
 
@@ -460,6 +465,8 @@ export interface HealthMdSettings {
 	colorSleepCore: string;
 	colorSleepAwake: string;
 	maxHeartRate?: number;
+	/** Display units for visualizations. "auto" follows each export's declared unit system. */
+	unitSystem: UnitPreference;
 	dataPointClickAction: DataPointClickAction;
 	mapTilesEnabled: boolean;
 	mapTileUrl: string;
@@ -476,6 +483,8 @@ export interface ResolvedTheme {
 	mapTilesEnabled: boolean;
 	mapTileUrl: string;
 	mapTileAttribution: string;
+	/** Explicit unit preference for this render; undefined means follow each day's declared system. */
+	unitPreference?: UnitSystem;
 }
 
 export interface HitRegionDetail {

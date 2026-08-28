@@ -13663,7 +13663,8 @@ function parseWorkoutEntry(fm, body, date) {
     elevationLossMeters: getFirstNum(fm, "descent_m", "elevation_loss_m", "elevationLossMeters"),
     heartRateZones: zones.length ? zones : void 0,
     laps: laps.length ? laps : void 0,
-    splits: splits.length ? splits : void 0
+    splits: splits.length ? splits : void 0,
+    routePointCount: getFirstNum(fm, "route_points", "routePoints")
   };
   return workout;
 }
@@ -15327,6 +15328,80 @@ function mergeDays(a, b) {
   };
 }
 
+// src/units.ts
+var KM_PER_MI = 1.609344;
+var LB_PER_KG = 2.2046226218487757;
+var CM_PER_IN = 2.54;
+var FT_PER_M = 3.280839895013123;
+var MPH_PER_KMH = 0.621371192237334;
+var MPH_PER_MS = 2.2369362920544;
+function kmToMi(km) {
+  return km / KM_PER_MI;
+}
+function kgToLb(kg) {
+  return kg * LB_PER_KG;
+}
+function cmToIn(cm) {
+  return cm / CM_PER_IN;
+}
+function mToFt(m) {
+  return m * FT_PER_M;
+}
+function kmhToMph(kmh) {
+  return kmh * MPH_PER_KMH;
+}
+function msToMph(ms) {
+  return ms * MPH_PER_MS;
+}
+function celsiusToFahrenheit(c) {
+  return c * 9 / 5 + 32;
+}
+function normalizeUnitPreference(value) {
+  if (typeof value !== "string") return void 0;
+  switch (value.trim().toLowerCase()) {
+    case "metric":
+    case "si":
+      return "metric";
+    case "imperial":
+    case "us":
+    case "usa":
+      return "imperial";
+    case "auto":
+    case "data":
+    case "":
+      return void 0;
+    default:
+      return void 0;
+  }
+}
+function effectiveUnitSystem(preference) {
+  return preference != null ? preference : "metric";
+}
+function formatDistanceValue(value, system) {
+  const suffix = system === "imperial" ? "mi" : "km";
+  return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${suffix}`;
+}
+function formatDistanceKm(km, system) {
+  return formatDistanceValue(system === "imperial" ? kmToMi(km) : km, system);
+}
+function formatSpeedKmh(kmh, system) {
+  return system === "imperial" ? `${kmhToMph(kmh).toFixed(1)} mph` : `${kmh.toFixed(1)} km/h`;
+}
+var IMPERIAL_DISPLAY_CONVERSIONS = {
+  "kg": (value) => ({ value: kgToLb(value), unit: "lb" }),
+  "cm": (value) => ({ value: cmToIn(value), unit: "in" }),
+  "km": (value) => ({ value: kmToMi(value), unit: "mi" }),
+  "m": (value) => ({ value: mToFt(value), unit: "ft" }),
+  "m/s": (value) => ({ value: msToMph(value), unit: "mph" }),
+  "km/h": (value) => ({ value: kmhToMph(value), unit: "mph" }),
+  "\xB0c": (value) => ({ value: celsiusToFahrenheit(value), unit: "\xB0F" })
+};
+function convertToDisplayUnit(value, unit, system) {
+  if (system !== "imperial") return { value, unit };
+  const convert = IMPERIAL_DISPLAY_CONVERSIONS[unit.trim().toLowerCase()];
+  return convert ? convert(value) : { value, unit };
+}
+
 // src/canvas-utils.ts
 var COLOR_SCHEMES = {
   default: {
@@ -15512,7 +15587,7 @@ function normalizeColorScheme(value) {
   return null;
 }
 function resolveTheme(settings, config) {
-  var _a;
+  var _a, _b, _c;
   const themeMode = normalizeThemeMode(config == null ? void 0 : config.theme, settings.theme);
   let isDark;
   if (themeMode === "auto") {
@@ -15581,7 +15656,8 @@ function resolveTheme(settings, config) {
     maxHeartRate: settings.maxHeartRate,
     mapTilesEnabled: settings.mapTilesEnabled,
     mapTileUrl: settings.mapTileUrl,
-    mapTileAttribution: settings.mapTileAttribution
+    mapTileAttribution: settings.mapTileAttribution,
+    unitPreference: (_c = normalizeUnitPreference((_b = config == null ? void 0 : config.units) != null ? _b : config == null ? void 0 : config.unitSystem)) != null ? _c : normalizeUnitPreference(settings.unitSystem)
   };
 }
 
@@ -16027,7 +16103,7 @@ var renderStepSpiral = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       title: formatDate(day.date),
       details: [
         { label: "Steps", value: steps.toLocaleString() },
-        { label: "Distance", value: `${dist.toFixed(2)} km` },
+        { label: "Distance", value: formatDistanceValue(dist, effectiveUnitSystem(theme.unitPreference)) },
         ...day.activity.activeCalories ? [
           {
             label: "Calories",
@@ -16697,7 +16773,10 @@ var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const getValue = (d) => {
     if (!d.activity) return 0;
     if (metric === "calories") return d.activity.activeCalories || 0;
-    if (metric === "distance") return d.activity.walkingRunningDistanceKm || 0;
+    if (metric === "distance") {
+      const km = d.activity.walkingRunningDistanceKm || 0;
+      return effectiveUnitSystem(theme.unitPreference) === "imperial" ? kmToMi(km) : km;
+    }
     return d.activity.steps || 0;
   };
   const byDate = {};
@@ -16774,7 +16853,7 @@ var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
         h: ch,
         title: formatDate(iso),
         details: [
-          { label: metric.charAt(0).toUpperCase() + metric.slice(1), value: formatMetric(metric, val) },
+          { label: metric.charAt(0).toUpperCase() + metric.slice(1), value: formatMetric(metric, val, theme) },
           ...byDate[iso] != null && metric !== "steps" && ((_d = (_c = days.find((d) => d.date === iso)) == null ? void 0 : _c.activity) == null ? void 0 : _d.steps) ? [{ label: "Steps", value: (days.find((d) => d.date === iso).activity.steps || 0).toLocaleString() }] : []
         ],
         payload: iso
@@ -16787,17 +16866,17 @@ var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
   renderInlineStats(statsEl, [
     [
       { text: `${metricLabel} \u2014 Avg ` },
-      { text: formatMetric(metric, avg4), strong: true },
+      { text: formatMetric(metric, avg4, theme), strong: true },
       { text: " \xB7 Max " },
-      { text: formatMetric(metric, maxVal), strong: true },
+      { text: formatMetric(metric, maxVal, theme), strong: true },
       { text: " \xB7 Total " },
-      { text: formatMetric(metric, total), strong: true }
+      { text: formatMetric(metric, total, theme), strong: true }
     ]
   ]);
 };
-function formatMetric(metric, val) {
+function formatMetric(metric, val, theme) {
   if (metric === "calories") return `${Math.round(val).toLocaleString()} kcal`;
-  if (metric === "distance") return `${val.toFixed(1)} km`;
+  if (metric === "distance") return formatDistanceValue(val, effectiveUnitSystem(theme.unitPreference));
   return Math.round(val).toLocaleString();
 }
 
@@ -16945,10 +17024,15 @@ function pickWorkout(data, config) {
   }
   return null;
 }
-function resolveUnits(day) {
+function resolveUnits(day, preference) {
   var _a, _b;
+  if (preference) return preference;
   const unitSystem = (_b = (_a = day.unitSystem) != null ? _a : day.unit_system) != null ? _b : typeof day.units === "string" ? day.units : void 0;
   return unitSystem === "imperial" ? "imperial" : "metric";
+}
+function preferPreFormatted(day, preFormatted, preference) {
+  if (!preFormatted) return false;
+  return preference === void 0 || resolveUnits(day) === preference;
 }
 function parseDistanceFormatted(value) {
   if (!value) return void 0;
@@ -16972,35 +17056,38 @@ function workoutDistanceMeters(workout) {
   if (workout.distance == null) return void 0;
   return workout.distance > 100 ? workout.distance : workout.distance * 1e3;
 }
-function formatDistance(meters, day, preFormatted) {
-  if (preFormatted) return preFormatted;
-  if (resolveUnits(day) === "imperial") {
+function formatDistance(meters, day, preFormatted, preference) {
+  if (preferPreFormatted(day, preFormatted, preference)) return preFormatted;
+  return formatDistanceMeters(meters, resolveUnits(day, preference));
+}
+function formatDistanceMeters(meters, system) {
+  if (system === "imperial") {
     const mi = meters / 1609.344;
     return mi >= 10 ? `${mi.toFixed(1)} mi` : `${mi.toFixed(2)} mi`;
   }
   const km = meters / 1e3;
   return km >= 10 ? `${km.toFixed(1)} km` : `${km.toFixed(2)} km`;
 }
-function formatWorkoutDistance(workout, day) {
+function formatWorkoutDistance(workout, day, preference) {
   const meters = workoutDistanceMeters(workout);
-  return meters == null ? void 0 : formatDistance(meters, day, workout.distanceFormatted);
+  return meters == null ? void 0 : formatDistance(meters, day, workout.distanceFormatted, preference);
 }
 function intervalRateDisplay(interval) {
   var _a;
   return (_a = interval.paceFormatted) != null ? _a : interval.speedFormatted;
 }
-function formatPace(meters, seconds, day, preFormatted) {
-  if (preFormatted) return preFormatted;
+function formatPace(meters, seconds, day, preFormatted, preference) {
+  if (preferPreFormatted(day, preFormatted, preference)) return preFormatted;
   if (!meters || !seconds) return "\u2014";
-  const unitDistance = resolveUnits(day) === "imperial" ? 1609.344 : 1e3;
+  const unitDistance = resolveUnits(day, preference) === "imperial" ? 1609.344 : 1e3;
   const secPerUnit = seconds / (meters / unitDistance);
   const m = Math.floor(secPerUnit / 60);
   const s = Math.round(secPerUnit % 60);
-  const suffix = resolveUnits(day) === "imperial" ? "/mi" : "/km";
+  const suffix = resolveUnits(day, preference) === "imperial" ? "/mi" : "/km";
   return `${m}:${s.toString().padStart(2, "0")}${suffix}`;
 }
-function formatElevation(meters, day) {
-  if (resolveUnits(day) === "imperial") {
+function formatElevation(meters, day, preference) {
+  if (resolveUnits(day, preference) === "imperial") {
     return `${Math.round(meters * 3.28084)} ft`;
   }
   return `${Math.round(meters)} m`;
@@ -17079,7 +17166,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
         calories: w.calories || 0,
         distanceMeters: workoutDistanceMeters(w),
         durationFormatted: w.durationFormatted,
-        distanceFormatted: formatWorkoutDistance(w, day),
+        distanceFormatted: formatWorkoutDistance(w, day, theme.unitPreference),
         avgHeartRate: w.avgHeartRate,
         avgPower: w.avgPower
       });
@@ -17152,7 +17239,7 @@ var renderWorkoutLog = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       details: [
         { label: "Duration", value: (_a = entry.durationFormatted) != null ? _a : formatDuration(entry.duration) },
         ...entry.calories ? [{ label: "Calories", value: `${Math.round(entry.calories)} kcal` }] : [],
-        ...entry.distanceMeters != null ? [{ label: "Distance", value: (_b = entry.distanceFormatted) != null ? _b : `${(entry.distanceMeters / 1e3).toFixed(2)} km` }] : [],
+        ...entry.distanceMeters != null ? [{ label: "Distance", value: (_b = entry.distanceFormatted) != null ? _b : formatDistanceMeters(entry.distanceMeters, effectiveUnitSystem(theme.unitPreference)) }] : [],
         ...entry.avgHeartRate != null ? [{ label: "Avg HR", value: `${Math.round(entry.avgHeartRate)} BPM` }] : [],
         ...entry.avgPower != null ? [{ label: "Avg Power", value: `${Math.round(entry.avgPower)} W` }] : []
       ],
@@ -17220,7 +17307,7 @@ var renderIntroStats = (data, el, _config, theme) => {
       color: theme.colors.sleep.rem
     },
     {
-      value: `${totalDist.toFixed(0)}km`,
+      value: formatDistanceKm(totalDist, effectiveUnitSystem(theme.unitPreference)),
       label: "Distance",
       color: theme.colors.secondary
     }
@@ -18197,11 +18284,14 @@ var METRICS3 = {
   distance: {
     label: "Distance",
     unit: "km",
+    unitFor: (theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? "mi" : "km",
     color: (t) => t.colors.secondary,
     extract: (d) => {
       var _a, _b;
       return (_b = (_a = d.activity) == null ? void 0 : _a.walkingRunningDistanceKm) != null ? _b : 0;
     },
+    toDisplay: (value, theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? kmToMi(value) : value,
+    // Values arrive already converted to display units; the unit is rendered separately.
     formatTotal: (sum) => sum.toFixed(1),
     formatValue: (v) => v.toFixed(2),
     aggregate: "sum"
@@ -18256,7 +18346,11 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.fillText("No data in range", W / 2, H / 2);
     return;
   }
-  const values = days.map((d) => meta.extract(d));
+  const unit = meta.unitFor ? meta.unitFor(theme) : meta.unit;
+  const values = days.map((d) => {
+    const raw = meta.extract(d);
+    return meta.toDisplay ? meta.toDisplay(raw, theme) : raw;
+  });
   const n = values.length;
   const max = Math.max(...values, 0);
   const nonZero = values.filter((v) => v > 0);
@@ -18274,7 +18368,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   const padR = 36;
   const plotTop = padT + kpiH;
   const plotH = H - plotTop - padB;
-  const headline = meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(average4);
+  const headline = meta.aggregate === "sum" ? meta.formatTotal(total, theme) : meta.formatValue(average4, theme);
   const subtitle = `${formatDate(days[0].date)} \u2013 ${formatDate(days[n - 1].date)}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -18284,7 +18378,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   ctx.fillText(headline, padL, padT + 22);
   ctx.fillStyle = theme.muted;
   ctx.font = "11px sans-serif";
-  ctx.fillText(` ${meta.unit}`, padL + headlineMetrics.width + 2, padT + 22);
+  ctx.fillText(` ${unit}`, padL + headlineMetrics.width + 2, padT + 22);
   ctx.fillText(subtitle, padL, padT + 40);
   const accent = meta.color(theme);
   if (chartEffectiveMax > 0) {
@@ -18292,7 +18386,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.font = "10px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "top";
-    ctx.fillText(meta.formatValue(chartEffectiveMax), W - 4, plotTop);
+    ctx.fillText(meta.formatValue(chartEffectiveMax, theme), W - 4, plotTop);
   }
   if (showAverage && average4 > 0 && chartEffectiveMax > 0) {
     const y = plotTop + plotH - average4 / denom * plotH;
@@ -18310,7 +18404,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(`avg ${meta.formatValue(average4)}`, W - padR - 4, labelY);
+    ctx.fillText(`avg ${meta.formatValue(average4, theme)}`, W - padR - 4, labelY);
   }
   if (goal && chartEffectiveMax > 0) {
     const y = plotTop + plotH - goal / denom * plotH;
@@ -18328,7 +18422,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
     ctx.font = "9px sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText(`goal ${meta.formatValue(goal)}`, padL + 2, labelY);
+    ctx.fillText(`goal ${meta.formatValue(goal, theme)}`, padL + 2, labelY);
   }
   const chartW = W - padL - padR;
   const slot = chartW / n;
@@ -18360,7 +18454,7 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
       h: plotH + axisH,
       title: formatDate(days[i].date),
       details: [
-        { label: meta.label, value: `${meta.formatValue(v)} ${meta.unit}` }
+        { label: meta.label, value: `${meta.formatValue(v, theme)} ${unit}` }
       ],
       payload: days[i]
     });
@@ -18400,11 +18494,11 @@ var renderBarChart = (ctx, data, W, H, config, theme, statsEl, hits) => {
   );
   renderStatBoxes(statsEl, [
     {
-      value: meta.aggregate === "sum" ? meta.formatTotal(total) : meta.formatValue(total),
-      label: `Total ${meta.unit}`
+      value: meta.aggregate === "sum" ? meta.formatTotal(total, theme) : meta.formatValue(total, theme),
+      label: `Total ${unit}`
     },
-    { value: meta.formatValue(average4), label: "Daily avg" },
-    { value: meta.formatValue(best), label: `Best (${bestLabel})` }
+    { value: meta.formatValue(average4, theme), label: "Daily avg" },
+    { value: meta.formatValue(best, theme), label: `Best (${bestLabel})` }
   ]);
 };
 
@@ -19601,7 +19695,7 @@ var METRICS5 = [
   {
     key: "duration",
     label: "Duration",
-    unit: "min",
+    unit: () => "min",
     color: (theme) => theme.colors.accent,
     value: (workout) => workout.duration > 0 ? workout.duration / 60 : void 0,
     format: (value) => formatDuration(value * 60)
@@ -19609,18 +19703,19 @@ var METRICS5 = [
   {
     key: "distance",
     label: "Distance",
-    unit: "km",
+    unit: (theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? "mi" : "km",
     color: (theme) => theme.colors.secondary,
     value: (workout) => {
       const meters = workoutDistanceMeters(workout);
       return meters == null ? void 0 : meters / 1e3;
     },
-    format: (value) => `${value.toFixed(value >= 10 ? 1 : 2)} km`
+    toDisplay: (value, theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? kmToMi(value) : value,
+    format: (value, theme) => formatDistanceValue(value, effectiveUnitSystem(theme.unitPreference))
   },
   {
     key: "calories",
     label: "Calories",
-    unit: "kcal",
+    unit: () => "kcal",
     color: () => "#f97316",
     value: (workout) => workout.calories,
     format: (value) => `${Math.round(value)} kcal`
@@ -19628,7 +19723,7 @@ var METRICS5 = [
   {
     key: "hr_avg",
     label: "Avg HR",
-    unit: "bpm",
+    unit: () => "bpm",
     color: (theme) => theme.colors.heart,
     value: (workout) => workout.avgHeartRate,
     format: (value) => `${Math.round(value)} BPM`
@@ -19636,7 +19731,7 @@ var METRICS5 = [
   {
     key: "power_avg",
     label: "Avg Power",
-    unit: "W",
+    unit: () => "W",
     color: () => "#a855f7",
     value: (workout) => workout.avgPower,
     format: (value) => `${Math.round(value)} W`
@@ -19686,9 +19781,9 @@ function niceStep(range) {
 function drawPanel(ctx, points, metric, x, y, w, h, theme, hits) {
   const values = [];
   for (const point of points) {
-    const value = metric.value(point.workout);
-    if (value !== void 0 && Number.isFinite(value)) {
-      values.push({ ...point, value });
+    const raw = metric.value(point.workout);
+    if (raw !== void 0 && Number.isFinite(raw)) {
+      values.push({ ...point, value: metric.toDisplay ? metric.toDisplay(raw, theme) : raw });
     }
   }
   if (!values.length) return;
@@ -19713,7 +19808,7 @@ function drawPanel(ctx, points, metric, x, y, w, h, theme, hits) {
   ctx.fillStyle = theme.muted;
   ctx.font = "9px sans-serif";
   ctx.textAlign = "right";
-  ctx.fillText(metric.unit, x + w, y - 17);
+  ctx.fillText(metric.unit(theme), x + w, y - 17);
   ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
   ctx.lineWidth = 1;
   const step = niceStep(maxValue - minValue);
@@ -19752,7 +19847,7 @@ function drawPanel(ctx, points, metric, x, y, w, h, theme, hits) {
       r: 8,
       title: `${formatDate(point.day.date)} \u2014 ${(_a = point.workout.activityType) != null ? _a : point.workout.type}`,
       details: [
-        { label: metric.label, value: metric.format(point.value) },
+        { label: metric.label, value: metric.format(point.value, theme) },
         { label: "Duration", value: formatDuration(point.workout.duration) },
         ...point.workout.calories != null ? [{ label: "Calories", value: `${Math.round(point.workout.calories)} kcal` }] : []
       ],
@@ -19832,7 +19927,7 @@ var renderWorkoutTrends = (ctx, data, W, H, config, theme, statsEl, hits) => {
       { text: "Total time " },
       { text: formatDuration(totalDuration), strong: true }
     ],
-    ...totalDistanceMeters > 0 ? [[{ text: "Distance " }, { text: `${(totalDistanceMeters / 1e3).toFixed(1)} km`, strong: true }]] : []
+    ...totalDistanceMeters > 0 ? [[{ text: "Distance " }, { text: formatDistanceKm(totalDistanceMeters / 1e3, effectiveUnitSystem(theme.unitPreference)), strong: true }]] : []
   ]);
 };
 
@@ -19913,7 +20008,7 @@ function totalRouteDistance(route) {
   }
   return d;
 }
-function renderHeader(host, day, workout) {
+function renderHeader(host, day, workout, unitPreference) {
   var _a, _b;
   const header = host.createDiv({ cls: "health-md-workout-header" });
   const title = header.createDiv({ cls: "health-md-workout-title" });
@@ -19925,7 +20020,7 @@ function renderHeader(host, day, workout) {
     cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
   };
   const distanceMeters = workoutDistanceMeters(workout);
-  const distanceDisplay = formatWorkoutDistance(workout, day);
+  const distanceDisplay = formatWorkoutDistance(workout, day, unitPreference);
   if (distanceDisplay) {
     addStat2("Distance", distanceDisplay);
   }
@@ -19933,14 +20028,14 @@ function renderHeader(host, day, workout) {
   if (distanceMeters != null && workout.duration > 0) {
     addStat2(
       workout.avgSpeedFormatted ? "Avg speed" : "Avg pace",
-      (_b = workout.avgSpeedFormatted) != null ? _b : formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted)
+      (_b = workout.avgSpeedFormatted) != null ? _b : formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted, unitPreference)
     );
   }
   if (workout.elevationGainMeters != null) {
-    addStat2("Elev gain", formatElevation(workout.elevationGainMeters, day));
+    addStat2("Elev gain", formatElevation(workout.elevationGainMeters, day, unitPreference));
   }
   if (workout.elevationLossMeters != null) {
-    addStat2("Elev loss", formatElevation(workout.elevationLossMeters, day));
+    addStat2("Elev loss", formatElevation(workout.elevationLossMeters, day, unitPreference));
   }
   if (workout.avgHeartRate != null) {
     addStat2("Avg HR", `${Math.round(workout.avgHeartRate)} BPM`);
@@ -20006,8 +20101,9 @@ function renderLeafletMap(host, route, colorBy, hrSamples, theme, configHeight) 
   map2.fitBounds(bounds, { padding: [20, 20] });
   const legend = mapEl.createDiv({ cls: "health-md-workout-map-legend" });
   const label = colorBy === "hr" ? "HR" : "Speed";
-  const lo = colorBy === "hr" ? `${Math.round(vMin)} BPM` : `${(vMin * 3.6).toFixed(1)} km/h`;
-  const hi = colorBy === "hr" ? `${Math.round(vMax)} BPM` : `${(vMax * 3.6).toFixed(1)} km/h`;
+  const speedSystem = effectiveUnitSystem(theme.unitPreference);
+  const lo = colorBy === "hr" ? `${Math.round(vMin)} BPM` : formatSpeedKmh(vMin * 3.6, speedSystem);
+  const hi = colorBy === "hr" ? `${Math.round(vMax)} BPM` : formatSpeedKmh(vMax * 3.6, speedSystem);
   legend.textContent = `${label} ${lo} \u2013 ${hi}`;
 }
 function renderCanvasPolyline(host, route, colorBy, hrSamples, theme, width, height) {
@@ -20085,12 +20181,12 @@ var renderWorkoutMap = (data, el, config, theme) => {
     return;
   }
   const { day, workout } = picked;
-  renderHeader(el, day, workout);
+  renderHeader(el, day, workout, theme.unitPreference);
   const route = (_a = workout.route) != null ? _a : [];
   if (!route.length) {
     renderEmptyMessage(
       el,
-      "Indoor workout \u2014 no GPS route available for this session."
+      workout.routePointCount && workout.routePointCount > 0 ? `GPS route recorded (${workout.routePointCount} ${workout.routePointCount === 1 ? "point" : "points"}) \u2014 coordinates are only included in JSON exports. Export this day as JSON to view the map.` : "No GPS route data available for this workout."
     );
     return;
   }
@@ -20119,7 +20215,7 @@ function renderEmptyMessage2(host, message) {
   const msg = host.createDiv({ cls: "health-md-workout-empty" });
   msg.textContent = message;
 }
-function renderHeader2(host, day, workout) {
+function renderHeader2(host, day, workout, unitPreference) {
   var _a, _b;
   const header = host.createDiv({ cls: "health-md-workout-header" });
   const title = header.createDiv({ cls: "health-md-workout-title" });
@@ -20132,14 +20228,14 @@ function renderHeader2(host, day, workout) {
     cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
   };
   addStat2("Duration", (_b = workout.durationFormatted) != null ? _b : formatDuration(workout.duration));
-  addStat2("Distance", formatWorkoutDistance(workout, day));
+  addStat2("Distance", formatWorkoutDistance(workout, day, unitPreference));
   addStat2("Avg HR", workout.avgHeartRate != null ? `${Math.round(workout.avgHeartRate)} BPM` : void 0);
   addStat2("Avg Power", workout.avgPower != null ? `${Math.round(workout.avgPower)} W` : void 0);
 }
 function formatMaybeNumber(value, suffix) {
   return value == null ? "\u2014" : `${Math.round(value)} ${suffix}`;
 }
-function renderIntervalTable(host, label, rows) {
+function renderIntervalTable(host, label, rows, day, unitPreference) {
   host.createEl("h4", { text: label, cls: "health-md-workout-table-heading" });
   const wrapper = host.createDiv({ cls: "health-md-workout-table-wrap" });
   const table = wrapper.createEl("table", { cls: "health-md-workout-table" });
@@ -20153,7 +20249,9 @@ function renderIntervalTable(host, label, rows) {
     var _a, _b, _c;
     const tr = tbody.createEl("tr");
     tr.createEl("td", { text: String(row.index) });
-    tr.createEl("td", { text: (_a = row.distanceFormatted) != null ? _a : row.distance != null ? `${(row.distance / 1e3).toFixed(2)} km` : "\u2014" });
+    tr.createEl("td", {
+      text: row.distance != null || row.distanceFormatted ? formatDistance((_a = row.distance) != null ? _a : 0, day, row.distanceFormatted, unitPreference) : "\u2014"
+    });
     tr.createEl("td", { text: row.duration ? formatDuration(row.duration) : "\u2014" });
     tr.createEl("td", { text: (_b = intervalRateDisplay(row)) != null ? _b : "\u2014" });
     tr.createEl("td", { text: formatMaybeNumber(row.avgHeartRate, "BPM") });
@@ -20162,7 +20260,7 @@ function renderIntervalTable(host, label, rows) {
     tr.createEl("td", { text: row.avgCadence == null ? "\u2014" : `${Math.round(row.avgCadence)} ${(_c = row.cadenceUnit) != null ? _c : ""}`.trim() });
   });
 }
-var renderWorkoutIntervals = (data, el, config, _theme) => {
+var renderWorkoutIntervals = (data, el, config, theme) => {
   var _a, _b, _c, _d;
   el.addClass("health-md-workout-container");
   const picked = pickWorkout(data, config);
@@ -20171,17 +20269,17 @@ var renderWorkoutIntervals = (data, el, config, _theme) => {
     return;
   }
   const { day, workout } = picked;
-  renderHeader2(el, day, workout);
+  renderHeader2(el, day, workout, theme.unitPreference);
   const kind = String((_b = (_a = config.kind) != null ? _a : config.table) != null ? _b : "auto").trim().toLowerCase();
   const showLaps = kind === "auto" || kind === "laps" || kind === "lap";
   const showSplits = kind === "auto" || kind === "splits" || kind === "split";
   let rendered = false;
   if (showLaps && ((_c = workout.laps) == null ? void 0 : _c.length)) {
-    renderIntervalTable(el, "Laps", workout.laps);
+    renderIntervalTable(el, "Laps", workout.laps, day, theme.unitPreference);
     rendered = true;
   }
   if (showSplits && ((_d = workout.splits) == null ? void 0 : _d.length)) {
-    renderIntervalTable(el, "Splits", workout.splits);
+    renderIntervalTable(el, "Splits", workout.splits, day, theme.unitPreference);
     rendered = true;
   }
   if (!rendered) {
@@ -21254,13 +21352,25 @@ function resolveMetricDefinition(key, dictionary, days = []) {
     dailyAggregation: entry == null ? void 0 : entry.dailyAggregation
   };
 }
-function formatMetricValue(value, definition) {
+function formatMetricValue(value, definition, unitSystem) {
   var _a;
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string") return value;
-  const precision = (_a = definition.precision) != null ? _a : Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 ? 1 : 2;
-  const formatted = value.toLocaleString(void 0, { maximumFractionDigits: precision, minimumFractionDigits: 0 });
-  return definition.unit && definition.unit !== "boolean" && definition.unit !== "datetime" ? `${formatted} ${definition.unit}` : formatted;
+  let displayValue = value;
+  let unit = definition.unit;
+  if (unitSystem && unit && unit !== "boolean" && unit !== "datetime") {
+    const converted = convertToDisplayUnit(value, unit, unitSystem);
+    displayValue = converted.value;
+    unit = converted.unit;
+  }
+  const precision = (_a = definition.precision) != null ? _a : Math.abs(displayValue) >= 100 ? 0 : Math.abs(displayValue) >= 10 ? 1 : 2;
+  const formatted = displayValue.toLocaleString(void 0, { maximumFractionDigits: precision, minimumFractionDigits: 0 });
+  return unit && unit !== "boolean" && unit !== "datetime" ? `${formatted} ${unit}` : formatted;
+}
+function displayMetricUnit(definition, unitSystem) {
+  if (!unitSystem || !definition.unit) return definition.unit;
+  if (definition.unit === "boolean" || definition.unit === "datetime") return definition.unit;
+  return convertToDisplayUnit(0, definition.unit, unitSystem).unit;
 }
 function observedCanonicalKeys(days) {
   var _a;
@@ -21361,11 +21471,12 @@ function drawMetricPanel(ctx, days, context, theme, hits, options) {
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillText(definition.label, options.x, options.y - 18);
-  if (definition.unit) {
+  const unitLabel = displayMetricUnit(definition, theme.unitPreference);
+  if (unitLabel) {
     ctx.fillStyle = theme.muted;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText(definition.unit, options.x + options.w, options.y - 17);
+    ctx.fillText(unitLabel, options.x + options.w, options.y - 17);
   }
   if (!points.length) {
     ctx.fillStyle = theme.muted;
@@ -21405,7 +21516,7 @@ function drawMetricPanel(ctx, days, context, theme, hits, options) {
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
     ctx.fillText(
-      `${(_a = options.referenceLabel) != null ? _a : "Reference"} ${formatMetricValue(options.reference, definition)}`,
+      `${(_a = options.referenceLabel) != null ? _a : "Reference"} ${formatMetricValue(options.reference, definition, theme.unitPreference)}`,
       options.x + options.w,
       Math.max(options.y + 9, y - 2)
     );
@@ -21442,7 +21553,7 @@ function drawMetricPanel(ctx, days, context, theme, hits, options) {
       r: 8,
       title: formatDate(point.day.date),
       details: [
-        { label: definition.label, value: formatMetricValue(point.value, definition) },
+        { label: definition.label, value: formatMetricValue(point.value, definition, theme.unitPreference) },
         ...(_c = (_b = options.extraDetails) == null ? void 0 : _b.call(options, point.day, point.value)) != null ? _c : []
       ],
       payload: point.day
@@ -21504,7 +21615,7 @@ function renderSmallMultiples(ctx, data, W, H, config, theme, statsEl, hits, con
   const boxes = allPoints.map(({ definition, points }, index) => {
     const latest = latestPoint(points);
     return {
-      value: latest ? formatMetricValue(latest.value, definition) : "\u2014",
+      value: latest ? formatMetricValue(latest.value, definition, theme.unitPreference) : "\u2014",
       label: `${definition.label} latest`,
       color: colorForMetric(definition, index, theme)
     };
@@ -21571,11 +21682,12 @@ var renderMetricTrend = (ctx, data, W, H, config, theme, statsEl, hits, context)
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillText(definition.label, padL, 10);
-  if (definition.unit) {
+  const headerUnit = displayMetricUnit(definition, theme.unitPreference);
+  if (headerUnit) {
     ctx.fillStyle = theme.muted;
     ctx.font = "9px sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText(definition.unit, W - padR, 12);
+    ctx.fillText(headerUnit, W - padR, 12);
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
   ctx.lineWidth = 1;
@@ -21591,7 +21703,7 @@ var renderMetricTrend = (ctx, data, W, H, config, theme, statsEl, hits, context)
     ctx.font = "8px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(formatMetricValue(value, { ...definition, unit: void 0 }), padL - 5, y);
+    ctx.fillText(formatMetricValue(value, { ...definition, unit: void 0 }, theme.unitPreference), padL - 5, y);
   }
   if (goal !== void 0) {
     const y = yFor(goal);
@@ -21607,7 +21719,7 @@ var renderMetricTrend = (ctx, data, W, H, config, theme, statsEl, hits, context)
     ctx.font = "8px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText(`Goal ${formatMetricValue(goal, definition)}`, W - padR, Math.max(padT + 9, y - 2));
+    ctx.fillText(`Goal ${formatMetricValue(goal, definition, theme.unitPreference)}`, W - padR, Math.max(padT + 9, y - 2));
   }
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
@@ -21666,7 +21778,7 @@ var renderMetricTrend = (ctx, data, W, H, config, theme, statsEl, hits, context)
       cy: y,
       r: 9,
       title: formatDate(point.day.date),
-      details: [{ label: definition.label, value: formatMetricValue(point.value, definition) }],
+      details: [{ label: definition.label, value: formatMetricValue(point.value, definition, theme.unitPreference) }],
       payload: point.day
     });
   }
@@ -21675,12 +21787,12 @@ var renderMetricTrend = (ctx, data, W, H, config, theme, statsEl, hits, context)
   const average4 = values.reduce((sum, value) => sum + value, 0) / values.length;
   const latest = points[points.length - 1];
   renderStatBoxes(statsEl, [
-    { value: formatMetricValue(latest.value, definition), label: "Latest", color },
-    { value: formatMetricValue(average4, definition), label: "Average" },
-    { value: formatMetricValue(Math.min(...values), definition), label: "Minimum" },
-    { value: formatMetricValue(Math.max(...values), definition), label: "Maximum" },
+    { value: formatMetricValue(latest.value, definition, theme.unitPreference), label: "Latest", color },
+    { value: formatMetricValue(average4, definition, theme.unitPreference), label: "Average" },
+    { value: formatMetricValue(Math.min(...values), definition, theme.unitPreference), label: "Minimum" },
+    { value: formatMetricValue(Math.max(...values), definition, theme.unitPreference), label: "Maximum" },
     { value: String(values.length), label: "Days sampled" },
-    ...goal === void 0 ? [] : [{ value: formatMetricValue(goal, definition), label: "Goal" }]
+    ...goal === void 0 ? [] : [{ value: formatMetricValue(goal, definition, theme.unitPreference), label: "Goal" }]
   ]);
 };
 var renderBodyComposition = (ctx, data, W, H, config, theme, statsEl, hits, context) => {
@@ -21733,7 +21845,7 @@ var renderCyclingPerformance = (ctx, data, W, H, config, theme, statsEl, hits, c
       if (ftp === void 0 || ftp <= 0) return [];
       const ftpDefinition = resolveMetricDefinition("cycling_ftp_w", context == null ? void 0 : context.dictionary, data);
       return [
-        { label: ftpDefinition.label, value: formatMetricValue(ftp, ftpDefinition) },
+        { label: ftpDefinition.label, value: formatMetricValue(ftp, ftpDefinition, theme.unitPreference) },
         { label: "Power / FTP", value: `${(value / ftp * 100).toFixed(0)}%` }
       ];
     }
@@ -21823,9 +21935,10 @@ var renderCardioFitnessFreshness = (ctx, data, W, H, _config, theme, statsEl, hi
   ctx.fillStyle = theme.muted;
   ctx.font = "8px sans-serif";
   ctx.fillText("Solid: measured   Hollow: carried   Diamond: provenance unavailable", padL, 28);
-  if (definition.unit) {
+  const vo2Unit = displayMetricUnit(definition, theme.unitPreference);
+  if (vo2Unit) {
     ctx.textAlign = "right";
-    ctx.fillText(definition.unit, W - padR, 12);
+    ctx.fillText(vo2Unit, W - padR, 12);
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
   ctx.lineWidth = 1;
@@ -21841,7 +21954,7 @@ var renderCardioFitnessFreshness = (ctx, data, W, H, _config, theme, statsEl, hi
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillText(
-      formatMetricValue(domain.max - ratio * (domain.max - domain.min), { ...definition, unit: void 0 }),
+      formatMetricValue(domain.max - ratio * (domain.max - domain.min), { ...definition, unit: void 0 }, theme.unitPreference),
       padL - 5,
       y
     );
@@ -21896,7 +22009,7 @@ var renderCardioFitnessFreshness = (ctx, data, W, H, _config, theme, statsEl, hi
     const sourceText = typeof source === "string" && source.trim() ? source.trim() : void 0;
     const hasProvenance = carriedScalar !== void 0 || age !== void 0 || sourceText !== void 0;
     const details = [
-      { label: definition.label, value: formatMetricValue(point.value, definition) },
+      { label: definition.label, value: formatMetricValue(point.value, definition, theme.unitPreference) },
       hasProvenance ? { label: "Status", value: state === "carried" ? "Carried forward" : state === "measured" ? "Measured" : "Provenance unavailable" } : { label: "Provenance", value: "Provenance unavailable" },
       ...age === void 0 ? [] : [{ label: "Measurement age", value: formatMeasurementAge(age) }],
       ...sourceText === void 0 ? [] : [{ label: "Source time", value: formatSourceTime(sourceText) }]
@@ -21918,7 +22031,7 @@ var renderCardioFitnessFreshness = (ctx, data, W, H, _config, theme, statsEl, hi
   const latest = points[points.length - 1];
   const latestAge = resolveNumericMetric(latest.day, "vo2_max_age_seconds", context == null ? void 0 : context.dictionary);
   renderStatBoxes(statsEl, [
-    { value: formatMetricValue(latest.value, definition), label: "Latest", color },
+    { value: formatMetricValue(latest.value, definition, theme.unitPreference), label: "Latest", color },
     { value: String(points.length), label: "Days shown" },
     { value: String(carriedCount), label: "Carried-forward days" },
     ...latestAge === void 0 ? [] : [{ value: formatMeasurementAge(latestAge), label: "Latest measurement age" }]
@@ -22222,7 +22335,7 @@ function renderMatrix(ctx, days, W, H, theme, statsEl, hits, rows, options, cont
         ctx.fillRect(drawX, drawY, drawW, drawH);
       }
       const definition = resolveMetricDefinition(row.key, context == null ? void 0 : context.dictionary, days);
-      const displayValue = value === void 0 ? "Missing" : formatMetricValue(value, { ...definition, unit: (_a = row.unit) != null ? _a : definition.unit });
+      const displayValue = value === void 0 ? "Missing" : formatMetricValue(value, { ...definition, unit: (_a = row.unit) != null ? _a : definition.unit }, theme.unitPreference);
       hits.add({
         shape: "rect",
         x,
@@ -26212,6 +26325,7 @@ var DEFAULT_SETTINGS = {
   colorSleepRem: "#7c3aed",
   colorSleepCore: "#2dd4bf",
   colorSleepAwake: "#f59e0b",
+  unitSystem: "auto",
   dataPointClickAction: "pin",
   mapTilesEnabled: true,
   mapTileUrl: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
@@ -26234,6 +26348,9 @@ function isDataFolderGranularity(value) {
 }
 function isColorSchemeId(value) {
   return typeof value === "string" && (value === "theme" || value === "custom" || Boolean(Object.prototype.hasOwnProperty.call(COLOR_SCHEMES, value)));
+}
+function isUnitPreference(value) {
+  return typeof value === "string" && (value === "auto" || value === "metric" || value === "imperial");
 }
 var HealthMdPlugin = class extends import_obsidian5.Plugin {
   constructor() {
@@ -26305,6 +26422,9 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
     }
     if (!isColorSchemeId(this.settings.colorScheme)) {
       this.settings.colorScheme = DEFAULT_SETTINGS.colorScheme;
+    }
+    if (!isUnitPreference(this.settings.unitSystem)) {
+      this.settings.unitSystem = DEFAULT_SETTINGS.unitSystem;
     }
     this.settings.dataFolderCustomPathTemplate = normalizeDataFolderPathTemplate(
       (_a = this.settings.dataFolderCustomPathTemplate) != null ? _a : DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE
@@ -26508,6 +26628,20 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
           setting.addDropdown(
             (dropdown) => dropdown.addOption("auto", "Auto (match Obsidian)").addOption("dark", "Dark").addOption("light", "Light").setValue(this.plugin.settings.theme).onChange(async (value) => {
               this.plugin.settings.theme = value;
+              await this.plugin.saveSettings();
+              this.plugin.redrawAll();
+            })
+          );
+        }
+      },
+      {
+        name: "Units",
+        desc: 'Display units for distance, weight, and body measurements. "Auto" follows the unit system declared by each health export (metric by default).',
+        render: (setting) => {
+          setting.addDropdown(
+            (dropdown) => dropdown.addOption("auto", "Auto (follow data)").addOption("metric", "Metric (km, kg)").addOption("imperial", "Imperial (mi, lb)").setValue(this.plugin.settings.unitSystem).onChange(async (value) => {
+              if (!isUnitPreference(value)) return;
+              this.plugin.settings.unitSystem = value;
               await this.plugin.saveSettings();
               this.plugin.redrawAll();
             })

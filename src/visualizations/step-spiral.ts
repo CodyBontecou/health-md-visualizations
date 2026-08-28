@@ -1,6 +1,7 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { lerp, hexToRgba, formatDate } from "../canvas-utils";
 import { renderStatBoxes } from "../dom-utils";
+import { effectiveUnitSystem, formatDistanceValue } from "../units";
 
 type StepDay = HealthDay & {
 	activity: NonNullable<HealthDay["activity"]> & { steps: number };
@@ -92,7 +93,7 @@ export const renderStepSpiral: RenderFn = (
 			title: formatDate(day.date),
 			details: [
 				{ label: "Steps", value: steps.toLocaleString() },
-				{ label: "Distance", value: `${dist.toFixed(2)} km` },
+				{ label: "Distance", value: formatDistanceValue(dist, effectiveUnitSystem(theme.unitPreference)) },
 				...(day.activity.activeCalories
 					? [
 							{

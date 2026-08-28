@@ -45,6 +45,7 @@ const DEFAULT_SETTINGS: HealthMdSettings = {
 	colorSleepRem: "#7c3aed",
 	colorSleepCore: "#2dd4bf",
 	colorSleepAwake: "#f59e0b",
+	unitSystem: "auto",
 	dataPointClickAction: "pin",
 	mapTilesEnabled: true,
 	mapTileUrl: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
@@ -84,6 +85,10 @@ function isColorSchemeId(value: unknown): value is ColorSchemeId {
 		typeof value === "string" &&
 		(value === "theme" || value === "custom" || Boolean(Object.prototype.hasOwnProperty.call(COLOR_SCHEMES, value)))
 	);
+}
+
+function isUnitPreference(value: unknown): value is HealthMdSettings["unitSystem"] {
+	return typeof value === "string" && (value === "auto" || value === "metric" || value === "imperial");
 }
 
 export default class HealthMdPlugin extends Plugin {
@@ -163,6 +168,9 @@ export default class HealthMdPlugin extends Plugin {
 		}
 		if (!isColorSchemeId(this.settings.colorScheme)) {
 			this.settings.colorScheme = DEFAULT_SETTINGS.colorScheme;
+		}
+		if (!isUnitPreference(this.settings.unitSystem)) {
+			this.settings.unitSystem = DEFAULT_SETTINGS.unitSystem;
 		}
 		this.settings.dataFolderCustomPathTemplate = normalizeDataFolderPathTemplate(
 			this.settings.dataFolderCustomPathTemplate ??
@@ -431,6 +439,25 @@ class HealthMdSettingTab extends PluginSettingTab {
 							.setValue(this.plugin.settings.theme)
 							.onChange(async (value) => {
 								this.plugin.settings.theme = value as "auto" | "dark" | "light";
+								await this.plugin.saveSettings();
+								this.plugin.redrawAll();
+							})
+					);
+				},
+			},
+			{
+				name: "Units",
+				desc: "Display units for distance, weight, and body measurements. \"Auto\" follows the unit system declared by each health export (metric by default).",
+				render: (setting) => {
+					setting.addDropdown((dropdown) =>
+						dropdown
+							.addOption("auto", "Auto (follow data)")
+							.addOption("metric", "Metric (km, kg)")
+							.addOption("imperial", "Imperial (mi, lb)")
+							.setValue(this.plugin.settings.unitSystem)
+							.onChange(async (value) => {
+								if (!isUnitPreference(value)) return;
+								this.plugin.settings.unitSystem = value;
 								await this.plugin.saveSettings();
 								this.plugin.redrawAll();
 							})

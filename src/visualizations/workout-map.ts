@@ -1,5 +1,5 @@
 import * as L from "leaflet";
-import { HealthDay, HtmlRenderFn, ResolvedTheme, RoutePoint, VizConfig } from "../types";
+import { HealthDay, HtmlRenderFn, ResolvedTheme, RoutePoint, UnitSystem, VizConfig } from "../types";
 import {
 	formatElevation,
 	formatPace,
@@ -8,6 +8,7 @@ import {
 	workoutDistanceMeters,
 } from "../workout-utils";
 import { formatDuration } from "../canvas-utils";
+import { effectiveUnitSystem, formatSpeedKmh } from "../units";
 
 const MAX_POINTS = 1500;
 
@@ -112,7 +113,8 @@ function totalRouteDistance(route: RoutePoint[]): number {
 function renderHeader(
 	host: HTMLElement,
 	day: HealthDay,
-	workout: import("../types").WorkoutEntry
+	workout: import("../types").WorkoutEntry,
+	unitPreference?: UnitSystem
 ): void {
 	const header = host.createDiv({ cls: "health-md-workout-header" });
 
@@ -129,7 +131,7 @@ function renderHeader(
 	};
 
 	const distanceMeters = workoutDistanceMeters(workout);
-	const distanceDisplay = formatWorkoutDistance(workout, day);
+	const distanceDisplay = formatWorkoutDistance(workout, day, unitPreference);
 	if (distanceDisplay) {
 		addStat("Distance", distanceDisplay);
 	}
@@ -137,14 +139,14 @@ function renderHeader(
 	if (distanceMeters != null && workout.duration > 0) {
 		addStat(
 			workout.avgSpeedFormatted ? "Avg speed" : "Avg pace",
-			workout.avgSpeedFormatted ?? formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted)
+			workout.avgSpeedFormatted ?? formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted, unitPreference)
 		);
 	}
 	if (workout.elevationGainMeters != null) {
-		addStat("Elev gain", formatElevation(workout.elevationGainMeters, day));
+		addStat("Elev gain", formatElevation(workout.elevationGainMeters, day, unitPreference));
 	}
 	if (workout.elevationLossMeters != null) {
-		addStat("Elev loss", formatElevation(workout.elevationLossMeters, day));
+		addStat("Elev loss", formatElevation(workout.elevationLossMeters, day, unitPreference));
 	}
 	if (workout.avgHeartRate != null) {
 		addStat("Avg HR", `${Math.round(workout.avgHeartRate)} BPM`);
@@ -229,14 +231,15 @@ function renderLeafletMap(
 	// Legend (color scale)
 	const legend = mapEl.createDiv({ cls: "health-md-workout-map-legend" });
 	const label = colorBy === "hr" ? "HR" : "Speed";
+	const speedSystem = effectiveUnitSystem(theme.unitPreference);
 	const lo =
 		colorBy === "hr"
 			? `${Math.round(vMin)} BPM`
-			: `${(vMin * 3.6).toFixed(1)} km/h`;
+			: formatSpeedKmh(vMin * 3.6, speedSystem);
 	const hi =
 		colorBy === "hr"
 			? `${Math.round(vMax)} BPM`
-			: `${(vMax * 3.6).toFixed(1)} km/h`;
+			: formatSpeedKmh(vMax * 3.6, speedSystem);
 	legend.textContent = `${label} ${lo} – ${hi}`;
 }
 
@@ -339,13 +342,18 @@ export const renderWorkoutMap: HtmlRenderFn = (
 	}
 
 	const { day, workout } = picked;
-	renderHeader(el, day, workout);
+	renderHeader(el, day, workout, theme.unitPreference);
 
 	const route = workout.route ?? [];
 	if (!route.length) {
+		// Markdown/Bases exports carry only a point count; full coordinates
+		// arrive via JSON exports. Distinguish the two cases so users with a
+		// recorded route get an actionable hint instead of a dead end.
 		renderEmptyMessage(
 			el,
-			"Indoor workout — no GPS route available for this session."
+			workout.routePointCount && workout.routePointCount > 0
+				? `GPS route recorded (${workout.routePointCount} ${workout.routePointCount === 1 ? "point" : "points"}) — coordinates are only included in JSON exports. Export this day as JSON to view the map.`
+				: "No GPS route data available for this workout."
 		);
 		return;
 	}

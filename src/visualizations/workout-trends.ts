@@ -2,6 +2,7 @@ import { HealthDay, HitRegistry, RenderFn, ResolvedTheme, VizConfig, WorkoutEntr
 import { hexToRgba, formatDate, formatDuration } from "../canvas-utils";
 import { renderInlineStats } from "../dom-utils";
 import { workoutDistanceMeters } from "../workout-utils";
+import { effectiveUnitSystem, formatDistanceKm, formatDistanceValue, kmToMi } from "../units";
 
 interface WorkoutPoint {
 	day: HealthDay;
@@ -13,17 +14,19 @@ interface WorkoutPoint {
 interface MetricDef {
 	key: string;
 	label: string;
-	unit: string;
+	unit: (theme: ResolvedTheme) => string;
 	color: (theme: ResolvedTheme) => string;
 	value: (workout: WorkoutEntry) => number | undefined;
-	format: (value: number) => string;
+	/** Converts a raw metric value into display units before plotting. */
+	toDisplay?: (value: number, theme: ResolvedTheme) => number;
+	format: (value: number, theme: ResolvedTheme) => string;
 }
 
 const METRICS: MetricDef[] = [
 	{
 		key: "duration",
 		label: "Duration",
-		unit: "min",
+		unit: () => "min",
 		color: (theme) => theme.colors.accent,
 		value: (workout) => workout.duration > 0 ? workout.duration / 60 : undefined,
 		format: (value) => formatDuration(value * 60),
@@ -31,18 +34,19 @@ const METRICS: MetricDef[] = [
 	{
 		key: "distance",
 		label: "Distance",
-		unit: "km",
+		unit: (theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? "mi" : "km",
 		color: (theme) => theme.colors.secondary,
 		value: (workout) => {
 			const meters = workoutDistanceMeters(workout);
 			return meters == null ? undefined : meters / 1000;
 		},
-		format: (value) => `${value.toFixed(value >= 10 ? 1 : 2)} km`,
+		toDisplay: (value, theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? kmToMi(value) : value,
+		format: (value, theme) => formatDistanceValue(value, effectiveUnitSystem(theme.unitPreference)),
 	},
 	{
 		key: "calories",
 		label: "Calories",
-		unit: "kcal",
+		unit: () => "kcal",
 		color: () => "#f97316",
 		value: (workout) => workout.calories,
 		format: (value) => `${Math.round(value)} kcal`,
@@ -50,7 +54,7 @@ const METRICS: MetricDef[] = [
 	{
 		key: "hr_avg",
 		label: "Avg HR",
-		unit: "bpm",
+		unit: () => "bpm",
 		color: (theme) => theme.colors.heart,
 		value: (workout) => workout.avgHeartRate,
 		format: (value) => `${Math.round(value)} BPM`,
@@ -58,7 +62,7 @@ const METRICS: MetricDef[] = [
 	{
 		key: "power_avg",
 		label: "Avg Power",
-		unit: "W",
+		unit: () => "W",
 		color: () => "#a855f7",
 		value: (workout) => workout.avgPower,
 		format: (value) => `${Math.round(value)} W`,
@@ -121,9 +125,9 @@ function drawPanel(
 ): void {
 	const values: Array<WorkoutPoint & { value: number }> = [];
 	for (const point of points) {
-		const value = metric.value(point.workout);
-		if (value !== undefined && Number.isFinite(value)) {
-			values.push({ ...point, value });
+		const raw = metric.value(point.workout);
+		if (raw !== undefined && Number.isFinite(raw)) {
+			values.push({ ...point, value: metric.toDisplay ? metric.toDisplay(raw, theme) : raw });
 		}
 	}
 	if (!values.length) return;
@@ -151,7 +155,7 @@ function drawPanel(
 	ctx.fillStyle = theme.muted;
 	ctx.font = "9px sans-serif";
 	ctx.textAlign = "right";
-	ctx.fillText(metric.unit, x + w, y - 17);
+	ctx.fillText(metric.unit(theme), x + w, y - 17);
 
 	ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
 	ctx.lineWidth = 1;
@@ -192,7 +196,7 @@ function drawPanel(
 			r: 8,
 			title: `${formatDate(point.day.date)} — ${point.workout.activityType ?? point.workout.type}`,
 			details: [
-				{ label: metric.label, value: metric.format(point.value) },
+				{ label: metric.label, value: metric.format(point.value, theme) },
 				{ label: "Duration", value: formatDuration(point.workout.duration) },
 				...(point.workout.calories != null ? [{ label: "Calories", value: `${Math.round(point.workout.calories)} kcal` }] : []),
 			],
@@ -289,7 +293,7 @@ export const renderWorkoutTrends: RenderFn = (
 			{ text: formatDuration(totalDuration), strong: true },
 		],
 		...(totalDistanceMeters > 0
-			? [[{ text: "Distance " }, { text: `${(totalDistanceMeters / 1000).toFixed(1)} km`, strong: true }]]
+			? [[{ text: "Distance " }, { text: formatDistanceKm(totalDistanceMeters / 1000, effectiveUnitSystem(theme.unitPreference)), strong: true }]]
 			: []),
 	]);
 };

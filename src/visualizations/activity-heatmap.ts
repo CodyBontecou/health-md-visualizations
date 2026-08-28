@@ -1,6 +1,7 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate } from "../canvas-utils";
 import { renderInlineStats } from "../dom-utils";
+import { effectiveUnitSystem, formatDistanceValue, kmToMi } from "../units";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -26,7 +27,10 @@ export const renderActivityHeatmap: RenderFn = (
 	const getValue = (d: HealthDay): number => {
 		if (!d.activity) return 0;
 		if (metric === "calories") return d.activity.activeCalories || 0;
-		if (metric === "distance") return d.activity.walkingRunningDistanceKm || 0;
+		if (metric === "distance") {
+			const km = d.activity.walkingRunningDistanceKm || 0;
+			return effectiveUnitSystem(theme.unitPreference) === "imperial" ? kmToMi(km) : km;
+		}
 		return d.activity.steps || 0;
 	};
 
@@ -121,7 +125,7 @@ export const renderActivityHeatmap: RenderFn = (
 				h: ch,
 				title: formatDate(iso),
 				details: [
-					{ label: metric.charAt(0).toUpperCase() + metric.slice(1), value: formatMetric(metric, val) },
+					{ label: metric.charAt(0).toUpperCase() + metric.slice(1), value: formatMetric(metric, val, theme) },
 					...(byDate[iso] != null && metric !== "steps" && days.find(d => d.date === iso)?.activity?.steps
 						? [{ label: "Steps", value: (days.find(d => d.date === iso)!.activity!.steps || 0).toLocaleString() }]
 						: []),
@@ -138,17 +142,17 @@ export const renderActivityHeatmap: RenderFn = (
 	renderInlineStats(statsEl, [
 		[
 			{ text: `${metricLabel} — Avg ` },
-			{ text: formatMetric(metric, avg), strong: true },
+			{ text: formatMetric(metric, avg, theme), strong: true },
 			{ text: " · Max " },
-			{ text: formatMetric(metric, maxVal), strong: true },
+			{ text: formatMetric(metric, maxVal, theme), strong: true },
 			{ text: " · Total " },
-			{ text: formatMetric(metric, total), strong: true },
+			{ text: formatMetric(metric, total, theme), strong: true },
 		],
 	]);
 };
 
-function formatMetric(metric: string, val: number): string {
+function formatMetric(metric: string, val: number, theme: ResolvedTheme): string {
 	if (metric === "calories") return `${Math.round(val).toLocaleString()} kcal`;
-	if (metric === "distance") return `${val.toFixed(1)} km`;
+	if (metric === "distance") return formatDistanceValue(val, effectiveUnitSystem(theme.unitPreference));
 	return Math.round(val).toLocaleString();
 }

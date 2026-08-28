@@ -958,6 +958,8 @@ test("Markdown parser reads detailed Health.md workout notes", async () => {
 	assert.equal(workout.maxPower, 140);
 	assert.equal(workout.elevationGainMeters, 12);
 	assert.equal(workout.elevationLossMeters, 5);
+	assert.equal(workout.routePointCount, 425);
+	assert.equal(workout.route, undefined);
 	assert.equal(workout.heartRateZones?.length, 5);
 	assert.deepEqual(workout.heartRateZones?.[0], {
 		index: 1,
@@ -979,6 +981,38 @@ test("Markdown parser reads detailed Health.md workout notes", async () => {
 	assert.equal(workout.splits?.length, 1);
 	assert.equal(workout.splits?.[0].speedFormatted, "12.0 km/h");
 	assert.equal(workout.splits?.[0].distance, 1000);
+});
+
+test("JSON parser preserves workout route coordinates for the workout map", async () => {
+	const { parseJSON } = await loadParsers();
+	const json = JSON.stringify({
+		schema: "healthmd.health_data",
+		schema_version: 7,
+		type: "health-data",
+		date: "2026-08-27",
+		unit_system: "metric",
+		workouts: [
+			{
+				type: "walking",
+				duration: 1800,
+				distanceMeters: 1500,
+				startTimeISO: "2026-08-27T17:00:00Z",
+				route: [
+					{ timestamp: "2026-08-27T17:00:00Z", latitude: 21.3069, longitude: -157.8583, speedMps: 1.4 },
+					{ timestamp: "2026-08-27T17:00:05Z", latitude: 21.3071, longitude: -157.8581, speedMps: 1.5 },
+				],
+			},
+		],
+	});
+
+	const day = parseJSON(json);
+	assert.ok(day);
+	const workout = day.workouts?.[0];
+	assert.ok(workout);
+	assert.equal(workout.route?.length, 2);
+	assert.equal(workout.route?.[0].latitude, 21.3069);
+	assert.equal(workout.route?.[1].longitude, -157.8581);
+	assert.equal(workout.route?.[1].speedMps, 1.5);
 });
 
 test("Markdown parser reads legacy simple individual workout notes", async () => {

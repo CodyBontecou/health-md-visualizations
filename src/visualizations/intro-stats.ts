@@ -1,4 +1,5 @@
 import { HealthDay, VizConfig, ResolvedTheme, HtmlRenderFn } from "../types";
+import { effectiveUnitSystem, formatDistanceKm } from "../units";
 
 export const renderIntroStats: HtmlRenderFn = (
 	data: HealthDay[],
@@ -35,7 +36,7 @@ export const renderIntroStats: HtmlRenderFn = (
 			color: theme.colors.sleep.rem,
 		},
 		{
-			value: `${totalDist.toFixed(0)}km`,
+			value: formatDistanceKm(totalDist, effectiveUnitSystem(theme.unitPreference)),
 			label: "Distance",
 			color: theme.colors.secondary,
 		},

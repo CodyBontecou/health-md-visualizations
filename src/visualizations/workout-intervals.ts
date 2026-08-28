@@ -1,6 +1,7 @@
-import { HealthDay, HtmlRenderFn, VizConfig, WorkoutEntry, WorkoutInterval } from "../types";
+import { HealthDay, HtmlRenderFn, UnitSystem, VizConfig, WorkoutEntry, WorkoutInterval } from "../types";
 import { formatDuration } from "../canvas-utils";
 import {
+	formatDistance,
 	formatWorkoutDistance,
 	intervalRateDisplay,
 	pickWorkout,
@@ -19,7 +20,7 @@ function renderEmptyMessage(host: HTMLElement, message: string): void {
 	msg.textContent = message;
 }
 
-function renderHeader(host: HTMLElement, day: HealthDay, workout: WorkoutEntry): void {
+function renderHeader(host: HTMLElement, day: HealthDay, workout: WorkoutEntry, unitPreference?: UnitSystem): void {
 	const header = host.createDiv({ cls: "health-md-workout-header" });
 	const title = header.createDiv({ cls: "health-md-workout-title" });
 	title.textContent = `${titleCase(workout.activityType ?? workout.type)} — ${day.date}`;
@@ -33,7 +34,7 @@ function renderHeader(host: HTMLElement, day: HealthDay, workout: WorkoutEntry):
 	};
 
 	addStat("Duration", workout.durationFormatted ?? formatDuration(workout.duration));
-	addStat("Distance", formatWorkoutDistance(workout, day));
+	addStat("Distance", formatWorkoutDistance(workout, day, unitPreference));
 	addStat("Avg HR", workout.avgHeartRate != null ? `${Math.round(workout.avgHeartRate)} BPM` : undefined);
 	addStat("Avg Power", workout.avgPower != null ? `${Math.round(workout.avgPower)} W` : undefined);
 }
@@ -42,7 +43,13 @@ function formatMaybeNumber(value: number | undefined, suffix: string): string {
 	return value == null ? "—" : `${Math.round(value)} ${suffix}`;
 }
 
-function renderIntervalTable(host: HTMLElement, label: string, rows: WorkoutInterval[]): void {
+function renderIntervalTable(
+	host: HTMLElement,
+	label: string,
+	rows: WorkoutInterval[],
+	day: HealthDay,
+	unitPreference?: UnitSystem
+): void {
 	host.createEl("h4", { text: label, cls: "health-md-workout-table-heading" });
 	const wrapper = host.createDiv({ cls: "health-md-workout-table-wrap" });
 	const table = wrapper.createEl("table", { cls: "health-md-workout-table" });
@@ -56,7 +63,11 @@ function renderIntervalTable(host: HTMLElement, label: string, rows: WorkoutInte
 	rows.forEach((row) => {
 		const tr = tbody.createEl("tr");
 		tr.createEl("td", { text: String(row.index) });
-		tr.createEl("td", { text: row.distanceFormatted ?? (row.distance != null ? `${(row.distance / 1000).toFixed(2)} km` : "—") });
+		tr.createEl("td", {
+			text: row.distance != null || row.distanceFormatted
+				? formatDistance(row.distance ?? 0, day, row.distanceFormatted, unitPreference)
+				: "—",
+		});
 		tr.createEl("td", { text: row.duration ? formatDuration(row.duration) : "—" });
 		tr.createEl("td", { text: intervalRateDisplay(row) ?? "—" });
 		tr.createEl("td", { text: formatMaybeNumber(row.avgHeartRate, "BPM") });
@@ -70,7 +81,7 @@ export const renderWorkoutIntervals: HtmlRenderFn = (
 	data: HealthDay[],
 	el: HTMLElement,
 	config: VizConfig,
-	_theme
+	theme
 ): void => {
 	el.addClass("health-md-workout-container");
 	const picked = pickWorkout(data, config);
@@ -80,18 +91,18 @@ export const renderWorkoutIntervals: HtmlRenderFn = (
 	}
 
 	const { day, workout } = picked;
-	renderHeader(el, day, workout);
+	renderHeader(el, day, workout, theme.unitPreference);
 
 	const kind = String(config.kind ?? config.table ?? "auto").trim().toLowerCase();
 	const showLaps = kind === "auto" || kind === "laps" || kind === "lap";
 	const showSplits = kind === "auto" || kind === "splits" || kind === "split";
 	let rendered = false;
 	if (showLaps && workout.laps?.length) {
-		renderIntervalTable(el, "Laps", workout.laps);
+		renderIntervalTable(el, "Laps", workout.laps, day, theme.unitPreference);
 		rendered = true;
 	}
 	if (showSplits && workout.splits?.length) {
-		renderIntervalTable(el, "Splits", workout.splits);
+		renderIntervalTable(el, "Splits", workout.splits, day, theme.unitPreference);
 		rendered = true;
 	}
 	if (!rendered) {

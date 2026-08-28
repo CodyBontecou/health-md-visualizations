@@ -78,6 +78,7 @@ Open **Settings → Health.md Visualizations**:
 | **File pattern** | Glob to filter which files in that folder are loaded. Examples: `*` (all supported), `*.json`, `2026-*.md`, `health-*.csv`, `2026/**/*.json` for nested paths. |
 | **Data format** | `auto` (detect by file extension), `json`, `csv`, `markdown`, or `bases`. Markdown support requires YAML frontmatter (Bases-style). |
 | **Theme** | `auto` matches the active Obsidian theme (including custom CSS colors), or force `dark` / `light`. |
+| **Units** | Display units for charts. `Auto (follow data)` uses the unit system declared by each health export (metric by default), or force `Metric (km, kg)` / `Imperial (mi, lb)`. Applies to workout distance, pace, speed, elevation, activity distance, and convertible body metrics such as weight, waist circumference, and temperatures. |
 | **Color scheme** | Pick a built-in palette, choose `Match Obsidian theme` to use the theme accent, or set individual custom colors. |
 | **Default width** | Default canvas width in pixels (charts shrink to container width). |
 | **Default height** | Default canvas height in pixels. |
@@ -402,6 +403,7 @@ height: 400
 | `to` | date, datetime, dynamic variable, or frontmatter variable | — | End of the data window (inclusive). |
 | `last` | number | — | Number of calendar days back to include. |
 | `clickAction` | `pin`, `source`, `daily` | from settings | Optional per-chart override for data point clicks: pin tooltip, open source data file, or open matching Daily Note. |
+| `units` | `auto`, `metric`, `imperial` | from settings | Optional per-chart override for display units. `metric`/`imperial` force one system for this chart; `auto` follows each export's declared unit system. Numeric `goal`/`reference` values stay in the chart's canonical metric units. |
 
 Individual visualization types may accept additional keys — start at `examples/visualization-reference.md` for links to every category-specific renderer argument, default, and accepted value.
 

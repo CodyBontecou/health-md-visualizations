@@ -1,7 +1,8 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { hexToRgba, formatDate, formatDuration } from "../canvas-utils";
 import { renderInlineStats } from "../dom-utils";
-import { formatWorkoutDistance, workoutDistanceMeters } from "../workout-utils";
+import { formatDistanceMeters, formatWorkoutDistance, workoutDistanceMeters } from "../workout-utils";
+import { effectiveUnitSystem } from "../units";
 
 // Map workout type names to short display labels
 const TYPE_LABELS: Record<string, string> = {
@@ -77,7 +78,7 @@ export const renderWorkoutLog: RenderFn = (
 				calories: w.calories || 0,
 				distanceMeters: workoutDistanceMeters(w),
 				durationFormatted: w.durationFormatted,
-				distanceFormatted: formatWorkoutDistance(w, day),
+				distanceFormatted: formatWorkoutDistance(w, day, theme.unitPreference),
 				avgHeartRate: w.avgHeartRate,
 				avgPower: w.avgPower,
 			});
@@ -165,7 +166,7 @@ export const renderWorkoutLog: RenderFn = (
 				{ label: "Duration", value: entry.durationFormatted ?? formatDuration(entry.duration) },
 				...(entry.calories ? [{ label: "Calories", value: `${Math.round(entry.calories)} kcal` }] : []),
 				...(entry.distanceMeters != null
-					? [{ label: "Distance", value: entry.distanceFormatted ?? `${(entry.distanceMeters / 1000).toFixed(2)} km` }]
+					? [{ label: "Distance", value: entry.distanceFormatted ?? formatDistanceMeters(entry.distanceMeters, effectiveUnitSystem(theme.unitPreference)) }]
 					: []),
 				...(entry.avgHeartRate != null ? [{ label: "Avg HR", value: `${Math.round(entry.avgHeartRate)} BPM` }] : []),
 				...(entry.avgPower != null ? [{ label: "Avg Power", value: `${Math.round(entry.avgPower)} W` }] : []),

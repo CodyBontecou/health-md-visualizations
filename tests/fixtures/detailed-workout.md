@@ -30,6 +30,7 @@ power_avg_w: 120
 power_max_w: 140
 ascent_m: 12
 descent_m: 5
+route_points: 425
 heart_rate_zones:
   zone1:
     label: Recovery

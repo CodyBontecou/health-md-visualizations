@@ -7,6 +7,7 @@ import {
 	RUNNING_METRICS,
 } from "../metric-catalog";
 import {
+	displayMetricUnit,
 	formatMetricValue,
 	resolveMetricDefinition,
 	resolveMetricScalar,
@@ -183,11 +184,12 @@ function drawMetricPanel(
 	ctx.textAlign = "left";
 	ctx.textBaseline = "top";
 	ctx.fillText(definition.label, options.x, options.y - 18);
-	if (definition.unit) {
+	const unitLabel = displayMetricUnit(definition, theme.unitPreference);
+	if (unitLabel) {
 		ctx.fillStyle = theme.muted;
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "right";
-		ctx.fillText(definition.unit, options.x + options.w, options.y - 17);
+		ctx.fillText(unitLabel, options.x + options.w, options.y - 17);
 	}
 
 	if (!points.length) {
@@ -233,7 +235,7 @@ function drawMetricPanel(
 		ctx.textAlign = "right";
 		ctx.textBaseline = "bottom";
 		ctx.fillText(
-			`${options.referenceLabel ?? "Reference"} ${formatMetricValue(options.reference, definition)}`,
+			`${options.referenceLabel ?? "Reference"} ${formatMetricValue(options.reference, definition, theme.unitPreference)}`,
 			options.x + options.w,
 			Math.max(options.y + 9, y - 2)
 		);
@@ -272,7 +274,7 @@ function drawMetricPanel(
 			r: 8,
 			title: formatDate(point.day.date),
 			details: [
-				{ label: definition.label, value: formatMetricValue(point.value, definition) },
+				{ label: definition.label, value: formatMetricValue(point.value, definition, theme.unitPreference) },
 				...(options.extraDetails?.(point.day, point.value) ?? []),
 			],
 			payload: point.day,
@@ -358,7 +360,7 @@ function renderSmallMultiples(
 	const boxes = allPoints.map(({ definition, points }, index) => {
 		const latest = latestPoint(points);
 		return {
-			value: latest ? formatMetricValue(latest.value, definition) : "—",
+			value: latest ? formatMetricValue(latest.value, definition, theme.unitPreference) : "—",
 			label: `${definition.label} latest`,
 			color: colorForMetric(definition, index, theme),
 		};
@@ -443,11 +445,12 @@ export const renderMetricTrend: RenderFn = (
 	ctx.textAlign = "left";
 	ctx.textBaseline = "top";
 	ctx.fillText(definition.label, padL, 10);
-	if (definition.unit) {
+	const headerUnit = displayMetricUnit(definition, theme.unitPreference);
+	if (headerUnit) {
 		ctx.fillStyle = theme.muted;
 		ctx.font = "9px sans-serif";
 		ctx.textAlign = "right";
-		ctx.fillText(definition.unit, W - padR, 12);
+		ctx.fillText(headerUnit, W - padR, 12);
 	}
 
 	ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
@@ -464,7 +467,7 @@ export const renderMetricTrend: RenderFn = (
 		ctx.font = "8px sans-serif";
 		ctx.textAlign = "right";
 		ctx.textBaseline = "middle";
-		ctx.fillText(formatMetricValue(value, { ...definition, unit: undefined }), padL - 5, y);
+		ctx.fillText(formatMetricValue(value, { ...definition, unit: undefined }, theme.unitPreference), padL - 5, y);
 	}
 
 	if (goal !== undefined) {
@@ -481,7 +484,7 @@ export const renderMetricTrend: RenderFn = (
 		ctx.font = "8px sans-serif";
 		ctx.textAlign = "right";
 		ctx.textBaseline = "bottom";
-		ctx.fillText(`Goal ${formatMetricValue(goal, definition)}`, W - padR, Math.max(padT + 9, y - 2));
+		ctx.fillText(`Goal ${formatMetricValue(goal, definition, theme.unitPreference)}`, W - padR, Math.max(padT + 9, y - 2));
 	}
 
 	ctx.strokeStyle = color;
@@ -543,7 +546,7 @@ export const renderMetricTrend: RenderFn = (
 			cy: y,
 			r: 9,
 			title: formatDate(point.day.date),
-			details: [{ label: definition.label, value: formatMetricValue(point.value, definition) }],
+			details: [{ label: definition.label, value: formatMetricValue(point.value, definition, theme.unitPreference) }],
 			payload: point.day,
 		});
 	}
@@ -553,12 +556,12 @@ export const renderMetricTrend: RenderFn = (
 	const average = values.reduce((sum, value) => sum + value, 0) / values.length;
 	const latest = points[points.length - 1];
 	renderStatBoxes(statsEl, [
-		{ value: formatMetricValue(latest.value, definition), label: "Latest", color },
-		{ value: formatMetricValue(average, definition), label: "Average" },
-		{ value: formatMetricValue(Math.min(...values), definition), label: "Minimum" },
-		{ value: formatMetricValue(Math.max(...values), definition), label: "Maximum" },
+		{ value: formatMetricValue(latest.value, definition, theme.unitPreference), label: "Latest", color },
+		{ value: formatMetricValue(average, definition, theme.unitPreference), label: "Average" },
+		{ value: formatMetricValue(Math.min(...values), definition, theme.unitPreference), label: "Minimum" },
+		{ value: formatMetricValue(Math.max(...values), definition, theme.unitPreference), label: "Maximum" },
 		{ value: String(values.length), label: "Days sampled" },
-		...(goal === undefined ? [] : [{ value: formatMetricValue(goal, definition), label: "Goal" }]),
+		...(goal === undefined ? [] : [{ value: formatMetricValue(goal, definition, theme.unitPreference), label: "Goal" }]),
 	]);
 };
 
@@ -592,7 +595,7 @@ export const renderCyclingPerformance: RenderFn = (
 			if (ftp === undefined || ftp <= 0) return [];
 			const ftpDefinition = resolveMetricDefinition("cycling_ftp_w", context?.dictionary, data);
 			return [
-				{ label: ftpDefinition.label, value: formatMetricValue(ftp, ftpDefinition) },
+				{ label: ftpDefinition.label, value: formatMetricValue(ftp, ftpDefinition, theme.unitPreference) },
 				{ label: "Power / FTP", value: `${((value / ftp) * 100).toFixed(0)}%` },
 			];
 		}
@@ -690,9 +693,10 @@ export const renderCardioFitnessFreshness: RenderFn = (
 	ctx.fillStyle = theme.muted;
 	ctx.font = "8px sans-serif";
 	ctx.fillText("Solid: measured   Hollow: carried   Diamond: provenance unavailable", padL, 28);
-	if (definition.unit) {
+	const vo2Unit = displayMetricUnit(definition, theme.unitPreference);
+	if (vo2Unit) {
 		ctx.textAlign = "right";
-		ctx.fillText(definition.unit, W - padR, 12);
+		ctx.fillText(vo2Unit, W - padR, 12);
 	}
 
 	ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
@@ -709,7 +713,7 @@ export const renderCardioFitnessFreshness: RenderFn = (
 		ctx.textAlign = "right";
 		ctx.textBaseline = "middle";
 		ctx.fillText(
-			formatMetricValue(domain.max - ratio * (domain.max - domain.min), { ...definition, unit: undefined }),
+			formatMetricValue(domain.max - ratio * (domain.max - domain.min), { ...definition, unit: undefined }, theme.unitPreference),
 			padL - 5,
 			y
 		);
@@ -767,7 +771,7 @@ export const renderCardioFitnessFreshness: RenderFn = (
 		const sourceText = typeof source === "string" && source.trim() ? source.trim() : undefined;
 		const hasProvenance = carriedScalar !== undefined || age !== undefined || sourceText !== undefined;
 		const details: HitRegionDetail[] = [
-			{ label: definition.label, value: formatMetricValue(point.value, definition) },
+			{ label: definition.label, value: formatMetricValue(point.value, definition, theme.unitPreference) },
 			hasProvenance
 				? { label: "Status", value: state === "carried" ? "Carried forward" : state === "measured" ? "Measured" : "Provenance unavailable" }
 				: { label: "Provenance", value: "Provenance unavailable" },
@@ -792,7 +796,7 @@ export const renderCardioFitnessFreshness: RenderFn = (
 	const latest = points[points.length - 1];
 	const latestAge = resolveNumericMetric(latest.day, "vo2_max_age_seconds", context?.dictionary);
 	renderStatBoxes(statsEl, [
-		{ value: formatMetricValue(latest.value, definition), label: "Latest", color },
+		{ value: formatMetricValue(latest.value, definition, theme.unitPreference), label: "Latest", color },
 		{ value: String(points.length), label: "Days shown" },
 		{ value: String(carriedCount), label: "Carried-forward days" },
 		...(latestAge === undefined ? [] : [{ value: formatMeasurementAge(latestAge), label: "Latest measurement age" }]),
