@@ -7,7 +7,7 @@ export default [
     languageOptions: {
       parserOptions: {
         project: "./tsconfig.json",
-        tsconfigRootDir: "/Users/codybontecou/projects/obsidian-plugin-hub/obsidian-health-md",
+        tsconfigRootDir: import.meta.dirname,
       },
     },
   },

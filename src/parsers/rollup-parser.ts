@@ -153,7 +153,8 @@ function firstNumber(record: Record<string, unknown>, ...keys: string[]): number
 }
 
 function hasOwn(record: Record<string, unknown>, key: string): boolean {
-	return Object.prototype.hasOwnProperty.call(record, key);
+	// Boolean() keeps the return type a definite boolean for typed lint rules.
+	return Boolean(Object.prototype.hasOwnProperty.call(record, key));
 }
 
 interface AliasedValue<T> {
