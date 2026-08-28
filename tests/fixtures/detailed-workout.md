@@ -31,6 +31,7 @@ power_max_w: 140
 ascent_m: 12
 descent_m: 5
 route_points: 425
+route_file: 2026-03-27-cycling.route.json
 heart_rate_zones:
   zone1:
     label: Recovery

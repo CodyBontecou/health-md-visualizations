@@ -21,6 +21,7 @@ import {
 	HealthMdQueryStatusCounts,
 	HealthMdTimeContext,
 	RawCaptureStatus,
+	RoutePoint,
 } from "../types";
 
 const OMITTED_ROOT_KEYS = new Set(["healthkit_record_archive"]);
@@ -269,6 +270,49 @@ function normalizedMedicationSource(root: Record<string, unknown>): Record<strin
 		medication_details: value.medications ?? value.medicationDetails ?? value.medication_details,
 		medication_dose_events: value.doseEvents ?? value.medicationDoseEvents ?? value.medication_dose_events,
 	};
+}
+
+/**
+ * Parse a route sidecar file written next to an individual workout note
+ * (frontmatter key `route_file`). Accepts the exporter's wrapped envelope
+ * ({schema, schema_version, point_count, route}) or a bare JSON array of
+ * route points. Invalid or coordinate-less points are skipped; returns null
+ * when nothing usable remains.
+ */
+export function parseRouteSidecar(content: string): RoutePoint[] | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(content);
+	} catch {
+		return null;
+	}
+
+	let pointsRaw: unknown[] | null = null;
+	if (Array.isArray(parsed)) {
+		pointsRaw = parsed;
+	} else if (isRecord(parsed)) {
+		const route = parsed.route ?? parsed.points;
+		if (Array.isArray(route)) pointsRaw = route;
+	}
+	if (!pointsRaw) return null;
+
+	const route: RoutePoint[] = [];
+	for (const item of pointsRaw) {
+		if (!isRecord(item)) continue;
+		const latitude = numberValue(item.latitude);
+		const longitude = numberValue(item.longitude);
+		if (latitude === undefined || longitude === undefined) continue;
+		route.push({
+			timestamp: stringValue(item.timestamp) ?? "",
+			latitude,
+			longitude,
+			altitude: numberValue(item.altitude),
+			speedMps: numberValue(item.speedMps),
+			courseDegrees: numberValue(item.courseDegrees),
+			horizontalAccuracyMeters: numberValue(item.horizontalAccuracyMeters),
+		});
+	}
+	return route.length ? route : null;
 }
 
 export function parseJSON(content: string): HealthDay | null {

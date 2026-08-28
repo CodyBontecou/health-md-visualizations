@@ -13,6 +13,7 @@ build/
 
 # Local agent configuration
 .claude/
+.pi/
 AGENTS.md
 CLAUDE.md
 src/**/*.js

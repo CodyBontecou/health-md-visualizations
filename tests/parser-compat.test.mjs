@@ -75,6 +75,7 @@ async function loadParsers() {
 		return {
 			parseCSV: csvModule.parseCSV,
 			parseJSON: jsonModule.parseJSON,
+			parseRouteSidecar: jsonModule.parseRouteSidecar,
 			parseMarkdown: markdownModule.parseMarkdown,
 			parseRollupJSON: rollupModule.parseRollupJSON,
 			parseRollupCSV: rollupModule.parseRollupCSV,
@@ -959,6 +960,7 @@ test("Markdown parser reads detailed Health.md workout notes", async () => {
 	assert.equal(workout.elevationGainMeters, 12);
 	assert.equal(workout.elevationLossMeters, 5);
 	assert.equal(workout.routePointCount, 425);
+	assert.equal(workout.routeFile, "2026-03-27-cycling.route.json");
 	assert.equal(workout.route, undefined);
 	assert.equal(workout.heartRateZones?.length, 5);
 	assert.deepEqual(workout.heartRateZones?.[0], {
@@ -1013,6 +1015,38 @@ test("JSON parser preserves workout route coordinates for the workout map", asyn
 	assert.equal(workout.route?.[0].latitude, 21.3069);
 	assert.equal(workout.route?.[1].longitude, -157.8581);
 	assert.equal(workout.route?.[1].speedMps, 1.5);
+});
+
+test("route sidecar parser accepts wrapped envelopes and bare arrays", async () => {
+	const { parseRouteSidecar } = await loadParsers();
+
+	const envelope = JSON.stringify({
+		schema: "healthmd.workout_route",
+		schema_version: 1,
+		point_count: 3,
+		route: [
+			{ timestamp: "2026-08-27T17:00:00Z", latitude: 21.3069, longitude: -157.8583, altitude: 12, speedMps: 1.4 },
+			{ timestamp: "2026-08-27T17:00:05Z", latitude: 21.3071, longitude: -157.8581 },
+			{ latitude: "not-a-number", longitude: -157.858 },
+		],
+	});
+	const wrapped = parseRouteSidecar(envelope);
+	assert.ok(wrapped);
+	assert.equal(wrapped.length, 2);
+	assert.equal(wrapped[0].latitude, 21.3069);
+	assert.equal(wrapped[0].altitude, 12);
+	assert.equal(wrapped[1].speedMps, undefined);
+
+	const bare = parseRouteSidecar(JSON.stringify([
+			{ timestamp: "2026-08-27T18:00:00Z", latitude: 10, longitude: 20 },
+			{ timestamp: "2026-08-27T18:00:05Z", latitude: 10.001, longitude: 20.001 },
+	]));
+	assert.ok(bare);
+	assert.equal(bare.length, 2);
+
+	assert.equal(parseRouteSidecar("{not json"), null);
+	assert.equal(parseRouteSidecar(JSON.stringify({ schema: "healthmd.workout_route" })), null);
+	assert.equal(parseRouteSidecar(JSON.stringify([{ latitude: 1 }])), null);
 });
 
 test("Markdown parser reads legacy simple individual workout notes", async () => {

@@ -99,6 +99,8 @@ export interface WorkoutEntry {
 	route?: RoutePoint[];
 	/** Markdown/Bases exports record only the point count; coordinates arrive via JSON exports. */
 	routePointCount?: number;
+	/** Sidecar file (relative to the note) carrying full route coordinates. */
+	routeFile?: string;
 	timeSeries?: WorkoutTimeSeries;
 }
 

@@ -11705,6 +11705,40 @@ function normalizedMedicationSource(root) {
     medication_dose_events: (_m = (_l = value.doseEvents) != null ? _l : value.medicationDoseEvents) != null ? _m : value.medication_dose_events
   };
 }
+function parseRouteSidecar(content) {
+  var _a, _b;
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    return null;
+  }
+  let pointsRaw = null;
+  if (Array.isArray(parsed)) {
+    pointsRaw = parsed;
+  } else if (isRecord4(parsed)) {
+    const route2 = (_a = parsed.route) != null ? _a : parsed.points;
+    if (Array.isArray(route2)) pointsRaw = route2;
+  }
+  if (!pointsRaw) return null;
+  const route = [];
+  for (const item of pointsRaw) {
+    if (!isRecord4(item)) continue;
+    const latitude = numberValue(item.latitude);
+    const longitude = numberValue(item.longitude);
+    if (latitude === void 0 || longitude === void 0) continue;
+    route.push({
+      timestamp: (_b = stringValue3(item.timestamp)) != null ? _b : "",
+      latitude,
+      longitude,
+      altitude: numberValue(item.altitude),
+      speedMps: numberValue(item.speedMps),
+      courseDegrees: numberValue(item.courseDegrees),
+      horizontalAccuracyMeters: numberValue(item.horizontalAccuracyMeters)
+    });
+  }
+  return route.length ? route : null;
+}
 function parseJSON(content) {
   var _a;
   try {
@@ -13664,7 +13698,8 @@ function parseWorkoutEntry(fm, body, date) {
     heartRateZones: zones.length ? zones : void 0,
     laps: laps.length ? laps : void 0,
     splits: splits.length ? splits : void 0,
-    routePointCount: getFirstNum(fm, "route_points", "routePoints")
+    routePointCount: getFirstNum(fm, "route_points", "routePoints"),
+    routeFile: getFirstStr(fm, "route_file", "routeFile")
   };
   return workout;
 }
@@ -14670,6 +14705,7 @@ var DataLoader = class {
         });
       }
     }
+    await this.attachRouteSidecars(days, report);
     for (const file of rollupFiles) {
       const content = await this.vault.read(file);
       const format = detectFormat(file.extension, this.settings.dataFormat);
@@ -14950,12 +14986,49 @@ var DataLoader = class {
       }
     }
   }
+  /**
+   * Resolve `route_file` references on workouts parsed from Markdown/Bases
+   * notes by reading the sidecar JSON next to the note. Sidecars carry the
+   * full coordinate array the note itself omits.
+   */
+  async attachRouteSidecars(days, report) {
+    var _a, _b, _c;
+    for (const day of days) {
+      for (const workout of (_a = day.workouts) != null ? _a : []) {
+        if (!workout.routeFile || ((_b = workout.route) == null ? void 0 : _b.length)) continue;
+        const notePath = (_c = day.sourcePaths) == null ? void 0 : _c[day.sourcePaths.length - 1];
+        if (!notePath) continue;
+        const folder = notePath.includes("/") ? notePath.slice(0, notePath.lastIndexOf("/")) : "";
+        const sidecarPath = folder ? `${folder}/${workout.routeFile}` : workout.routeFile;
+        const file = this.vault.getAbstractFileByPath(sidecarPath);
+        if (!(file instanceof import_obsidian.TFile)) {
+          report.warnings.push(`${notePath} references route file ${workout.routeFile} that was not found.`);
+          continue;
+        }
+        try {
+          const route = parseRouteSidecar(await this.vault.read(file));
+          if (route) {
+            workout.route = route;
+            if (workout.routePointCount === void 0) workout.routePointCount = route.length;
+          } else {
+            report.warnings.push(`${sidecarPath} is not a valid Health.md route file.`);
+          }
+        } catch (e) {
+          report.skippedFiles.push({
+            path: sidecarPath,
+            reason: "malformed-route-file"
+          });
+        }
+      }
+    }
+  }
   isRollupsFolder(folder, rootPath) {
     const relative = folder.path.startsWith(`${rootPath}/`) ? folder.path.slice(rootPath.length + 1) : folder.path;
     return relative.split("/")[0] === "Rollups";
   }
   matchesDataFile(file, rootPath, pattern) {
     if (file.path.startsWith(`${rootPath}/Rollups/`)) return false;
+    if (file.name.endsWith(".route.json")) return false;
     return matchesDataFilePath({
       name: file.name,
       extension: file.extension,
@@ -14966,6 +15039,7 @@ var DataLoader = class {
   }
   matchesRollupFile(file, rootPath, pattern) {
     if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) return false;
+    if (file.name.endsWith(".route.json")) return false;
     if (!["json", "csv", "md"].includes(file.extension)) return false;
     return matchesDataFilePath({
       name: file.name,
@@ -20186,7 +20260,7 @@ var renderWorkoutMap = (data, el, config, theme) => {
   if (!route.length) {
     renderEmptyMessage(
       el,
-      workout.routePointCount && workout.routePointCount > 0 ? `GPS route recorded (${workout.routePointCount} ${workout.routePointCount === 1 ? "point" : "points"}) \u2014 coordinates are only included in JSON exports. Export this day as JSON to view the map.` : "No GPS route data available for this workout."
+      workout.routePointCount && workout.routePointCount > 0 ? `GPS route recorded (${workout.routePointCount} ${workout.routePointCount === 1 ? "point" : "points"}) \u2014 coordinates are only included in the daily JSON export, not individual workout notes. Export this day as JSON to view the map.` : "No GPS route data available for this workout."
     );
     return;
   }

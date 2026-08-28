@@ -28,7 +28,7 @@ import {
 	MedicationInventoryItem,
 	WorkoutEntry,
 } from "./types";
-import { parseJSON } from "./parsers/json-parser";
+import { parseJSON, parseRouteSidecar } from "./parsers/json-parser";
 import { parseCSV } from "./parsers/csv-parser";
 import { parseMarkdown } from "./parsers/markdown-parser";
 import { parseRollupByFormat } from "./parsers/rollup-parser";
@@ -192,6 +192,11 @@ export class DataLoader {
 				});
 			}
 		}
+
+		// Individual workout notes reference full-coordinate route sidecars via
+		// `route_file`. Resolve them against each note's folder so the workout map
+		// can render from Markdown-based exports.
+		await this.attachRouteSidecars(days, report);
 
 		for (const file of rollupFiles) {
 			const content = await this.vault.read(file);
@@ -556,6 +561,44 @@ export class DataLoader {
 		}
 	}
 
+	/**
+	 * Resolve `route_file` references on workouts parsed from Markdown/Bases
+	 * notes by reading the sidecar JSON next to the note. Sidecars carry the
+	 * full coordinate array the note itself omits.
+	 */
+	private async attachRouteSidecars(days: HealthDay[], report: DataLoaderLoadReport): Promise<void> {
+		for (const day of days) {
+			for (const workout of day.workouts ?? []) {
+				if (!workout.routeFile || workout.route?.length) continue;
+				const notePath = day.sourcePaths?.[day.sourcePaths.length - 1];
+				if (!notePath) continue;
+				const folder = notePath.includes("/")
+					? notePath.slice(0, notePath.lastIndexOf("/"))
+					: "";
+				const sidecarPath = folder ? `${folder}/${workout.routeFile}` : workout.routeFile;
+				const file = this.vault.getAbstractFileByPath(sidecarPath);
+				if (!(file instanceof TFile)) {
+					report.warnings.push(`${notePath} references route file ${workout.routeFile} that was not found.`);
+					continue;
+				}
+				try {
+					const route = parseRouteSidecar(await this.vault.read(file));
+					if (route) {
+						workout.route = route;
+						if (workout.routePointCount === undefined) workout.routePointCount = route.length;
+					} else {
+						report.warnings.push(`${sidecarPath} is not a valid Health.md route file.`);
+					}
+				} catch {
+					report.skippedFiles.push({
+						path: sidecarPath,
+						reason: "malformed-route-file",
+					});
+				}
+			}
+		}
+	}
+
 	private isRollupsFolder(folder: TFolder, rootPath: string): boolean {
 		const relative = folder.path.startsWith(`${rootPath}/`)
 			? folder.path.slice(rootPath.length + 1)
@@ -565,6 +608,9 @@ export class DataLoader {
 
 	private matchesDataFile(file: TFile, rootPath: string, pattern: string): boolean {
 		if (file.path.startsWith(`${rootPath}/Rollups/`)) return false;
+		// Route sidecars are consumed via `route_file` references on workout notes,
+		// never as standalone day or roll-up files.
+		if (file.name.endsWith(".route.json")) return false;
 		return matchesDataFilePath({
 			name: file.name,
 			extension: file.extension,
@@ -576,6 +622,7 @@ export class DataLoader {
 
 	private matchesRollupFile(file: TFile, rootPath: string, pattern: string): boolean {
 		if (file.name === HEALTHMD_DATA_DICTIONARY_FILENAME) return false;
+		if (file.name.endsWith(".route.json")) return false;
 		if (!["json", "csv", "md"].includes(file.extension)) return false;
 		return matchesDataFilePath({
 			name: file.name,

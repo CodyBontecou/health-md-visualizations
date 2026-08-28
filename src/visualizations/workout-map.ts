@@ -347,12 +347,13 @@ export const renderWorkoutMap: HtmlRenderFn = (
 	const route = workout.route ?? [];
 	if (!route.length) {
 		// Markdown/Bases exports carry only a point count; full coordinates
-		// arrive via JSON exports. Distinguish the two cases so users with a
-		// recorded route get an actionable hint instead of a dead end.
+		// arrive via the daily JSON export (or a route sidecar file). Distinguish
+		// the two cases so users with a recorded route get an actionable hint
+		// instead of a dead end.
 		renderEmptyMessage(
 			el,
 			workout.routePointCount && workout.routePointCount > 0
-				? `GPS route recorded (${workout.routePointCount} ${workout.routePointCount === 1 ? "point" : "points"}) — coordinates are only included in JSON exports. Export this day as JSON to view the map.`
+				? `GPS route recorded (${workout.routePointCount} ${workout.routePointCount === 1 ? "point" : "points"}) — coordinates are only included in the daily JSON export, not individual workout notes. Export this day as JSON to view the map.`
 				: "No GPS route data available for this workout."
 		);
 		return;

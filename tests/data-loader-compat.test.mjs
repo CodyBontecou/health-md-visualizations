@@ -519,3 +519,139 @@ test("invalidate during an in-flight load discards the stale scan instead of cac
 	assert.equal(freshDays.length, 1);
 	assert.equal(freshDays[0].activity?.steps, 222, "the stale in-flight result must not serve later loads");
 });
+
+test("DataLoader resolves route sidecar files referenced by workout notes", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const contentsByPath = new Map();
+	const file = (filePath, content) => {
+		contentsByPath.set(filePath, content);
+		return new TFile(filePath);
+	};
+	const folder = (folderPath, children = []) => {
+		const item = new TFolder(folderPath, children);
+		for (const child of children) child.parent = item;
+		return item;
+	};
+	const sidecar = JSON.stringify({
+		schema: "healthmd.workout_route",
+		schema_version: 1,
+		point_count: 2,
+		route: [
+			{ timestamp: "2026-08-27T17:00:00Z", latitude: 21.3069, longitude: -157.8583, speedMps: 1.4 },
+			{ timestamp: "2026-08-27T17:00:05Z", latitude: 21.3071, longitude: -157.8581, speedMps: 1.5 },
+		],
+	});
+	const tree = folder("Health", [
+		folder("Health/Workouts", [
+			file("Health/Workouts/2026-08-27-walking.md", `---
+date: 2026-08-27
+time: "17:00"
+type: workout
+metric: workouts
+value: "Walking"
+workout_type: Walking
+sport: walking
+duration_minutes: 40
+distance_m: 3200
+route_points: 2
+route_file: 2026-08-27-walking.route.json
+---
+`),
+			file("Health/Workouts/2026-08-27-walking.route.json", sidecar),
+		]),
+	]);
+	const allByPath = new Map();
+	(function index(node) {
+		allByPath.set(node.path, node);
+		if (node.children) node.children.forEach(index);
+	})(tree);
+	const vault = {
+		getAbstractFileByPath(filePath) {
+			return allByPath.get(filePath) ?? null;
+		},
+		async read(item) {
+			return contentsByPath.get(item.path) ?? "";
+		},
+	};
+	const loader = new DataLoader(vault, {
+		dataFolder: "Health",
+		filePattern: "*",
+		dataFormat: "auto",
+		dataFolderGranularity: "flat",
+		dataFolderCustomPathTemplate: "",
+	});
+
+	const days = await loader.load();
+
+	assert.equal(days.length, 1);
+	const workout = days[0].workouts?.[0];
+	assert.ok(workout);
+	assert.equal(workout.type, "walking");
+	assert.equal(workout.route?.length, 2);
+	assert.equal(workout.route?.[0].latitude, 21.3069);
+	assert.equal(workout.route?.[1].longitude, -157.8581);
+	assert.equal(workout.routePointCount, 2);
+
+	const report = loader.getLastLoadReport();
+	assert.equal(report.skippedFiles.length, 0, `sidecar must not be scanned as a data file: ${JSON.stringify(report.skippedFiles)}`);
+});
+
+test("DataLoader warns when a workout note references a missing route file", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const contentsByPath = new Map();
+	const file = (filePath, content) => {
+		contentsByPath.set(filePath, content);
+		return new TFile(filePath);
+	};
+	const folder = (folderPath, children = []) => {
+		const item = new TFolder(folderPath, children);
+		for (const child of children) child.parent = item;
+		return item;
+	};
+	const tree = folder("Health", [
+		folder("Health/Workouts", [
+			file("Health/Workouts/2026-08-28-run.md", `---
+date: 2026-08-28
+time: "07:00"
+type: workout
+metric: workouts
+value: "Running"
+workout_type: Running
+duration_minutes: 30
+route_points: 900
+route_file: gone.route.json
+---
+`),
+		]),
+	]);
+	const allByPath = new Map();
+	(function index(node) {
+		allByPath.set(node.path, node);
+		if (node.children) node.children.forEach(index);
+	})(tree);
+	const vault = {
+		getAbstractFileByPath(filePath) {
+			return allByPath.get(filePath) ?? null;
+		},
+		async read(item) {
+			return contentsByPath.get(item.path) ?? "";
+		},
+	};
+	const loader = new DataLoader(vault, {
+		dataFolder: "Health",
+		filePattern: "*",
+		dataFormat: "auto",
+		dataFolderGranularity: "flat",
+		dataFolderCustomPathTemplate: "",
+	});
+
+	const days = await loader.load();
+
+	assert.equal(days.length, 1);
+	const workout = days[0].workouts?.[0];
+	assert.ok(workout);
+	assert.equal(workout.route, undefined);
+	assert.equal(workout.routePointCount, 900);
+	const report = loader.getLastLoadReport();
+	assert.ok(report.warnings.some((w) => w.includes("gone.route.json")));
+});

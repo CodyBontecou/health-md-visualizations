@@ -142,7 +142,7 @@ Notes:
 - A `*` marks summary fields whose availability differs between HealthKit and Health Connect; charts render only metrics actually present and never substitute zero for missing data.
 - `walking-symmetry` is partial on Android: Android has walking speed, but not Apple-only asymmetry or double-support details.
 - `activity-rings` is partial on Android for Stand: the plugin falls back to a steps-derived stand proxy when `standHours` is missing.
-- Workout route and sample charts require granular workout data and route permission/consent.
+- Workout route and sample charts require granular workout data and route permission/consent. GPS coordinates arrive via the daily JSON export's `workouts[].route` arrays; individual Markdown workout notes carry only a point count unless the exporter also wrote a `<note>.route.json` sidecar (referenced by the note's `route_file` frontmatter), which the plugin resolves automatically.
 
 ### iOS-only
 

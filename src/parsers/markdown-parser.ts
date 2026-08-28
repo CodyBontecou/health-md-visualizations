@@ -1229,6 +1229,7 @@ function parseWorkoutEntry(
 		laps: laps.length ? laps : undefined,
 		splits: splits.length ? splits : undefined,
 		routePointCount: getFirstNum(fm, "route_points", "routePoints"),
+		routeFile: getFirstStr(fm, "route_file", "routeFile"),
 	};
 
 	return workout;
