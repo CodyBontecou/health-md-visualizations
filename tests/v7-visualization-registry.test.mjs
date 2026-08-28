@@ -32,15 +32,17 @@ const SUMMARY_VISUALIZATION_FILES = [
 ];
 
 test("every schema v7 summary visualization is registered and offered by the wizard", async () => {
-	const [registry, wizard] = await Promise.all([
+	const [registry, catalog, wizard] = await Promise.all([
 		readFile(path.join(process.cwd(), "src/visualizations/index.ts"), "utf8"),
+		readFile(path.join(process.cwd(), "src/visualization-catalog.ts"), "utf8"),
 		readFile(path.join(process.cwd(), "src/insert-wizard.ts"), "utf8"),
 	]);
-	assert.match(wizard, /export const VISUALIZATION_CATALOG/);
-	assert.match(wizard, /export const VISUALIZATION_CATEGORIES/);
+	assert.match(catalog, /export const VISUALIZATION_CATALOG/);
+	assert.match(catalog, /export const VISUALIZATION_CATEGORIES/);
+	assert.match(wizard, /export \* from "\.\/visualization-catalog"/);
 	for (const type of TYPES) {
 		assert.match(registry, new RegExp(`"${type}"\\s*:`), `${type} must be registered`);
-		assert.match(wizard, new RegExp(`type:\\s*"${type}"`), `${type} must be available in the insert wizard`);
+		assert.match(catalog, new RegExp(`type:\\s*"${type}"`), `${type} must be available in the insert wizard`);
 	}
 });
 

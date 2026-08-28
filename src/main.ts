@@ -2,10 +2,14 @@ import {
 	AbstractInputSuggest,
 	App,
 	MarkdownView,
+	Modal,
+	Notice,
 	Plugin,
 	PluginSettingTab,
 	Setting,
+	TFile,
 	TFolder,
+	normalizePath,
 } from "obsidian";
 import {
 	ColorSchemeId,
@@ -22,6 +26,7 @@ import {
 import { COLOR_SCHEMES } from "./canvas-utils";
 import { renderCodeBlock } from "./renderer";
 import { openInsertVisualizationWizard } from "./insert-wizard";
+import { buildDashboardMarkdown, DASHBOARD_NOTE_PATH } from "./dashboard-note";
 import {
 	HEALTH_MD_SOURCE_EXTENSIONS,
 	HEALTH_MD_SOURCE_VIEW_TYPE,
@@ -152,6 +157,63 @@ export default class HealthMdPlugin extends Plugin {
 				openInsertVisualizationWizard(this.app, editor, this.settings);
 			},
 		});
+
+		this.addCommand({
+			id: "open-health-dashboard",
+			name: "Open health dashboard",
+			callback: () => {
+				void this.openDashboardNote();
+			},
+		});
+
+		this.addCommand({
+			id: "regenerate-health-dashboard",
+			name: "Regenerate health dashboard",
+			callback: () => {
+				new ConfirmModal(
+					this.app,
+					"Regenerate health dashboard",
+					`This overwrites ${DASHBOARD_NOTE_PATH} with freshly generated documentation. Any edits you made to that note are lost.`,
+					"Regenerate",
+					() => {
+						void this.openDashboardNote(true);
+					}
+				).open();
+			},
+		});
+
+		this.addRibbonIcon("heart-pulse", "Health.md dashboard", () => {
+			void this.openDashboardNote();
+		});
+	}
+
+	async openDashboardNote(regenerate = false): Promise<void> {
+		const path = normalizePath(DASHBOARD_NOTE_PATH);
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		try {
+			if (existing instanceof TFile) {
+				if (regenerate) {
+					await this.app.vault.modify(existing, buildDashboardMarkdown(this.manifest.version));
+				}
+				await this.revealDashboardNote(existing);
+				return;
+			}
+			const file = await this.app.vault.create(path, buildDashboardMarkdown(this.manifest.version));
+			await this.revealDashboardNote(file);
+		} catch (error) {
+			console.error("Health.md: failed to write the dashboard note", error);
+			new Notice(`Health.md: could not write the dashboard note (${path}).`);
+		}
+	}
+
+	private async revealDashboardNote(file: TFile): Promise<void> {
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+				await this.app.workspace.revealLeaf(leaf);
+				return;
+			}
+		}
+		await this.app.workspace.getLeaf("tab").openFile(file);
 	}
 
 	async loadSettings(): Promise<void> {
@@ -188,6 +250,35 @@ export default class HealthMdPlugin extends Plugin {
 				leaf.view.previewMode.rerender(true);
 			}
 		});
+	}
+}
+
+class ConfirmModal extends Modal {
+	constructor(
+		app: App,
+		private readonly title: string,
+		private readonly body: string,
+		private readonly confirmLabel: string,
+		private readonly onConfirm: () => void
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		this.titleEl.setText(this.title);
+		this.contentEl.createEl("p", { text: this.body });
+		const buttons = this.contentEl.createDiv({ cls: "modal-button-container" });
+		buttons.createEl("button", { text: "Cancel" })
+			.addEventListener("click", () => this.close());
+		buttons.createEl("button", { text: this.confirmLabel, cls: "mod-warning" })
+			.addEventListener("click", () => {
+				this.close();
+				this.onConfirm();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
 	}
 }
 

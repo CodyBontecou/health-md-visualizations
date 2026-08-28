@@ -24802,6 +24802,35 @@ async function renderCodeBlock(plugin, source, el, ctx) {
 
 // src/insert-wizard.ts
 var import_obsidian3 = require("obsidian");
+
+// src/visualization-catalog.ts
+var EXPORT_SOURCE_DESCRIPTORS = [
+  {
+    id: "daily-json",
+    label: "Daily JSON",
+    hint: "Granular daily export \u2014 summary fields, samples, sleep stages, GPS routes, dose events, and mood entries."
+  },
+  {
+    id: "daily-csv",
+    label: "Daily CSV",
+    hint: "Daily export rows \u2014 summary fields plus sample, sleep-stage, workout, mood, and medication rows when included."
+  },
+  {
+    id: "daily-markdown",
+    label: "Markdown & Bases",
+    hint: "Daily note frontmatter / Obsidian Bases summary keys only \u2014 no sample arrays or routes."
+  },
+  {
+    id: "rollups",
+    label: "Roll-ups",
+    hint: "Health/Rollups/ weekly, monthly, yearly, and v9 range summaries in JSON, Markdown, Bases, or CSV."
+  },
+  {
+    id: "workout-notes",
+    label: "Workout notes",
+    hint: "Individual detailed workout notes with laps, splits, and heart-rate zones."
+  }
+];
 var ALL_DAILY_EXPORT_SOURCES = [
   "daily-json",
   "daily-csv",
@@ -24849,11 +24878,6 @@ var EXPORT_NOTES_BY_TYPE = {
   "sleep-schedule": "Markdown/Bases use bedtime/wake summary keys; JSON/CSV add stage-level timing.",
   "rollup-explorer": "Reads Health/Rollups/ historical weekly/monthly/yearly roll-ups and v9 range summaries in every format."
 };
-var DATE_OR_DATETIME_INPUT = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
-var DATE_INPUT = /^\d{4}-\d{2}-\d{2}$/;
-var TIME_INPUT = /^\d{1,2}:\d{2}$/;
-var DATE_PLACEHOLDER = "YYYY-MM-DD";
-var DATE_OR_DATETIME_PLACEHOLDER = "YYYY-MM-DD or YYYY-MM-DDTHH:MM";
 var VISUALIZATION_CATEGORIES = [
   {
     id: "all",
@@ -25919,6 +25943,13 @@ var VISUALIZATION_CATALOG = BASE_VISUALIZATION_CATALOG.map((item) => {
     exportNote: EXPORT_NOTES_BY_TYPE[item.type]
   };
 });
+
+// src/insert-wizard.ts
+var DATE_OR_DATETIME_INPUT = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+var DATE_INPUT = /^\d{4}-\d{2}-\d{2}$/;
+var TIME_INPUT = /^\d{1,2}:\d{2}$/;
+var DATE_PLACEHOLDER = "YYYY-MM-DD";
+var DATE_OR_DATETIME_PLACEHOLDER = "YYYY-MM-DD or YYYY-MM-DDTHH:MM";
 function openInsertVisualizationWizard(app, editor, settings) {
   new VisualizationCategoryModal(app, (category) => {
     new VisualizationTypeModal(app, category.id, (visualization) => {
@@ -26290,6 +26321,112 @@ ${lines.join("\n")}
   }
 };
 
+// src/dashboard-note.ts
+var DASHBOARD_NOTE_PATH = "Health Dashboard.md";
+var CODE_FENCE = "```";
+function escapeTableCell(text) {
+  return text.replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+function paramDefaultLabel(param) {
+  if (param.kind === "toggle") return `\`${param.defaultValue ? "true" : "false"}\``;
+  if (param.defaultValue != null && String(param.defaultValue).length > 0) {
+    return `\`${param.defaultValue}\``;
+  }
+  return "*(optional)*";
+}
+function paramDescriptionCell(param) {
+  let text = param.desc;
+  if (param.kind === "select" && param.options.length > 0) {
+    const values = param.options.map((option) => `\`${option.value}\``).join(", ");
+    text += ` One of: ${values}.`;
+  }
+  if (param.optional && !/\boptional\b/i.test(text)) text += " Optional.";
+  return escapeTableCell(text);
+}
+function buildExampleBlock(option) {
+  const lines = [`type: ${option.type}`];
+  for (const param of option.params) {
+    if (param.kind === "toggle") {
+      lines.push(`${param.key}: ${param.defaultValue ? "true" : "false"}`);
+      continue;
+    }
+    const value = param.defaultValue != null ? String(param.defaultValue).trim() : "";
+    if (value) lines.push(`${param.key}: ${value}`);
+  }
+  lines.push(`last: ${option.defaultLast}`);
+  if (option.defaultHeight != null) lines.push(`height: ${option.defaultHeight}`);
+  return `${CODE_FENCE}health-viz
+${lines.join("\n")}
+${CODE_FENCE}`;
+}
+function exportSourcesLabel(option) {
+  var _a;
+  const labels = ((_a = option.exportSources) != null ? _a : []).map((id) => {
+    var _a2, _b;
+    return (_b = (_a2 = EXPORT_SOURCE_DESCRIPTORS.find((descriptor) => descriptor.id === id)) == null ? void 0 : _a2.label) != null ? _b : id;
+  });
+  return labels.length > 0 ? labels.join(", ") : "Daily JSON";
+}
+function buildVisualizationSection(option) {
+  const parts = [];
+  parts.push(`### ${option.label}`);
+  parts.push(option.description);
+  parts.push(`\`${option.type}\` \xB7 Works with: ${exportSourcesLabel(option)}`);
+  if (option.exportNote) {
+    parts.push(`> Note: ${option.exportNote}`);
+  }
+  if (option.params.length > 0) {
+    const rows = [
+      "| Option | Description | Default |",
+      "| --- | --- | --- |",
+      ...option.params.map(
+        (param) => `| \`${param.key}\` | ${paramDescriptionCell(param)} | ${paramDefaultLabel(param)} |`
+      )
+    ];
+    parts.push(rows.join("\n"));
+  }
+  parts.push(buildExampleBlock(option));
+  return parts.join("\n\n");
+}
+function buildCategorySection(category, options) {
+  const parts = [];
+  parts.push(`## ${category.label}`);
+  parts.push(category.description);
+  for (const option of options) {
+    parts.push(buildVisualizationSection(option));
+  }
+  return parts.join("\n\n");
+}
+function buildDashboardMarkdown(pluginVersion) {
+  const parts = [];
+  parts.push(`<!-- Generated by Health.md Visualizations v${pluginVersion}. Regenerate via the "Regenerate health dashboard" command. -->`);
+  parts.push("# Health.md visualizations");
+  parts.push(
+    "Welcome! This note is a live reference for every visualization the Health.md Visualizations plugin can render. Each chart below has a short description, its options and defaults, and a working example."
+  );
+  parts.push(
+    `> [!important] Charts need real data
+> The examples below render whatever health exports exist in your configured data folder (plugin settings \u2192 Data folder). The plugin ships with no sample data \u2014 with an empty data folder, charts show a friendly "no data" message instead.
+> Don't have exports yet? Grab the app, export your health data into this vault, and every example comes alive:  
+> \u{1F34E} [Health.md on the App Store](https://apps.apple.com/us/app/health-md/id6757763969) \xB7 \u{1F916} [Health.md on Google Play](https://play.google.com/store/apps/details?id=com.healthmd.android)`
+  );
+  parts.push(
+    "- **Edit any example freely** \u2014 change `last: 30` to another day count, tweak options, and the chart re-renders.\n- Every chart also accepts `width` (pixels) and date ranges via `from` / `to` in place of `last`.\n- To add a single chart anywhere in your notes, run the **Insert health visualization** command from the command palette.\n- Reopen this note anytime from the heartbeat ribbon icon or the **Open health dashboard** command.\n- This note is yours \u2014 the plugin never overwrites it unless you run **Regenerate health dashboard**, which rebuilds it with the latest charts and documentation."
+  );
+  const categorized = VISUALIZATION_CATEGORIES.filter((category) => category.id !== "all").map((category) => ({
+    category,
+    options: VISUALIZATION_CATALOG.filter((option) => option.category === category.id)
+  })).filter((entry) => entry.options.length > 0);
+  parts.push(
+    `**Contents:** ${categorized.map((entry) => `[[#${entry.category.label}]]`).join(" \xB7 ")}`
+  );
+  parts.push(`${VISUALIZATION_CATALOG.length} visualizations across ${categorized.length} categories.`);
+  for (const entry of categorized) {
+    parts.push(buildCategorySection(entry.category, entry.options));
+  }
+  return parts.join("\n\n") + "\n";
+}
+
 // src/source-file-view.ts
 var import_obsidian4 = require("obsidian");
 var HEALTH_MD_SOURCE_VIEW_TYPE = "health-md-source-file";
@@ -26535,6 +26672,59 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
         openInsertVisualizationWizard(this.app, editor, this.settings);
       }
     });
+    this.addCommand({
+      id: "open-health-dashboard",
+      name: "Open health dashboard",
+      callback: () => {
+        void this.openDashboardNote();
+      }
+    });
+    this.addCommand({
+      id: "regenerate-health-dashboard",
+      name: "Regenerate health dashboard",
+      callback: () => {
+        new ConfirmModal(
+          this.app,
+          "Regenerate health dashboard",
+          `This overwrites ${DASHBOARD_NOTE_PATH} with freshly generated documentation. Any edits you made to that note are lost.`,
+          "Regenerate",
+          () => {
+            void this.openDashboardNote(true);
+          }
+        ).open();
+      }
+    });
+    this.addRibbonIcon("heart-pulse", "Health.md dashboard", () => {
+      void this.openDashboardNote();
+    });
+  }
+  async openDashboardNote(regenerate = false) {
+    const path = (0, import_obsidian5.normalizePath)(DASHBOARD_NOTE_PATH);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    try {
+      if (existing instanceof import_obsidian5.TFile) {
+        if (regenerate) {
+          await this.app.vault.modify(existing, buildDashboardMarkdown(this.manifest.version));
+        }
+        await this.revealDashboardNote(existing);
+        return;
+      }
+      const file = await this.app.vault.create(path, buildDashboardMarkdown(this.manifest.version));
+      await this.revealDashboardNote(file);
+    } catch (error) {
+      console.error("Health.md: failed to write the dashboard note", error);
+      new import_obsidian5.Notice(`Health.md: could not write the dashboard note (${path}).`);
+    }
+  }
+  async revealDashboardNote(file) {
+    var _a;
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      if (leaf.view instanceof import_obsidian5.MarkdownView && ((_a = leaf.view.file) == null ? void 0 : _a.path) === file.path) {
+        await this.app.workspace.revealLeaf(leaf);
+        return;
+      }
+    }
+    await this.app.workspace.getLeaf("tab").openFile(file);
   }
   async loadSettings() {
     var _a;
@@ -26568,6 +26758,28 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
         leaf.view.previewMode.rerender(true);
       }
     });
+  }
+};
+var ConfirmModal = class extends import_obsidian5.Modal {
+  constructor(app, title, body, confirmLabel, onConfirm) {
+    super(app);
+    this.title = title;
+    this.body = body;
+    this.confirmLabel = confirmLabel;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    this.titleEl.setText(this.title);
+    this.contentEl.createEl("p", { text: this.body });
+    const buttons = this.contentEl.createDiv({ cls: "modal-button-container" });
+    buttons.createEl("button", { text: "Cancel" }).addEventListener("click", () => this.close());
+    buttons.createEl("button", { text: this.confirmLabel, cls: "mod-warning" }).addEventListener("click", () => {
+      this.close();
+      this.onConfirm();
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
   }
 };
 var FolderInputSuggest = class extends import_obsidian5.AbstractInputSuggest {

@@ -6,7 +6,7 @@ An [Obsidian](https://obsidian.md) plugin that renders rich Apple Health visuali
 
 Supported data formats: **JSON**, **CSV**, **Markdown frontmatter**, and **Obsidian Bases** (YAML frontmatter).
 
-Download [Health.md](https://apps.apple.com/us/app/health-md/id6757763969) on the app store to easily export and get access to your Apple Health data.
+Download [Health.md](https://apps.apple.com/us/app/health-md/id6757763969) on the App Store, or [Health.md for Android](https://play.google.com/store/apps/details?id=com.healthmd.android) on Google Play, to easily export and get access to your health data.
 
 ## Visualization gallery
 
@@ -65,6 +65,12 @@ Then copy `main.js`, `manifest.json`, and `styles.css` into your vault's plugin 
 3. Switch to reading view (or live preview) and the chart renders.
 
 You can also run the **Insert health visualization** command from the command palette to open an insertion wizard. Pick a visualization category and type, then fill in the date range, renderer-specific options, and optional size before the plugin inserts the `health-viz` block at the cursor.
+
+## Dashboard note & ribbon
+
+The plugin adds a heartbeat icon to the left ribbon. Clicking it opens **Health Dashboard.md** in your vault root — a generated, living reference that documents every visualization with its use case, options, defaults, data requirements, and a working `health-viz` example. The examples are real charts: they render from whatever health exports exist in your configured data folder (the plugin ships with no sample data, so an empty folder shows friendly "no data" messages rather than errors).
+
+The note is yours to edit — the plugin never overwrites it silently. When a plugin update adds new charts, run the **Regenerate health dashboard** command to rebuild it (with a confirmation first), or **Open health dashboard** from the command palette anytime.
 
 ## Settings
 

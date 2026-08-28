@@ -109,6 +109,6 @@ test("roll-up explorer renders v9 ranges while retaining historical calendar fil
 });
 
 test("insert wizard offers the range roll-up period", async () => {
-	const wizard = await readFile(path.join(process.cwd(), "src/insert-wizard.ts"), "utf8");
-	assert.match(wizard, /value: "range", label: "Range"/);
+	const catalog = await readFile(path.join(process.cwd(), "src/visualization-catalog.ts"), "utf8");
+	assert.match(catalog, /value: "range", label: "Range"/);
 });
