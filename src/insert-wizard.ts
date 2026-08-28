@@ -71,6 +71,118 @@ export interface VisualizationCategory {
 	description: string;
 }
 
+/** Health.md app file exports a visualization can render from. */
+export type ExportSourceId =
+	| "daily-json"
+	| "daily-csv"
+	| "daily-markdown"
+	| "rollups"
+	| "workout-notes";
+
+export interface ExportSourceDescriptor {
+	id: ExportSourceId;
+	label: string;
+	hint: string;
+}
+
+export const EXPORT_SOURCE_DESCRIPTORS: ExportSourceDescriptor[] = [
+	{
+		id: "daily-json",
+		label: "Daily JSON",
+		hint: "Granular daily export — summary fields, samples, sleep stages, GPS routes, dose events, and mood entries.",
+	},
+	{
+		id: "daily-csv",
+		label: "Daily CSV",
+		hint: "Daily export rows — summary fields plus sample, sleep-stage, workout, mood, and medication rows when included.",
+	},
+	{
+		id: "daily-markdown",
+		label: "Markdown & Bases",
+		hint: "Daily note frontmatter / Obsidian Bases summary keys only — no sample arrays or routes.",
+	},
+	{
+		id: "rollups",
+		label: "Roll-ups",
+		hint: "Health/Rollups/ weekly, monthly, yearly, and v9 range summaries in JSON, Markdown, Bases, or CSV.",
+	},
+	{
+		id: "workout-notes",
+		label: "Workout notes",
+		hint: "Individual detailed workout notes with laps, splits, and heart-rate zones.",
+	},
+];
+
+/** Every visualization works with daily JSON unless noted below. */
+const ALL_DAILY_EXPORT_SOURCES: ExportSourceId[] = [
+	"daily-json",
+	"daily-csv",
+	"daily-markdown",
+];
+
+const SAMPLE_NOTE =
+	"Needs granular sample rows — daily JSON and CSV exports include them; Markdown/Bases frontmatter does not.";
+
+const MOOD_NOTE =
+	"Markdown/Bases need mood frontmatter (mood entries or daily-note mood keys); JSON and CSV carry State of Mind data natively.";
+
+const MEDICATION_NOTE =
+	"Dose events and inventory require iOS HealthKit exports — daily JSON and CSV carry them; Markdown/Bases frontmatter does not.";
+
+/**
+ * Export files each visualization renders from, derived from the parsers in
+ * src/parsers/ and the iOS export contract (§4 compatibility-critical fields).
+ * Anything absent falls back to ALL_DAILY_EXPORT_SOURCES.
+ */
+const EXPORT_SOURCES_BY_TYPE: Record<string, ExportSourceId[]> = {
+	// Sample-level charts: JSON always, CSV with sample rows, no Markdown.
+	"heart-terrain": ["daily-json", "daily-csv"],
+	"oxygen-river": ["daily-json", "daily-csv"],
+	"breathing-wave": ["daily-json", "daily-csv"],
+	"sleep-architecture": ["daily-json", "daily-csv"],
+	"sleep-polar": ["daily-json", "daily-csv"],
+	"workout-zones": ["daily-json", "daily-csv", "workout-notes"],
+	"workout-intervals": ["daily-json", "daily-csv", "workout-notes"],
+	// Route coordinates are only included in JSON exports.
+	"workout-map": ["daily-json"],
+	// Individual workout notes enrich these charts.
+	"workout-log": [...ALL_DAILY_EXPORT_SOURCES, "workout-notes"],
+	"workout-trends": [...ALL_DAILY_EXPORT_SOURCES, "workout-notes"],
+	"workout-heart-rate": [...ALL_DAILY_EXPORT_SOURCES, "workout-notes"],
+	// Medication dose events/inventory are not parsed from Markdown frontmatter.
+	"medication-overview": ["daily-json", "daily-csv"],
+	"medication-inventory": ["daily-json", "daily-csv"],
+	"medication-adherence-summary": ["daily-json", "daily-csv"],
+	"medication-dose-status": ["daily-json", "daily-csv"],
+	"medication-adherence-trend": ["daily-json", "daily-csv"],
+	"medication-recent-dose-events": ["daily-json", "daily-csv"],
+	"medication-schedule-timeline": ["daily-json", "daily-csv"],
+	"medication-skip-reasons": ["daily-json", "daily-csv"],
+	// The only roll-up-only visualization.
+	"rollup-explorer": ["rollups"],
+};
+
+const EXPORT_NOTES_BY_TYPE: Record<string, string> = {
+	"heart-terrain": SAMPLE_NOTE,
+	"oxygen-river": SAMPLE_NOTE,
+	"breathing-wave": SAMPLE_NOTE,
+	"sleep-architecture": SAMPLE_NOTE,
+	"sleep-polar": SAMPLE_NOTE,
+	"workout-zones":
+		"Needs workout zone exports (JSON) or sample-derived zones (JSON/CSV); Markdown/Bases summaries are not enough.",
+	"workout-intervals":
+		"Laps/splits come from JSON/CSV workout rows or detailed workout notes.",
+	"workout-map": "GPS route coordinates are only included in daily JSON exports.",
+	"workout-heart-rate":
+		"Prefers workout heart-rate series (JSON), then daily samples in the workout window, then min/avg/max summaries from any daily format.",
+	"hrv-trend":
+		"HRV samples come from JSON/CSV; Markdown/Bases render the daily HRV summary fallback.",
+	"sleep-schedule":
+		"Markdown/Bases use bedtime/wake summary keys; JSON/CSV add stage-level timing.",
+	"rollup-explorer":
+		"Reads Health/Rollups/ historical weekly/monthly/yearly roll-ups and v9 range summaries in every format.",
+};
+
 export interface VisualizationOption {
 	type: string;
 	label: string;
@@ -79,6 +191,10 @@ export interface VisualizationOption {
 	defaultLast: number;
 	defaultHeight?: number;
 	params: ParamDefinition[];
+	/** Health.md app file exports this visualization renders from. */
+	exportSources?: ExportSourceId[];
+	/** Caveat about export coverage shown alongside exportSources. */
+	exportNote?: string;
 }
 
 const DATE_OR_DATETIME_INPUT =
@@ -240,7 +356,7 @@ const WORKOUT_TREND_METRICS: SelectOption[] = [
 	{ value: "power_avg", label: "Average power" },
 ];
 
-export const VISUALIZATION_CATALOG: VisualizationOption[] = [
+const BASE_VISUALIZATION_CATALOG: VisualizationOption[] = [
 	{
 		type: "intro-stats",
 		label: "Intro stats",
@@ -1154,6 +1270,12 @@ export const VISUALIZATION_CATALOG: VisualizationOption[] = [
 		params: [{ kind: "text", key: "limit", label: "Maximum reasons", desc: "Maximum number of reason labels to show.", defaultValue: "20", validation: "positive-integer" }],
 	},
 ];
+
+export const VISUALIZATION_CATALOG: VisualizationOption[] = BASE_VISUALIZATION_CATALOG.map((item) => ({
+	...item,
+	exportSources: EXPORT_SOURCES_BY_TYPE[item.type] ?? ALL_DAILY_EXPORT_SOURCES,
+	exportNote: EXPORT_NOTES_BY_TYPE[item.type],
+}));
 
 export function openInsertVisualizationWizard(
 	app: App,

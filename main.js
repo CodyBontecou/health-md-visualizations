@@ -14072,7 +14072,7 @@ function firstNumber3(record, ...keys) {
   return void 0;
 }
 function hasOwn(record, key) {
-  return Object.prototype.hasOwnProperty.call(record, key);
+  return Boolean(Object.prototype.hasOwnProperty.call(record, key));
 }
 function readAliasedValue(record, keys, parse, equals = (left, right) => left === right) {
   let parsedValue;
@@ -24728,6 +24728,53 @@ async function renderCodeBlock(plugin, source, el, ctx) {
 
 // src/insert-wizard.ts
 var import_obsidian3 = require("obsidian");
+var ALL_DAILY_EXPORT_SOURCES = [
+  "daily-json",
+  "daily-csv",
+  "daily-markdown"
+];
+var SAMPLE_NOTE = "Needs granular sample rows \u2014 daily JSON and CSV exports include them; Markdown/Bases frontmatter does not.";
+var EXPORT_SOURCES_BY_TYPE = {
+  // Sample-level charts: JSON always, CSV with sample rows, no Markdown.
+  "heart-terrain": ["daily-json", "daily-csv"],
+  "oxygen-river": ["daily-json", "daily-csv"],
+  "breathing-wave": ["daily-json", "daily-csv"],
+  "sleep-architecture": ["daily-json", "daily-csv"],
+  "sleep-polar": ["daily-json", "daily-csv"],
+  "workout-zones": ["daily-json", "daily-csv", "workout-notes"],
+  "workout-intervals": ["daily-json", "daily-csv", "workout-notes"],
+  // Route coordinates are only included in JSON exports.
+  "workout-map": ["daily-json"],
+  // Individual workout notes enrich these charts.
+  "workout-log": [...ALL_DAILY_EXPORT_SOURCES, "workout-notes"],
+  "workout-trends": [...ALL_DAILY_EXPORT_SOURCES, "workout-notes"],
+  "workout-heart-rate": [...ALL_DAILY_EXPORT_SOURCES, "workout-notes"],
+  // Medication dose events/inventory are not parsed from Markdown frontmatter.
+  "medication-overview": ["daily-json", "daily-csv"],
+  "medication-inventory": ["daily-json", "daily-csv"],
+  "medication-adherence-summary": ["daily-json", "daily-csv"],
+  "medication-dose-status": ["daily-json", "daily-csv"],
+  "medication-adherence-trend": ["daily-json", "daily-csv"],
+  "medication-recent-dose-events": ["daily-json", "daily-csv"],
+  "medication-schedule-timeline": ["daily-json", "daily-csv"],
+  "medication-skip-reasons": ["daily-json", "daily-csv"],
+  // The only roll-up-only visualization.
+  "rollup-explorer": ["rollups"]
+};
+var EXPORT_NOTES_BY_TYPE = {
+  "heart-terrain": SAMPLE_NOTE,
+  "oxygen-river": SAMPLE_NOTE,
+  "breathing-wave": SAMPLE_NOTE,
+  "sleep-architecture": SAMPLE_NOTE,
+  "sleep-polar": SAMPLE_NOTE,
+  "workout-zones": "Needs workout zone exports (JSON) or sample-derived zones (JSON/CSV); Markdown/Bases summaries are not enough.",
+  "workout-intervals": "Laps/splits come from JSON/CSV workout rows or detailed workout notes.",
+  "workout-map": "GPS route coordinates are only included in daily JSON exports.",
+  "workout-heart-rate": "Prefers workout heart-rate series (JSON), then daily samples in the workout window, then min/avg/max summaries from any daily format.",
+  "hrv-trend": "HRV samples come from JSON/CSV; Markdown/Bases render the daily HRV summary fallback.",
+  "sleep-schedule": "Markdown/Bases use bedtime/wake summary keys; JSON/CSV add stage-level timing.",
+  "rollup-explorer": "Reads Health/Rollups/ historical weekly/monthly/yearly roll-ups and v9 range summaries in every format."
+};
 var DATE_OR_DATETIME_INPUT = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 var DATE_INPUT = /^\d{4}-\d{2}-\d{2}$/;
 var TIME_INPUT = /^\d{1,2}:\d{2}$/;
@@ -24876,7 +24923,7 @@ var WORKOUT_TREND_METRICS = [
   { value: "hr_avg", label: "Average heart rate" },
   { value: "power_avg", label: "Average power" }
 ];
-var VISUALIZATION_CATALOG = [
+var BASE_VISUALIZATION_CATALOG = [
   {
     type: "intro-stats",
     label: "Intro stats",
@@ -25790,6 +25837,14 @@ var VISUALIZATION_CATALOG = [
     params: [{ kind: "text", key: "limit", label: "Maximum reasons", desc: "Maximum number of reason labels to show.", defaultValue: "20", validation: "positive-integer" }]
   }
 ];
+var VISUALIZATION_CATALOG = BASE_VISUALIZATION_CATALOG.map((item) => {
+  var _a;
+  return {
+    ...item,
+    exportSources: (_a = EXPORT_SOURCES_BY_TYPE[item.type]) != null ? _a : ALL_DAILY_EXPORT_SOURCES,
+    exportNote: EXPORT_NOTES_BY_TYPE[item.type]
+  };
+});
 function openInsertVisualizationWizard(app, editor, settings) {
   new VisualizationCategoryModal(app, (category) => {
     new VisualizationTypeModal(app, category.id, (visualization) => {
