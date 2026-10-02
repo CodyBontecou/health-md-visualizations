@@ -1,4 +1,4 @@
-import { HealthDay, VizConfig, WorkoutEntry, WorkoutInterval } from "./types";
+import { HealthDay, VizConfig, WorkoutEntry } from "./types";
 import type { UnitSystem } from "./units";
 
 export type { UnitSystem };
@@ -114,10 +114,6 @@ export function formatWorkoutDistance(workout: WorkoutEntry, day: HealthDay, pre
 	return meters == null ? undefined : formatDistance(meters, day, workout.distanceFormatted, preference);
 }
 
-export function intervalRateDisplay(interval: WorkoutInterval): string | undefined {
-	return interval.paceFormatted ?? interval.speedFormatted;
-}
-
 // Pace: prefer pre-formatted; else compute from meters + seconds.
 export function formatPace(
 	meters: number,
@@ -134,20 +130,6 @@ export function formatPace(
 	const s = Math.round(secPerUnit % 60);
 	const suffix = resolveUnits(day, preference) === "imperial" ? "/mi" : "/km";
 	return `${m}:${s.toString().padStart(2, "0")}${suffix}`;
-}
-
-// Speed: prefer pre-formatted; else convert m/s.
-export function formatSpeed(
-	mps: number,
-	day: HealthDay,
-	preFormatted?: string,
-	preference?: UnitSystem
-): string {
-	if (preferPreFormatted(day, preFormatted, preference)) return preFormatted as string;
-	if (resolveUnits(day, preference) === "imperial") {
-		return `${(mps * 2.236936).toFixed(1)} mph`;
-	}
-	return `${(mps * 3.6).toFixed(1)} km/h`;
 }
 
 // Elevation: meters → ft for imperial, otherwise meters as-is (rounded).

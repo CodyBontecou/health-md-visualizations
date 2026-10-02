@@ -703,13 +703,6 @@ function normalizedHeaders(table: MarkdownTable): string[] {
 	return table.headers.map((header) => normalizeLabel(header.replace(/[*_`]/g, "")));
 }
 
-function findHeaderIndex(headers: string[], predicate: (header: string) => boolean): number {
-	for (let i = 0; i < headers.length; i++) {
-		if (predicate(headers[i])) return i;
-	}
-	return -1;
-}
-
 function samplesFromTimeValueTable(
 	table: MarkdownTable,
 	date: string,
@@ -886,11 +879,11 @@ function parseGranularMarkdownData(body: string, date: string): GranularMarkdown
 	for (const table of parseMarkdownTables(body)) {
 		const headers = normalizedHeaders(table);
 		const context = normalizeLabel(table.context);
-		const timeIndex = findHeaderIndex(headers, (header) => header === "time");
-		const startIndex = findHeaderIndex(headers, (header) => header === "start");
-		const endIndex = findHeaderIndex(headers, (header) => header === "end");
-		const stageIndex = findHeaderIndex(headers, (header) => header === "stage");
-		const durationIndex = findHeaderIndex(headers, (header) => header === "duration");
+		const timeIndex = headers.findIndex((header) => header === "time");
+		const startIndex = headers.findIndex((header) => header === "start");
+		const endIndex = headers.findIndex((header) => header === "end");
+		const stageIndex = headers.findIndex((header) => header === "stage");
+		const durationIndex = headers.findIndex((header) => header === "duration");
 
 		if (startIndex !== -1 && endIndex !== -1 && stageIndex !== -1) {
 			data.sleepStages.push(...parseSleepStageRangeTable(table, date, startIndex, endIndex, stageIndex));
@@ -904,25 +897,25 @@ function parseGranularMarkdownData(body: string, date: string): GranularMarkdown
 
 		if (timeIndex === -1) continue;
 
-		const bpmIndex = findHeaderIndex(headers, (header) => header === "bpm" || header.includes("heart rate"));
+		const bpmIndex = headers.findIndex((header) => header === "bpm" || header.includes("heart rate"));
 		if (bpmIndex !== -1) {
 			data.heartRateSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, bpmIndex));
 			continue;
 		}
 
-		const hrvIndex = findHeaderIndex(headers, (header) => header.includes("hrv") || (header === "ms" && context.includes("hrv")));
+		const hrvIndex = headers.findIndex((header) => header.includes("hrv") || (header === "ms" && context.includes("hrv")));
 		if (hrvIndex !== -1) {
 			data.hrvSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, hrvIndex));
 			continue;
 		}
 
-		const oxygenIndex = findHeaderIndex(headers, (header) => header.includes("spo2") || header.includes("spo₂") || header.includes("blood oxygen"));
+		const oxygenIndex = headers.findIndex((header) => header.includes("spo2") || header.includes("spo₂") || header.includes("blood oxygen"));
 		if (oxygenIndex !== -1) {
 			data.bloodOxygenSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, oxygenIndex, normalizePercent));
 			continue;
 		}
 
-		const respiratoryIndex = findHeaderIndex(headers, (header) => header.includes("respiratory") || header.includes("breaths/min"));
+		const respiratoryIndex = headers.findIndex((header) => header.includes("respiratory") || header.includes("breaths/min"));
 		if (respiratoryIndex !== -1) {
 			data.respiratoryRateSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, respiratoryIndex));
 		}
@@ -1102,15 +1095,15 @@ function parseWorkoutIntervals(body: string): { laps: WorkoutInterval[]; splits:
 		if (!target) continue;
 
 		const headers = normalizedHeaders(table);
-		const indexIndex = findHeaderIndex(headers, (header) => header === "#" || header.includes("lap") || header.includes("split"));
-		const distanceIndex = findHeaderIndex(headers, (header) => header.includes("distance"));
-		const timeIndex = findHeaderIndex(headers, (header) => header === "time" || header.includes("duration"));
-		const paceIndex = findHeaderIndex(headers, (header) => header.includes("pace"));
-		const speedIndex = findHeaderIndex(headers, (header) => header.includes("speed"));
-		const avgHrIndex = findHeaderIndex(headers, (header) => header.includes("avg hr") || header.includes("average hr") || header.includes("avg heart"));
-		const maxHrIndex = findHeaderIndex(headers, (header) => header.includes("max hr") || header.includes("maximum hr") || header.includes("max heart"));
-		const avgPowerIndex = findHeaderIndex(headers, (header) => header.includes("avg power") || header.includes("average power"));
-		const avgCadenceIndex = findHeaderIndex(headers, (header) => header.includes("avg cadence") || header.includes("average cadence"));
+		const indexIndex = headers.findIndex((header) => header === "#" || header.includes("lap") || header.includes("split"));
+		const distanceIndex = headers.findIndex((header) => header.includes("distance"));
+		const timeIndex = headers.findIndex((header) => header === "time" || header.includes("duration"));
+		const paceIndex = headers.findIndex((header) => header.includes("pace"));
+		const speedIndex = headers.findIndex((header) => header.includes("speed"));
+		const avgHrIndex = headers.findIndex((header) => header.includes("avg hr") || header.includes("average hr") || header.includes("avg heart"));
+		const maxHrIndex = headers.findIndex((header) => header.includes("max hr") || header.includes("maximum hr") || header.includes("max heart"));
+		const avgPowerIndex = headers.findIndex((header) => header.includes("avg power") || header.includes("average power"));
+		const avgCadenceIndex = headers.findIndex((header) => header.includes("avg cadence") || header.includes("average cadence"));
 
 		for (const row of table.rows) {
 			const distanceFormatted = cleanDisplayValue(distanceIndex === -1 ? undefined : row[distanceIndex]);

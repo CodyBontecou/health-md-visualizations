@@ -17,10 +17,6 @@ export function kmToMi(km: number): number {
 	return km / KM_PER_MI;
 }
 
-export function miToKm(mi: number): number {
-	return mi * KM_PER_MI;
-}
-
 export function kgToLb(kg: number): number {
 	return kg * LB_PER_KG;
 }

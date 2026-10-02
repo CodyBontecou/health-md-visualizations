@@ -138,11 +138,6 @@ export interface HealthMdCaptureSummary {
 
 export type HealthRollupPeriod = "weekly" | "monthly" | "yearly" | "range";
 
-export interface HealthRollupStatistic {
-	name: string;
-	value: unknown;
-}
-
 export interface HealthRollupMetric {
 	key?: string;
 	canonicalKey: string;

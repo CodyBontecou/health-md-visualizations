@@ -3,7 +3,6 @@ import { formatDuration } from "../canvas-utils";
 import {
 	formatDistance,
 	formatWorkoutDistance,
-	intervalRateDisplay,
 	pickWorkout,
 } from "../workout-utils";
 
@@ -69,7 +68,7 @@ function renderIntervalTable(
 				: "—",
 		});
 		tr.createEl("td", { text: row.duration ? formatDuration(row.duration) : "—" });
-		tr.createEl("td", { text: intervalRateDisplay(row) ?? "—" });
+		tr.createEl("td", { text: row.paceFormatted ?? row.speedFormatted ?? "—" });
 		tr.createEl("td", { text: formatMaybeNumber(row.avgHeartRate, "BPM") });
 		tr.createEl("td", { text: formatMaybeNumber(row.maxHeartRate, "BPM") });
 		tr.createEl("td", { text: formatMaybeNumber(row.avgPower, "W") });

@@ -3,8 +3,6 @@ import { hexToRgba } from "./canvas-utils";
 import { formatMoodValence, getMoodDaySummary, moodLabelForValence } from "./mood-utils";
 import { parseHour } from "./time-utils";
 
-export { parseHour };
-
 export interface MoodVizDay {
 	day: HealthDay;
 	date: string;

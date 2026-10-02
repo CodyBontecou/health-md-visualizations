@@ -13,10 +13,6 @@ export const BODY_METRICS = ["weight_kg", "bmi", "body_fat_percent", "lean_body_
 export const RUNNING_METRICS = ["running_speed", "running_power_w", "running_stride_length_m", "running_ground_contact_ms", "running_vertical_oscillation_cm"] as const;
 export const CYCLING_METRICS = ["cycling_power_w", "cycling_ftp_w", "cycling_cadence_rpm", "cycling_speed", "cycling_km"] as const;
 export const HEARING_METRICS = ["headphone_audio_db", "environmental_sound_db"] as const;
-export const BLOOD_PRESSURE_METRICS = [
-	"blood_pressure_systolic_min", "blood_pressure_systolic_avg", "blood_pressure_systolic_max",
-	"blood_pressure_diastolic_min", "blood_pressure_diastolic_avg", "blood_pressure_diastolic_max",
-] as const;
 export const GLUCOSE_METRICS = ["blood_glucose_min", "blood_glucose_avg", "blood_glucose_max"] as const;
 export const NUTRITION_MACRO_METRICS = [
 	"dietary_calories", "protein_g", "carbohydrates_g", "fat_g", "fiber_g", "sugar_g", "sodium_mg", "water_l", "caffeine_mg",

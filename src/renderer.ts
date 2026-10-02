@@ -909,24 +909,6 @@ async function openDailyNote(
 	return openFileByPath(plugin.app, path);
 }
 
-class VizRenderChild extends MarkdownRenderChild {
-	private observer: ResizeObserver | null = null;
-	private unregisterDraw: (() => void) | null = null;
-
-	setObserver(obs: ResizeObserver): void {
-		this.observer = obs;
-	}
-
-	setUnregisterDraw(fn: () => void): void {
-		this.unregisterDraw = fn;
-	}
-
-	onunload(): void {
-		this.observer?.disconnect();
-		this.unregisterDraw?.();
-	}
-}
-
 export async function renderCodeBlock(
 	plugin: HealthMdPlugin,
 	source: string,
@@ -983,8 +965,8 @@ export async function renderCodeBlock(
 			htmlRenderFn(data, container, config, resolveTheme(plugin.settings, config), visualizationContext);
 		}
 		drawHtml();
-		const htmlChild = new VizRenderChild(container);
-		htmlChild.setUnregisterDraw(plugin.registerDraw(drawHtml));
+		const htmlChild = new MarkdownRenderChild(container);
+		htmlChild.register(plugin.registerDraw(drawHtml));
 		ctx.addChild(htmlChild);
 		return;
 	}
@@ -1113,7 +1095,7 @@ export async function renderCodeBlock(
 		}
 	});
 
-	const renderChild = new VizRenderChild(container);
+	const renderChild = new MarkdownRenderChild(container);
 	ctx.addChild(renderChild);
 
 	function draw(): void {
@@ -1134,6 +1116,6 @@ export async function renderCodeBlock(
 
 	const observer = new ResizeObserver(() => draw());
 	observer.observe(container);
-	renderChild.setObserver(observer);
-	renderChild.setUnregisterDraw(plugin.registerDraw(draw));
+	renderChild.register(() => observer.disconnect());
+	renderChild.register(plugin.registerDraw(draw));
 }

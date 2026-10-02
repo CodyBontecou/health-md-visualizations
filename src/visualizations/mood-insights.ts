@@ -23,11 +23,11 @@ import {
 	moodHex,
 	moodRgba,
 	normalizeKind,
-	parseHour,
 	shortDate,
 	valencePercent,
 	yForValence,
 } from "../mood-viz-utils";
+import { parseHour } from "../time-utils";
 
 export const renderMoodCalendarHeatmap: RenderFn = (ctx, data, W, H, config, theme, statsEl, hits): void => {
 	const days = moodDaysWithValues(data);

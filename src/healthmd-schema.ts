@@ -88,10 +88,6 @@ export function schemaVersionOf(value: {
 	return 0;
 }
 
-export function schemaIsFutureVersion(version: number): boolean {
-	return version > SUPPORTED_HEALTHMD_SCHEMA_VERSION;
-}
-
 export function isUnitMap(value: unknown): value is HealthMdUnitMap {
 	return (
 		typeof value === "object" &&
@@ -251,10 +247,6 @@ export function detectCsvSchema(content: string): DetectedSchema {
 
 	if (schema) return detectKnownSchema("csv", schema, version);
 	return { kind: "legacy-health-day", version: 0, format: "csv" };
-}
-
-export function parseHealthMetricDataDictionary(content: string): FrontmatterAliasMap {
-	return parseHealthMetricDataDictionaryDetails(content).aliases;
 }
 
 export function parseHealthMetricDataDictionaryDetails(content: string): ParsedHealthMetricDataDictionary {

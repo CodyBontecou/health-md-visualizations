@@ -56,10 +56,6 @@ function safeLabel(value: unknown, fallback: string): string {
 		: normalized;
 }
 
-function eventRecord(event: MedicationDoseEvent): Record<string, unknown> {
-	return event;
-}
-
 function firstPrimitive(record: Record<string, unknown>, ...keys: string[]): string | undefined {
 	for (const key of keys) {
 		const value = primitiveText(record[key]);
@@ -70,7 +66,7 @@ function firstPrimitive(record: Record<string, unknown>, ...keys: string[]): str
 
 function eventStatus(event: MedicationDoseEvent): string | undefined {
 	return firstPrimitive(
-		eventRecord(event),
+		event,
 		"status",
 		"logStatus",
 		"log_status",
@@ -80,9 +76,8 @@ function eventStatus(event: MedicationDoseEvent): string | undefined {
 }
 
 function eventStatusLabel(event: MedicationDoseEvent): string {
-	const record = eventRecord(event);
 	const exported = event.statusDisplay ?? event.status_display ??
-		firstPrimitive(record, "logStatusDisplay", "log_status_display");
+		firstPrimitive(event, "logStatusDisplay", "log_status_display");
 	if (exported) return safeLabel(exported, "Unknown");
 	const raw = eventStatus(event);
 	const kind = doseStatusKind(raw);
@@ -92,11 +87,10 @@ function eventStatusLabel(event: MedicationDoseEvent): string {
 }
 
 function eventMedicationName(event: MedicationDoseEvent): string {
-	const record = eventRecord(event);
 	return safeLabel(
 		event.name ?? event.displayName ?? event.display_name ??
 		firstPrimitive(
-			record,
+			event,
 			"medicationName",
 			"medication_name",
 			"medicationConceptIdentifier",

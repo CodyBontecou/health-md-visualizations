@@ -1,7 +1,47 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { readFile } from "node:fs/promises";
+import { after, test } from "node:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import esbuild from "esbuild";
+
+let tempDir;
+let modulePromise;
+
+async function loadRegistry() {
+	if (modulePromise) return modulePromise;
+	modulePromise = (async () => {
+		tempDir = await mkdtemp(path.join(os.tmpdir(), "health-md-registry-tests-"));
+		const outfile = path.join(tempDir, "registry.mjs");
+		await esbuild.build({
+			stdin: {
+				contents: ["src/visualizations/index.ts", "src/visualization-catalog.ts"]
+					.map((file) => `export * from ${JSON.stringify(path.join(process.cwd(), file))};`).join("\n"),
+				resolveDir: process.cwd(),
+			},
+			bundle: true,
+			platform: "node",
+			format: "esm",
+			outfile,
+			logLevel: "silent",
+			plugins: [{
+				name: "leaflet-shim",
+				setup(build) {
+					// Registry checks do not render maps or require a browser.
+					build.onResolve({ filter: /^leaflet$/ }, () => ({ path: "leaflet", namespace: "registry-test" }));
+					build.onLoad({ filter: /.*/, namespace: "registry-test" }, () => ({ contents: "module.exports = {};", loader: "js" }));
+				},
+			}],
+		});
+		return import(pathToFileURL(outfile).href);
+	})();
+	return modulePromise;
+}
+
+after(async () => {
+	if (tempDir) await rm(tempDir, { recursive: true, force: true });
+});
 
 const TYPES = [
 	"metric-trend",
@@ -31,18 +71,20 @@ const SUMMARY_VISUALIZATION_FILES = [
 	"medication-insights.ts",
 ];
 
-test("every schema v7 summary visualization is registered and offered by the wizard", async () => {
-	const [registry, catalog, wizard] = await Promise.all([
-		readFile(path.join(process.cwd(), "src/visualizations/index.ts"), "utf8"),
-		readFile(path.join(process.cwd(), "src/visualization-catalog.ts"), "utf8"),
-		readFile(path.join(process.cwd(), "src/insert-wizard.ts"), "utf8"),
-	]);
-	assert.match(catalog, /export const VISUALIZATION_CATALOG/);
-	assert.match(catalog, /export const VISUALIZATION_CATEGORIES/);
-	assert.match(wizard, /export \* from "\.\/visualization-catalog"/);
+test("every schema v7 summary visualization is registered and present in the catalog", async () => {
+	const { VISUALIZATIONS, HTML_VISUALIZATIONS, VISUALIZATION_CATALOG } = await loadRegistry();
 	for (const type of TYPES) {
-		assert.match(registry, new RegExp(`"${type}"\\s*:`), `${type} must be registered`);
-		assert.match(catalog, new RegExp(`type:\\s*"${type}"`), `${type} must be available in the insert wizard`);
+		assert.equal(typeof (VISUALIZATIONS[type] ?? HTML_VISUALIZATIONS[type]), "function", `${type} must be registered`);
+		assert.ok(VISUALIZATION_CATALOG.some((option) => option.type === type), `${type} must be available in the catalog`);
+	}
+});
+
+test("every catalog entry has a renderer and a declared category", async () => {
+	const { VISUALIZATIONS, HTML_VISUALIZATIONS, VISUALIZATION_CATALOG, VISUALIZATION_CATEGORIES } = await loadRegistry();
+	const categories = new Set(VISUALIZATION_CATEGORIES.map((category) => category.id));
+	for (const option of VISUALIZATION_CATALOG) {
+		assert.equal(typeof (VISUALIZATIONS[option.type] ?? HTML_VISUALIZATIONS[option.type]), "function", option.type);
+		assert.ok(categories.has(option.category), `${option.type} has a declared category`);
 	}
 });
 

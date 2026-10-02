@@ -13582,12 +13582,6 @@ function parseMarkdownTables(body2) {
 function normalizedHeaders(table) {
   return table.headers.map((header) => normalizeLabel2(header.replace(/[*_`]/g, "")));
 }
-function findHeaderIndex(headers, predicate) {
-  for (let i = 0; i < headers.length; i++) {
-    if (predicate(headers[i])) return i;
-  }
-  return -1;
-}
 function samplesFromTimeValueTable(table, date, timeIndex, valueIndex, transformValue = (value) => value) {
   const samples = [];
   let dayOffset = 0;
@@ -13722,11 +13716,11 @@ function parseGranularMarkdownData(body2, date) {
   for (const table of parseMarkdownTables(body2)) {
     const headers = normalizedHeaders(table);
     const context = normalizeLabel2(table.context);
-    const timeIndex = findHeaderIndex(headers, (header) => header === "time");
-    const startIndex = findHeaderIndex(headers, (header) => header === "start");
-    const endIndex = findHeaderIndex(headers, (header) => header === "end");
-    const stageIndex = findHeaderIndex(headers, (header) => header === "stage");
-    const durationIndex = findHeaderIndex(headers, (header) => header === "duration");
+    const timeIndex = headers.findIndex((header) => header === "time");
+    const startIndex = headers.findIndex((header) => header === "start");
+    const endIndex = headers.findIndex((header) => header === "end");
+    const stageIndex = headers.findIndex((header) => header === "stage");
+    const durationIndex = headers.findIndex((header) => header === "duration");
     if (startIndex !== -1 && endIndex !== -1 && stageIndex !== -1) {
       data.sleepStages.push(...parseSleepStageRangeTable(table, date, startIndex, endIndex, stageIndex));
       continue;
@@ -13736,22 +13730,22 @@ function parseGranularMarkdownData(body2, date) {
       continue;
     }
     if (timeIndex === -1) continue;
-    const bpmIndex = findHeaderIndex(headers, (header) => header === "bpm" || header.includes("heart rate"));
+    const bpmIndex = headers.findIndex((header) => header === "bpm" || header.includes("heart rate"));
     if (bpmIndex !== -1) {
       data.heartRateSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, bpmIndex));
       continue;
     }
-    const hrvIndex = findHeaderIndex(headers, (header) => header.includes("hrv") || header === "ms" && context.includes("hrv"));
+    const hrvIndex = headers.findIndex((header) => header.includes("hrv") || header === "ms" && context.includes("hrv"));
     if (hrvIndex !== -1) {
       data.hrvSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, hrvIndex));
       continue;
     }
-    const oxygenIndex = findHeaderIndex(headers, (header) => header.includes("spo2") || header.includes("spo\u2082") || header.includes("blood oxygen"));
+    const oxygenIndex = headers.findIndex((header) => header.includes("spo2") || header.includes("spo\u2082") || header.includes("blood oxygen"));
     if (oxygenIndex !== -1) {
       data.bloodOxygenSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, oxygenIndex, normalizePercent3));
       continue;
     }
-    const respiratoryIndex = findHeaderIndex(headers, (header) => header.includes("respiratory") || header.includes("breaths/min"));
+    const respiratoryIndex = headers.findIndex((header) => header.includes("respiratory") || header.includes("breaths/min"));
     if (respiratoryIndex !== -1) {
       data.respiratoryRateSamples.push(...samplesFromTimeValueTable(table, date, timeIndex, respiratoryIndex));
     }
@@ -13899,15 +13893,15 @@ function parseWorkoutIntervals(body2) {
     const target = context.includes("lap") ? laps : context.includes("split") ? splits : null;
     if (!target) continue;
     const headers = normalizedHeaders(table);
-    const indexIndex = findHeaderIndex(headers, (header) => header === "#" || header.includes("lap") || header.includes("split"));
-    const distanceIndex = findHeaderIndex(headers, (header) => header.includes("distance"));
-    const timeIndex = findHeaderIndex(headers, (header) => header === "time" || header.includes("duration"));
-    const paceIndex = findHeaderIndex(headers, (header) => header.includes("pace"));
-    const speedIndex = findHeaderIndex(headers, (header) => header.includes("speed"));
-    const avgHrIndex = findHeaderIndex(headers, (header) => header.includes("avg hr") || header.includes("average hr") || header.includes("avg heart"));
-    const maxHrIndex = findHeaderIndex(headers, (header) => header.includes("max hr") || header.includes("maximum hr") || header.includes("max heart"));
-    const avgPowerIndex = findHeaderIndex(headers, (header) => header.includes("avg power") || header.includes("average power"));
-    const avgCadenceIndex = findHeaderIndex(headers, (header) => header.includes("avg cadence") || header.includes("average cadence"));
+    const indexIndex = headers.findIndex((header) => header === "#" || header.includes("lap") || header.includes("split"));
+    const distanceIndex = headers.findIndex((header) => header.includes("distance"));
+    const timeIndex = headers.findIndex((header) => header === "time" || header.includes("duration"));
+    const paceIndex = headers.findIndex((header) => header.includes("pace"));
+    const speedIndex = headers.findIndex((header) => header.includes("speed"));
+    const avgHrIndex = headers.findIndex((header) => header.includes("avg hr") || header.includes("average hr") || header.includes("avg heart"));
+    const maxHrIndex = headers.findIndex((header) => header.includes("max hr") || header.includes("maximum hr") || header.includes("max heart"));
+    const avgPowerIndex = headers.findIndex((header) => header.includes("avg power") || header.includes("average power"));
+    const avgCadenceIndex = headers.findIndex((header) => header.includes("avg cadence") || header.includes("average cadence"));
     for (const row of table.rows) {
       const distanceFormatted = cleanDisplayValue(distanceIndex === -1 ? void 0 : row[distanceIndex]);
       const duration2 = timeIndex === -1 ? void 0 : parseWorkoutDurationSeconds((_a = row[timeIndex]) != null ? _a : "");
@@ -17871,10 +17865,6 @@ function formatWorkoutDistance(workout2, day, preference) {
   const meters = workoutDistanceMeters(workout2);
   return meters == null ? void 0 : formatDistance(meters, day, workout2.distanceFormatted, preference);
 }
-function intervalRateDisplay(interval) {
-  var _a;
-  return (_a = interval.paceFormatted) != null ? _a : interval.speedFormatted;
-}
 function formatPace(meters, seconds, day, preFormatted, preference) {
   if (preferPreFormatted(day, preFormatted, preference)) return preFormatted;
   if (!meters || !seconds) return "\u2014";
@@ -21045,18 +21035,18 @@ function renderIntervalTable(host, label, rows, day, unitPreference) {
   });
   const tbody = table.createEl("tbody");
   rows.forEach((row) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const tr = tbody.createEl("tr");
     tr.createEl("td", { text: String(row.index) });
     tr.createEl("td", {
       text: row.distance != null || row.distanceFormatted ? formatDistance((_a = row.distance) != null ? _a : 0, day, row.distanceFormatted, unitPreference) : "\u2014"
     });
     tr.createEl("td", { text: row.duration ? formatDuration(row.duration) : "\u2014" });
-    tr.createEl("td", { text: (_b = intervalRateDisplay(row)) != null ? _b : "\u2014" });
+    tr.createEl("td", { text: (_c = (_b = row.paceFormatted) != null ? _b : row.speedFormatted) != null ? _c : "\u2014" });
     tr.createEl("td", { text: formatMaybeNumber(row.avgHeartRate, "BPM") });
     tr.createEl("td", { text: formatMaybeNumber(row.maxHeartRate, "BPM") });
     tr.createEl("td", { text: formatMaybeNumber(row.avgPower, "W") });
-    tr.createEl("td", { text: row.avgCadence == null ? "\u2014" : `${Math.round(row.avgCadence)} ${(_c = row.cadenceUnit) != null ? _c : ""}`.trim() });
+    tr.createEl("td", { text: row.avgCadence == null ? "\u2014" : `${Math.round(row.avgCadence)} ${(_d = row.cadenceUnit) != null ? _d : ""}`.trim() });
   });
 }
 var renderWorkoutIntervals = (data, el, config, theme) => {
@@ -23842,9 +23832,6 @@ function safeLabel(value, fallback) {
   if (!normalized) return fallback;
   return normalized.length > MAX_LABEL_LENGTH ? `${normalized.slice(0, MAX_LABEL_LENGTH - 1)}\u2026` : normalized;
 }
-function eventRecord(event) {
-  return event;
-}
 function firstPrimitive(record, ...keys) {
   for (const key of keys) {
     const value = primitiveText(record[key]);
@@ -23854,7 +23841,7 @@ function firstPrimitive(record, ...keys) {
 }
 function eventStatus(event) {
   return firstPrimitive(
-    eventRecord(event),
+    event,
     "status",
     "logStatus",
     "log_status",
@@ -23864,8 +23851,7 @@ function eventStatus(event) {
 }
 function eventStatusLabel(event) {
   var _a, _b;
-  const record = eventRecord(event);
-  const exported = (_b = (_a = event.statusDisplay) != null ? _a : event.status_display) != null ? _b : firstPrimitive(record, "logStatusDisplay", "log_status_display");
+  const exported = (_b = (_a = event.statusDisplay) != null ? _a : event.status_display) != null ? _b : firstPrimitive(event, "logStatusDisplay", "log_status_display");
   if (exported) return safeLabel(exported, "Unknown");
   const raw = eventStatus(event);
   const kind = doseStatusKind(raw);
@@ -23875,10 +23861,9 @@ function eventStatusLabel(event) {
 }
 function eventMedicationName(event) {
   var _a, _b, _c;
-  const record = eventRecord(event);
   return safeLabel(
     (_c = (_b = (_a = event.name) != null ? _a : event.displayName) != null ? _b : event.display_name) != null ? _c : firstPrimitive(
-      record,
+      event,
       "medicationName",
       "medication_name",
       "medicationConceptIdentifier",
@@ -25335,24 +25320,6 @@ async function openDailyNote(plugin, target) {
   }
   return openFileByPath(plugin.app, path);
 }
-var VizRenderChild = class extends import_obsidian2.MarkdownRenderChild {
-  constructor() {
-    super(...arguments);
-    this.observer = null;
-    this.unregisterDraw = null;
-  }
-  setObserver(obs) {
-    this.observer = obs;
-  }
-  setUnregisterDraw(fn) {
-    this.unregisterDraw = fn;
-  }
-  onunload() {
-    var _a, _b;
-    (_a = this.observer) == null ? void 0 : _a.disconnect();
-    (_b = this.unregisterDraw) == null ? void 0 : _b.call(this);
-  }
-};
 async function renderCodeBlock(plugin, source, el, ctx) {
   var _a, _b, _c, _d, _e, _f;
   const parsedConfig = parseConfig(source);
@@ -25400,8 +25367,8 @@ async function renderCodeBlock(plugin, source, el, ctx) {
     }
     const container2 = el.createDiv({ cls: "health-md-container" });
     drawHtml();
-    const htmlChild = new VizRenderChild(container2);
-    htmlChild.setUnregisterDraw(plugin.registerDraw(drawHtml));
+    const htmlChild = new import_obsidian2.MarkdownRenderChild(container2);
+    htmlChild.register(plugin.registerDraw(drawHtml));
     ctx.addChild(htmlChild);
     return;
   }
@@ -25507,7 +25474,7 @@ async function renderCodeBlock(plugin, source, el, ctx) {
       hideTooltip();
     }
   });
-  const renderChild = new VizRenderChild(container);
+  const renderChild = new import_obsidian2.MarkdownRenderChild(container);
   ctx.addChild(renderChild);
   function draw() {
     const width = Math.min(
@@ -25525,8 +25492,8 @@ async function renderCodeBlock(plugin, source, el, ctx) {
   draw();
   const observer = new ResizeObserver(() => draw());
   observer.observe(container);
-  renderChild.setObserver(observer);
-  renderChild.setUnregisterDraw(plugin.registerDraw(draw));
+  renderChild.register(() => observer.disconnect());
+  renderChild.register(plugin.registerDraw(draw));
 }
 
 // src/insert-wizard.ts

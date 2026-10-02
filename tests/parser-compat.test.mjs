@@ -85,7 +85,6 @@ async function loadParsers() {
 			detectFrontmatterSchema: schemaModule.detectFrontmatterSchema,
 			parseHealthMetricDataDictionaryDetails: schemaModule.parseHealthMetricDataDictionaryDetails,
 			SUPPORTED_HEALTHMD_SCHEMA_VERSION: schemaModule.SUPPORTED_HEALTHMD_SCHEMA_VERSION,
-			schemaIsFutureVersion: schemaModule.schemaIsFutureVersion,
 		};
 	})();
 
@@ -1153,7 +1152,6 @@ test("canonical daily schema v8 provider fixtures are current and accepted in ev
 		detectJsonSchema,
 		detectCsvSchema,
 		SUPPORTED_HEALTHMD_SCHEMA_VERSION,
-		schemaIsFutureVersion,
 	} = await loadParsers();
 	const [jsonContent, csvContent, basesContent, markdownContent] = await Promise.all([
 		readV8Fixture("provider-day.json"),
@@ -1172,8 +1170,7 @@ test("canonical daily schema v8 provider fixtures are current and accepted in ev
 	}
 
 	assert.equal(SUPPORTED_HEALTHMD_SCHEMA_VERSION, 8);
-	assert.equal(schemaIsFutureVersion(8), false);
-	assert.equal(schemaIsFutureVersion(9), true);
+	assert.equal(detectJsonSchema({ schema: "healthmd.health_data", schema_version: 9 }).isFutureVersion, true);
 	assert.deepEqual(
 		[detectJsonSchema(jsonContent), detectCsvSchema(csvContent)].map(({ kind, version, isFutureVersion }) => ({ kind, version, isFutureVersion })),
 		[

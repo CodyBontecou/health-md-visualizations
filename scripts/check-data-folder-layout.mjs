@@ -31,25 +31,10 @@ try {
 
 	for (const [granularity, maxDepth] of Object.entries(expectedDepths)) {
 		assert.equal(layout.dataFolderMaxDepth(granularity), maxDepth);
-		assert.equal(
-			layout.shouldDescendIntoDataFolderDepth(granularity, maxDepth),
-			false,
-			`${granularity} should stop after depth ${maxDepth}`
-		);
-		if (maxDepth > 0) {
-			assert.equal(
-				layout.shouldDescendIntoDataFolderDepth(granularity, maxDepth - 1),
-				true,
-				`${granularity} should descend before depth ${maxDepth}`
-			);
-		}
 	}
 
-	assert.equal(layout.shouldDescendIntoDataFolderDepth("flat", 0), false);
 	assert.equal(layout.dataFolderMaxDepth("custom", "{year}/{month}/{day}"), 3);
 	assert.equal(layout.dataFolderMaxDepth("custom", "Apple Health/{year}/{week}"), 3);
-	assert.equal(layout.shouldDescendIntoDataFolderDepth("custom", 2, "{year}/{month}/{day}"), true);
-	assert.equal(layout.shouldDescendIntoDataFolderDepth("custom", 3, "{year}/{month}/{day}"), false);
 	assert.equal(layout.normalizeDataFolderPathTemplate("../../{year}//{month}/./{day}/"), "{year}/{month}/{day}");
 	assert.equal(layout.normalizeDataFolderPathTemplate("exports\u0000/{year}\u001f/{month}\u007f"), "exports/{year}/{month}");
 	assert.equal(layout.normalizeDataFolderPathTemplate(""), "{year}/{month}/{day}");

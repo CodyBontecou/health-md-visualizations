@@ -52,14 +52,6 @@ export function dataFolderMaxDepth(
 	return PREDEFINED_DATA_FOLDER_MAX_DEPTH[granularity];
 }
 
-export function shouldDescendIntoDataFolderDepth(
-	granularity: DataFolderGranularity,
-	depth: number,
-	customTemplate = DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE
-): boolean {
-	return depth < dataFolderMaxDepth(granularity, customTemplate);
-}
-
 export function customDataFolderPathTemplateDepth(template: string): number {
 	const normalized = normalizeDataFolderPathTemplate(template);
 	if (!normalized) return 0;

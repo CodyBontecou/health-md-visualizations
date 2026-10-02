@@ -321,6 +321,60 @@ yearly,2026,2026-01-01,2026-12-31,365,166,45.5,Activity,Steps,steps,steps,123456
 	};
 }
 
+for (const [granularity, maxDepth, template = ""] of [
+	["flat", 0],
+	["year", 1],
+	["month", 2],
+	["week", 3],
+	["day", 4],
+	["custom", 3, "{year}/{month}/{day}"],
+	["custom", 3, "Apple Health/{year}/{week}"],
+]) {
+	test(`DataLoader limits ${granularity}${template ? ` (${template})` : ""} scans while retaining direct files`, async () => {
+		const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+		const root = new TFolder("Health");
+		const index = new Map([[root.path, root]]);
+		const contents = new Map();
+		const dates = [];
+		const readPaths = [];
+		let folder = root;
+		for (let depth = 0; depth <= 5; depth++) {
+			const date = `2026-01-0${depth + 1}`;
+			const file = new TFile(`${folder.path}/day.json`);
+			file.parent = folder;
+			folder.children.push(file);
+			index.set(file.path, file);
+			contents.set(file.path, JSON.stringify({ type: "health-data", date, activity: { steps: 100 } }));
+			dates.push(date);
+			if (depth < 5) {
+				const nested = new TFolder(`${folder.path}/nested`);
+				nested.parent = folder;
+				folder.children.push(nested);
+				index.set(nested.path, nested);
+				folder = nested;
+			}
+		}
+		const loader = new DataLoader({
+			getAbstractFileByPath: (filePath) => index.get(filePath) ?? null,
+			async read(file) {
+				readPaths.push(file.path);
+				return contents.get(file.path);
+			},
+		}, {
+			dataFolder: "Health",
+			filePattern: "*.json",
+			dataFormat: "auto",
+			dataFolderGranularity: granularity,
+			dataFolderCustomPathTemplate: template,
+		});
+
+		const days = await loader.load();
+		assert.deepEqual(days.map((day) => day.date), dates.slice(0, maxDepth + 1));
+		assert.equal(readPaths.length, maxDepth + 1, "files beyond the configured depth are never read");
+		assert.ok(readPaths.includes("Health/day.json"), "direct files remain loadable in every mode");
+	});
+}
+
 test("DataLoader loads mixed Health.md schema vaults and indexes roll-ups separately", async () => {
 	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
 	const contentsByPath = new Map();

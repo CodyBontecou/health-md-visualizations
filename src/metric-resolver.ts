@@ -9,18 +9,6 @@ export interface ResolvedMetricDefinition extends MetricDefinition {
 	dailyAggregation?: string;
 }
 
-export interface NumericMetricPoint {
-	day: HealthDay;
-	date: string;
-	value: number;
-}
-
-export interface ScalarMetricPoint {
-	day: HealthDay;
-	date: string;
-	value: HealthMetricScalar;
-}
-
 function canonicalKeyFor(input: string, dictionary?: ParsedHealthMetricDataDictionary): string {
 	const normalized = input.trim();
 	return dictionary?.aliases[normalized] ?? normalized;
@@ -49,28 +37,6 @@ export function resolveNumericMetric(
 		if (Number.isFinite(parsed)) return parsed;
 	}
 	return undefined;
-}
-
-export function numericMetricSeries(
-	days: HealthDay[],
-	key: string,
-	dictionary?: ParsedHealthMetricDataDictionary
-): NumericMetricPoint[] {
-	return days.flatMap((day): NumericMetricPoint[] => {
-		const value = resolveNumericMetric(day, key, dictionary);
-		return value === undefined ? [] : [{ day, date: day.date, value }];
-	});
-}
-
-export function scalarMetricSeries(
-	days: HealthDay[],
-	key: string,
-	dictionary?: ParsedHealthMetricDataDictionary
-): ScalarMetricPoint[] {
-	return days.flatMap((day): ScalarMetricPoint[] => {
-		const value = resolveMetricScalar(day, key, dictionary);
-		return value === undefined ? [] : [{ day, date: day.date, value }];
-	});
 }
 
 export function resolveMetricDefinition(
