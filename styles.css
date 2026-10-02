@@ -1164,3 +1164,12 @@
 	cursor: pointer;
 	color: var(--text-muted);
 }
+
+.health-md-whoop-note {
+	width: 100%;
+	margin-top: 8px;
+	font-size: var(--font-smallest);
+	line-height: 1.5;
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+}

@@ -32,6 +32,7 @@ import { parseJSON, parseRouteSidecar } from "./parsers/json-parser";
 import { parseCSV } from "./parsers/csv-parser";
 import { parseMarkdown } from "./parsers/markdown-parser";
 import { parseRollupByFormat } from "./parsers/rollup-parser";
+import { mergeWhoop } from "./whoop-data";
 
 const HEALTHMD_FORMAT_FOLDERS = new Set(["Markdown", "Bases", "JSON", "CSV"]);
 
@@ -987,6 +988,15 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		schemaVersionOf(fallback)
 	);
 	const timeContext = preferred.timeContext ?? preferred.time_context ?? fallback.timeContext ?? fallback.time_context;
+	const nativeWhoopDay = preferred.providers && "whoop" in preferred.providers ? preferred
+		: fallback.providers && "whoop" in fallback.providers ? fallback : undefined;
+	// An unsupported native contract must not be reinterpreted via an older flat export.
+	const whoop = nativeWhoopDay && !nativeWhoopDay.whoop ? undefined : mergeWhoop(preferred.whoop, fallback.whoop);
+	const providers = mergeSection(fallback.providers, preferred.providers);
+	if (providers && whoop?.source === "typed") {
+		const owner = whoop === preferred.whoop ? preferred : fallback;
+		if (owner.providers) providers.whoop = owner.providers.whoop;
+	}
 
 	return {
 		// Preserve versioned summary sections that do not yet have dedicated
@@ -1033,5 +1043,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		medication_dose_events: mergeMedicationDoseEvents(fallback.medication_dose_events ?? fallback.medicationDoseEvents, preferred.medication_dose_events ?? preferred.medicationDoseEvents),
 		hearing: mergeSection(fallback.hearing, preferred.hearing),
 		canonicalMetrics: mergeSection(fallback.canonicalMetrics, preferred.canonicalMetrics),
+		providers,
+		whoop,
 	};
 }

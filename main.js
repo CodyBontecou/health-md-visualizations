@@ -1492,7 +1492,7 @@ var require_leaflet_src = __commonJS({
           parent.removeChild(el);
         }
       }
-      function empty(el) {
+      function empty3(el) {
         while (el.firstChild) {
           el.removeChild(el.firstChild);
         }
@@ -1676,7 +1676,7 @@ var require_leaflet_src = __commonJS({
         getStyle,
         create: create$1,
         remove,
-        empty,
+        empty: empty3,
         toFront,
         toBack,
         hasClass,
@@ -1921,11 +1921,11 @@ var require_leaflet_src = __commonJS({
         // duration in seconds (`0.25` by default) and easing linearity factor (3rd
         // argument of the [cubic bezier curve](https://cubic-bezier.com/#0,0,.5,1),
         // `0.5` by default).
-        run: function(el, newPos, duration, easeLinearity) {
+        run: function(el, newPos, duration2, easeLinearity) {
           this.stop();
           this._el = el;
           this._inProgress = true;
-          this._duration = duration || 0.25;
+          this._duration = duration2 || 0.25;
           this._easeOutPower = 1 / Math.max(easeLinearity || 0.5, 0.2);
           this._startPos = getPosition(el);
           this._offset = newPos.subtract(this._startPos);
@@ -1947,9 +1947,9 @@ var require_leaflet_src = __commonJS({
           this._step();
         },
         _step: function(round) {
-          var elapsed = +/* @__PURE__ */ new Date() - this._startTime, duration = this._duration * 1e3;
-          if (elapsed < duration) {
-            this._runFrame(this._easeOut(elapsed / duration), round);
+          var elapsed = +/* @__PURE__ */ new Date() - this._startTime, duration2 = this._duration * 1e3;
+          if (elapsed < duration2) {
+            this._runFrame(this._easeOut(elapsed / duration2), round);
           } else {
             this._runFrame(1);
             this._complete();
@@ -2238,9 +2238,9 @@ var require_leaflet_src = __commonJS({
           function easeOut(t) {
             return 1 - Math.pow(1 - t, 1.5);
           }
-          var start = Date.now(), S = (r(1) - r0) / rho, duration = options.duration ? 1e3 * options.duration : 1e3 * S * 0.8;
+          var start = Date.now(), S = (r(1) - r0) / rho, duration2 = options.duration ? 1e3 * options.duration : 1e3 * S * 0.8;
           function frame() {
-            var t = (Date.now() - start) / duration, s = easeOut(t) * S;
+            var t = (Date.now() - start) / duration2, s = easeOut(t) * S;
             if (t <= 1) {
               this._flyToFrame = requestAnimFrame(frame, this);
               this._move(
@@ -3471,8 +3471,8 @@ var require_leaflet_src = __commonJS({
           if (!this._container) {
             return this;
           }
-          empty(this._baseLayersList);
-          empty(this._overlaysList);
+          empty3(this._baseLayersList);
+          empty3(this._overlaysList);
           this._layerControlInputs = [];
           var baseLayersPresent, overlaysPresent, i, obj, baseLayersCount = 0;
           for (i = 0; i < this._layers.length; i++) {
@@ -3756,9 +3756,9 @@ var require_leaflet_src = __commonJS({
             this._updateScale(this._iScale, feet + " ft", feet / maxFeet);
           }
         },
-        _updateScale: function(scale2, text, ratio) {
+        _updateScale: function(scale2, text3, ratio) {
           scale2.style.width = Math.round(this.options.maxWidth * ratio) + "px";
-          scale2.innerHTML = text;
+          scale2.innerHTML = text3;
         },
         _getRoundNum: function(num) {
           var pow10 = Math.pow(10, (Math.floor(num) + "").length - 1), d = num / pow10;
@@ -3816,25 +3816,25 @@ var require_leaflet_src = __commonJS({
         },
         // @method addAttribution(text: String): this
         // Adds an attribution text (e.g. `'&copy; OpenStreetMap contributors'`).
-        addAttribution: function(text) {
-          if (!text) {
+        addAttribution: function(text3) {
+          if (!text3) {
             return this;
           }
-          if (!this._attributions[text]) {
-            this._attributions[text] = 0;
+          if (!this._attributions[text3]) {
+            this._attributions[text3] = 0;
           }
-          this._attributions[text]++;
+          this._attributions[text3]++;
           this._update();
           return this;
         },
         // @method removeAttribution(text: String): this
         // Removes an attribution text.
-        removeAttribution: function(text) {
-          if (!text) {
+        removeAttribution: function(text3) {
+          if (!text3) {
             return this;
           }
-          if (this._attributions[text]) {
-            this._attributions[text]--;
+          if (this._attributions[text3]) {
+            this._attributions[text3]--;
             this._update();
           }
           return this;
@@ -7231,7 +7231,7 @@ var require_leaflet_src = __commonJS({
         createIcon: function(oldIcon) {
           var div = oldIcon && oldIcon.tagName === "DIV" ? oldIcon : document.createElement("div"), options = this.options;
           if (options.html instanceof Element) {
-            empty(div);
+            empty3(div);
             div.appendChild(options.html);
           } else {
             div.innerHTML = options.html !== false ? options.html : "";
@@ -9097,18 +9097,18 @@ var require_leaflet_src = __commonJS({
             return;
           }
           var offset = this._draggable._newPos.subtract(this._draggable._startPos);
-          var limit = this._offsetLimit;
-          if (offset.x < limit.min.x) {
-            offset.x = this._viscousLimit(offset.x, limit.min.x);
+          var limit2 = this._offsetLimit;
+          if (offset.x < limit2.min.x) {
+            offset.x = this._viscousLimit(offset.x, limit2.min.x);
           }
-          if (offset.y < limit.min.y) {
-            offset.y = this._viscousLimit(offset.y, limit.min.y);
+          if (offset.y < limit2.min.y) {
+            offset.y = this._viscousLimit(offset.y, limit2.min.y);
           }
-          if (offset.x > limit.max.x) {
-            offset.x = this._viscousLimit(offset.x, limit.max.x);
+          if (offset.x > limit2.max.x) {
+            offset.x = this._viscousLimit(offset.x, limit2.max.x);
           }
-          if (offset.y > limit.max.y) {
-            offset.y = this._viscousLimit(offset.y, limit.max.y);
+          if (offset.y > limit2.max.y) {
+            offset.y = this._viscousLimit(offset.y, limit2.max.y);
           }
           this._draggable._newPos = this._draggable._startPos.add(offset);
         },
@@ -9124,7 +9124,7 @@ var require_leaflet_src = __commonJS({
             map2.fire("moveend");
           } else {
             this._prunePositions(+/* @__PURE__ */ new Date());
-            var direction = this._lastPos.subtract(this._positions[0]), duration = (this._lastTime - this._times[0]) / 1e3, ease = options.easeLinearity, speedVector = direction.multiplyBy(ease / duration), speed = speedVector.distanceTo([0, 0]), limitedSpeed = Math.min(options.inertiaMaxSpeed, speed), limitedSpeedVector = speedVector.multiplyBy(limitedSpeed / speed), decelerationDuration = limitedSpeed / (options.inertiaDeceleration * ease), offset = limitedSpeedVector.multiplyBy(-decelerationDuration / 2).round();
+            var direction = this._lastPos.subtract(this._positions[0]), duration2 = (this._lastTime - this._times[0]) / 1e3, ease = options.easeLinearity, speedVector = direction.multiplyBy(ease / duration2), speed = speedVector.distanceTo([0, 0]), limitedSpeed = Math.min(options.inertiaMaxSpeed, speed), limitedSpeedVector = speedVector.multiplyBy(limitedSpeed / speed), decelerationDuration = limitedSpeed / (options.inertiaDeceleration * ease), offset = limitedSpeedVector.multiplyBy(-decelerationDuration / 2).round();
             if (!offset.x && !offset.y) {
               map2.fire("moveend");
             } else {
@@ -9196,7 +9196,7 @@ var require_leaflet_src = __commonJS({
           if (this._focused) {
             return;
           }
-          var body = document.body, docEl = document.documentElement, top = body.scrollTop || docEl.scrollTop, left = body.scrollLeft || docEl.scrollLeft;
+          var body2 = document.body, docEl = document.documentElement, top = body2.scrollTop || docEl.scrollTop, left = body2.scrollLeft || docEl.scrollLeft;
           this._map._container.focus();
           window.scrollTo(left, top);
         },
@@ -10104,7 +10104,7 @@ function detectCsvSchema(content) {
   return { kind: "legacy-health-day", version: 0, format: "csv" };
 }
 function parseHealthMetricDataDictionaryDetails(content) {
-  const empty = {
+  const empty3 = {
     entries: [],
     aliases: {},
     unitsByCanonicalKey: {},
@@ -10115,7 +10115,7 @@ function parseHealthMetricDataDictionaryDetails(content) {
   };
   try {
     const parsed = JSON.parse(content);
-    if (!Array.isArray(parsed)) return empty;
+    if (!Array.isArray(parsed)) return empty3;
     const result = {
       entries: [],
       aliases: {},
@@ -10177,7 +10177,7 @@ function parseHealthMetricDataDictionaryDetails(content) {
     }
     return result;
   } catch (e) {
-    return empty;
+    return empty3;
   }
 }
 function schemaVersionOfDictionaryValue(value) {
@@ -10285,12 +10285,12 @@ function splitInlineArray(inner) {
   if (current.trim()) parts.push(current.trim());
   return parts;
 }
-function splitYamlKeyValue(text) {
-  const colonIdx = text.indexOf(":");
+function splitYamlKeyValue(text3) {
+  const colonIdx = text3.indexOf(":");
   if (colonIdx === -1) return null;
-  const key = text.slice(0, colonIdx).trim();
+  const key = text3.slice(0, colonIdx).trim();
   if (!key) return null;
-  return [key, text.slice(colonIdx + 1).trim()];
+  return [key, text3.slice(colonIdx + 1).trim()];
 }
 function parseScalar(raw) {
   let value = raw.trim();
@@ -10324,15 +10324,15 @@ function parseYamlishList(value) {
   }).filter((line) => line.text && !line.text.startsWith("#"));
   if (!lines.length) return void 0;
   if (!lines.some((line) => line.text.startsWith("- "))) {
-    const object = {};
+    const object2 = {};
     let hasKeys = false;
     for (const line of lines) {
       const pair = splitYamlKeyValue(line.text);
       if (!pair) return void 0;
-      object[pair[0]] = parseScalar(pair[1]);
+      object2[pair[0]] = parseScalar(pair[1]);
       hasKeys = true;
     }
-    return hasKeys ? [object] : void 0;
+    return hasKeys ? [object2] : void 0;
   }
   const result = [];
   let current = null;
@@ -10393,8 +10393,8 @@ function parseUnknownCollection(value) {
 function stringArrayFromUnknown(value) {
   return parseUnknownCollection(value).flatMap((item) => {
     if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-      const text = String(item).trim();
-      return text ? [text] : [];
+      const text3 = String(item).trim();
+      return text3 ? [text3] : [];
     }
     if (isRecord(item)) {
       const name = firstString(item, "display_name", "displayName", "name", "nickname");
@@ -10484,19 +10484,19 @@ function normalizeMedicationFields(source) {
   const detailsRaw = firstRaw(source, "medication_details", "medicationDetails");
   const legacyMedicationsRaw = firstRaw(source, "medications", "medication_names", "medicationNames");
   const doseEventsRaw = firstRaw(source, "medication_dose_events", "medicationDoseEvents");
-  let details = normalizeMedicationDetails(detailsRaw);
+  let details2 = normalizeMedicationDetails(detailsRaw);
   const medicationNames = stringArrayFromUnknown(legacyMedicationsRaw);
-  if (!details.length && medicationNames.length) {
-    details = medicationNames.map((name) => ({ name, displayName: name, display_name: name }));
+  if (!details2.length && medicationNames.length) {
+    details2 = medicationNames.map((name) => ({ name, displayName: name, display_name: name }));
   }
   const doseEvents = normalizeMedicationDoseEvents(doseEventsRaw);
-  const derivedActive = details.filter((item) => item.isArchived !== true && item.is_archived !== true).length;
-  const derivedArchived = details.filter((item) => item.isArchived === true || item.is_archived === true).length;
+  const derivedActive = details2.filter((item) => item.isArchived !== true && item.is_archived !== true).length;
+  const derivedArchived = details2.filter((item) => item.isArchived === true || item.is_archived === true).length;
   const takenFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "taken").length;
   const skippedFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "skipped").length;
-  const medicationCount = (_a = firstNumber(source, "medication_count", "medicationCount")) != null ? _a : details.length || medicationNames.length || void 0;
-  const activeMedicationCount = (_b = firstNumber(source, "active_medication_count", "activeMedicationCount")) != null ? _b : details.length ? derivedActive : void 0;
-  const archivedMedicationCount = (_c = firstNumber(source, "archived_medication_count", "archivedMedicationCount")) != null ? _c : details.length ? derivedArchived : void 0;
+  const medicationCount = (_a = firstNumber(source, "medication_count", "medicationCount")) != null ? _a : details2.length || medicationNames.length || void 0;
+  const activeMedicationCount = (_b = firstNumber(source, "active_medication_count", "activeMedicationCount")) != null ? _b : details2.length ? derivedActive : void 0;
+  const archivedMedicationCount = (_c = firstNumber(source, "archived_medication_count", "archivedMedicationCount")) != null ? _c : details2.length ? derivedArchived : void 0;
   const medicationDoseCount = (_d = firstNumber(source, "medication_dose_count", "medicationDoseCount")) != null ? _d : doseEvents.length || void 0;
   const medicationTakenCount = (_e = firstNumber(source, "medication_taken_count", "medicationTakenCount")) != null ? _e : doseEvents.length ? takenFromEvents : void 0;
   const medicationSkippedCount = (_f = firstNumber(source, "medication_skipped_count", "medicationSkippedCount")) != null ? _f : doseEvents.length ? skippedFromEvents : void 0;
@@ -10526,9 +10526,9 @@ function normalizeMedicationFields(source) {
     patch.medication_skipped_count = medicationSkippedCount;
   }
   if (medicationNames.length) patch.medications = medicationNames;
-  if (details.length) {
-    patch.medicationDetails = details;
-    patch.medication_details = details;
+  if (details2.length) {
+    patch.medicationDetails = details2;
+    patch.medication_details = details2;
   }
   if (doseEvents.length) {
     patch.medicationDoseEvents = doseEvents;
@@ -10569,13 +10569,13 @@ function medicationDisplayName(item) {
   var _a, _b, _c, _d, _e, _f;
   return (_f = (_e = (_d = (_c = (_b = (_a = item.nickname) != null ? _a : item.displayName) != null ? _b : item.display_name) != null ? _c : item.name) != null ? _d : item.conceptIdentifier) != null ? _e : item.concept_identifier) != null ? _f : "Medication";
 }
-function doseEventMedicationName(event, details) {
+function doseEventMedicationName(event, details2) {
   var _a, _b, _c;
   const direct = (_b = (_a = event.name) != null ? _a : event.displayName) != null ? _b : event.display_name;
   if (direct) return direct;
   const concept = (_c = event.medicationConceptIdentifier) != null ? _c : event.medication_concept_identifier;
   if (concept) {
-    const match = details.find((item) => item.conceptIdentifier === concept || item.concept_identifier === concept);
+    const match = details2.find((item) => item.conceptIdentifier === concept || item.concept_identifier === concept);
     if (match) return medicationDisplayName(match);
   }
   return "Medication";
@@ -10611,20 +10611,20 @@ function getMedicationDaySummary(day) {
     "medication_dose_events"
   ].some((key) => Object.prototype.hasOwnProperty.call(source, key));
   const normalized = normalizeMedicationFields(source);
-  const details = (_c = (_b = (_a = normalized.medicationDetails) != null ? _a : day.medicationDetails) != null ? _b : day.medication_details) != null ? _c : [];
+  const details2 = (_c = (_b = (_a = normalized.medicationDetails) != null ? _a : day.medicationDetails) != null ? _b : day.medication_details) != null ? _c : [];
   const doseEvents = (_f = (_e = (_d = normalized.medicationDoseEvents) != null ? _d : day.medicationDoseEvents) != null ? _e : day.medication_dose_events) != null ? _f : [];
-  const medications = (_h = (_g = normalized.medications) != null ? _g : day.medications) != null ? _h : details.map(medicationDisplayName);
+  const medications = (_h = (_g = normalized.medications) != null ? _g : day.medications) != null ? _h : details2.map(medicationDisplayName);
   const takenFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "taken").length;
   const skippedFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "skipped").length;
   const otherFromEvents = doseEvents.filter((event) => doseStatusKind(event.status) === "other").length;
-  const medicationCount = (_m = (_l = (_k = (_j = (_i = normalized.medicationCount) != null ? _i : day.medicationCount) != null ? _j : day.medication_count) != null ? _k : details.length) != null ? _l : medications.length) != null ? _m : 0;
-  const activeMedicationCount = (_p = (_o = (_n = normalized.activeMedicationCount) != null ? _n : day.activeMedicationCount) != null ? _o : day.active_medication_count) != null ? _p : details.filter((item) => item.isArchived !== true && item.is_archived !== true).length;
-  const archivedMedicationCount = (_s = (_r = (_q = normalized.archivedMedicationCount) != null ? _q : day.archivedMedicationCount) != null ? _r : day.archived_medication_count) != null ? _s : details.filter((item) => item.isArchived === true || item.is_archived === true).length;
+  const medicationCount = (_m = (_l = (_k = (_j = (_i = normalized.medicationCount) != null ? _i : day.medicationCount) != null ? _j : day.medication_count) != null ? _k : details2.length) != null ? _l : medications.length) != null ? _m : 0;
+  const activeMedicationCount = (_p = (_o = (_n = normalized.activeMedicationCount) != null ? _n : day.activeMedicationCount) != null ? _o : day.active_medication_count) != null ? _p : details2.filter((item) => item.isArchived !== true && item.is_archived !== true).length;
+  const archivedMedicationCount = (_s = (_r = (_q = normalized.archivedMedicationCount) != null ? _q : day.archivedMedicationCount) != null ? _r : day.archived_medication_count) != null ? _s : details2.filter((item) => item.isArchived === true || item.is_archived === true).length;
   const medicationDoseCount = (_v = (_u = (_t = normalized.medicationDoseCount) != null ? _t : day.medicationDoseCount) != null ? _u : day.medication_dose_count) != null ? _v : doseEvents.length;
   const medicationTakenCount = (_y = (_x = (_w = normalized.medicationTakenCount) != null ? _w : day.medicationTakenCount) != null ? _x : day.medication_taken_count) != null ? _y : takenFromEvents;
   const medicationSkippedCount = (_B = (_A = (_z = normalized.medicationSkippedCount) != null ? _z : day.medicationSkippedCount) != null ? _A : day.medication_skipped_count) != null ? _B : skippedFromEvents;
   const medicationOtherDoseCount = Math.max(0, medicationDoseCount - medicationTakenCount - medicationSkippedCount, otherFromEvents);
-  const hasInventory = medicationCount > 0 || details.length > 0 || medications.length > 0 || hasExplicitMedicationField;
+  const hasInventory = medicationCount > 0 || details2.length > 0 || medications.length > 0 || hasExplicitMedicationField;
   const hasDoseCounts = medicationDoseCount > 0 || medicationTakenCount > 0 || medicationSkippedCount > 0 || hasExplicitMedicationField;
   const hasDoseEvents = doseEvents.length > 0;
   const hasMedicationData2 = hasExplicitMedicationField || hasInventory || hasDoseCounts || hasDoseEvents;
@@ -10638,7 +10638,7 @@ function getMedicationDaySummary(day) {
     medicationSkippedCount,
     medicationOtherDoseCount,
     medications,
-    details,
+    details: details2,
     doseEvents,
     hasInventory,
     hasDoseCounts,
@@ -11080,8 +11080,8 @@ function scalarFromUnknown(value) {
     const normalized = trimmed.toLowerCase();
     if (normalized === "true") return true;
     if (normalized === "false") return false;
-    const number = Number(trimmed.replace(/,/g, ""));
-    return Number.isFinite(number) ? number : trimmed;
+    const number2 = Number(trimmed.replace(/,/g, ""));
+    return Number.isFinite(number2) ? number2 : trimmed;
   }
   return void 0;
 }
@@ -11172,6 +11172,309 @@ function attachCanonicalMetrics(day, extras) {
   const typed = canonicalMetricsFromTypedDay(day);
   const merged = { ...extras != null ? extras : {}, ...typed };
   if (Object.keys(merged).length) day.canonicalMetrics = merged;
+}
+
+// src/whoop-types.ts
+var WHOOP_ZONE_KEYS = [
+  "zone_zero_milliseconds",
+  "zone_one_milliseconds",
+  "zone_two_milliseconds",
+  "zone_three_milliseconds",
+  "zone_four_milliseconds",
+  "zone_five_milliseconds"
+];
+
+// src/whoop-data.ts
+function object(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function text(value, limit2 = 256) {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= limit2 ? value.trim() : void 0;
+}
+function timestamp(value) {
+  const raw = text(value);
+  return raw && /^\d{4}-\d{2}-\d{2}T.*Z$/.test(raw) && Number.isFinite(Date.parse(raw)) ? raw : void 0;
+}
+function number(value, min = 0, max = Number.MAX_VALUE, integer = false) {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max && (!integer || Number.isSafeInteger(value)) ? value : void 0;
+}
+var duration = (value) => number(value, 0, Number.MAX_SAFE_INTEGER, true);
+var percent = (value) => number(value, 0, 100);
+var bpm = (value) => {
+  const result = number(value, 0, 300);
+  return result !== void 0 && result > 0 ? result : void 0;
+};
+function defined(values) {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== void 0));
+}
+function common(raw) {
+  return defined({
+    id: text(raw.id),
+    start_time: timestamp(raw.start_time),
+    end_time: raw.end_time === null ? null : timestamp(raw.end_time),
+    timezone_offset: text(raw.timezone_offset, 6),
+    score_state: text(raw.score_state, 64)
+  });
+}
+function cycle(raw) {
+  return { ...common(raw), ...defined({
+    strain_score: number(raw.strain_score, 0, 21),
+    energy_kilojoules: number(raw.energy_kilojoules),
+    average_heart_rate_bpm: bpm(raw.average_heart_rate_bpm),
+    max_heart_rate_bpm: bpm(raw.max_heart_rate_bpm)
+  }) };
+}
+function recovery(raw) {
+  return { ...defined({
+    score_state: text(raw.score_state, 64),
+    cycle_id: text(raw.cycle_id),
+    sleep_id: text(raw.sleep_id),
+    user_calibrating: typeof raw.user_calibrating === "boolean" ? raw.user_calibrating : void 0,
+    recovery_score_percent: percent(raw.recovery_score_percent),
+    resting_heart_rate_bpm: bpm(raw.resting_heart_rate_bpm),
+    hrv_rmssd_ms: number(raw.hrv_rmssd_ms),
+    spo2_percent: bpm(raw.spo2_percent) === void 0 ? void 0 : percent(raw.spo2_percent),
+    skin_temperature_celsius: number(raw.skin_temperature_celsius, -100, 100)
+  }) };
+}
+var SLEEP_DURATION_KEYS = [
+  "total_sleep_milliseconds",
+  "total_in_bed_milliseconds",
+  "awake_milliseconds",
+  "light_sleep_milliseconds",
+  "slow_wave_sleep_milliseconds",
+  "rem_sleep_milliseconds",
+  "no_data_milliseconds",
+  "sleep_cycle_count",
+  "disturbance_count",
+  "baseline_sleep_need_milliseconds",
+  "sleep_debt_need_milliseconds",
+  "recent_strain_need_milliseconds"
+];
+function sleep(raw) {
+  const result = { ...common(raw), ...defined({
+    cycle_id: text(raw.cycle_id),
+    is_nap: typeof raw.is_nap === "boolean" ? raw.is_nap : void 0,
+    recent_nap_adjustment_milliseconds: number(raw.recent_nap_adjustment_milliseconds, -Number.MAX_SAFE_INTEGER, 0, true),
+    respiratory_rate_breaths_per_minute: number(raw.respiratory_rate_breaths_per_minute, 0, 100),
+    sleep_performance_percent: percent(raw.sleep_performance_percent),
+    sleep_consistency_percent: percent(raw.sleep_consistency_percent),
+    sleep_efficiency_percent: percent(raw.sleep_efficiency_percent)
+  }) };
+  for (const key of SLEEP_DURATION_KEYS) {
+    const value = duration(raw[key]);
+    if (value !== void 0) result[key] = value;
+  }
+  const stages = [result.light_sleep_milliseconds, result.slow_wave_sleep_milliseconds, result.rem_sleep_milliseconds];
+  if (stages.every((value) => value !== void 0)) {
+    const total = stages.reduce((sum, value) => sum + value, 0);
+    if (Number.isSafeInteger(total)) result.total_sleep_milliseconds = total;
+  }
+  return result;
+}
+function workout(raw) {
+  const result = { ...common(raw), ...defined({
+    sport_name: text(raw.sport_name, 128),
+    strain_score: number(raw.strain_score, 0, 21),
+    average_heart_rate_bpm: bpm(raw.average_heart_rate_bpm),
+    max_heart_rate_bpm: bpm(raw.max_heart_rate_bpm),
+    energy_kilojoules: number(raw.energy_kilojoules),
+    distance_meters: number(raw.distance_meters),
+    altitude_gain_meters: number(raw.altitude_gain_meters, -Number.MAX_VALUE),
+    altitude_change_meters: number(raw.altitude_change_meters, -Number.MAX_VALUE),
+    percent_recorded: percent(raw.percent_recorded)
+  }) };
+  const zones = object(raw.zone_durations);
+  if (zones) {
+    const values = defined(Object.fromEntries(WHOOP_ZONE_KEYS.map((key) => [key, duration(zones[key])])));
+    if (Object.keys(values).length) result.zone_durations = values;
+  }
+  return result;
+}
+function body(raw) {
+  return defined({
+    source_kind: raw.source_kind === "current_profile_snapshot" ? raw.source_kind : void 0,
+    observed_at: timestamp(raw.observed_at),
+    height_meters: number(raw.height_meters, Number.MIN_VALUE, 3),
+    weight_kilograms: number(raw.weight_kilograms, Number.MIN_VALUE, 1e3),
+    max_heart_rate_bpm: bpm(raw.max_heart_rate_bpm)
+  });
+}
+var CAPTURE_STATUSES = /* @__PURE__ */ new Set(["complete", "partial", "not_requested"]);
+function capture(value) {
+  return typeof value === "string" && CAPTURE_STATUSES.has(value) ? value : void 0;
+}
+function empty(source, status) {
+  return { source, captureStatus: status, cycles: [], recoveries: [], sleep: [], workouts: [], resources: [], notes: [] };
+}
+function resource(value) {
+  const raw = object(value);
+  if (!raw || !["cycles", "recovery", "sleep", "workouts", "body"].includes(String(raw.resource)) || !["success", "failure", "cancelled", "skipped", "unsupported"].includes(String(raw.status)) || duration(raw.record_count) === void 0) return void 0;
+  return { resource: raw.resource, status: raw.status, record_count: raw.record_count };
+}
+var MAPPERS = { cycles: cycle, recoveries: recovery, sleep, workouts: workout };
+function validRecord(key, raw) {
+  if (key === "recoveries") return text(raw.cycle_id) !== void 0;
+  if (!text(raw.id) || !timestamp(raw.start_time)) return false;
+  if (key === "cycles") return true;
+  if (!timestamp(raw.end_time) || Date.parse(String(raw.end_time)) < Date.parse(String(raw.start_time))) return false;
+  return key === "sleep" ? !!text(raw.cycle_id) && typeof raw.is_nap === "boolean" : !!text(raw.sport_name, 128);
+}
+function setRecords(result, key, values) {
+  const mapped = [];
+  for (const value of values.slice(0, 1e4)) {
+    const raw = object(value);
+    if (!raw || !validRecord(key, raw)) {
+      result.notes.push(`Invalid WHOOP ${key} record omitted.`);
+      continue;
+    }
+    mapped.push(MAPPERS[key](raw));
+  }
+  mapped.sort((a, b) => {
+    var _a, _b, _c, _d, _e, _f;
+    return ((_a = a.start_time) != null ? _a : "").localeCompare((_b = b.start_time) != null ? _b : "") || ((_d = (_c = a.id) != null ? _c : a.cycle_id) != null ? _d : "").localeCompare((_f = (_e = b.id) != null ? _e : b.cycle_id) != null ? _f : "");
+  });
+  Object.assign(result, { [key]: mapped });
+  if (values.length > 1e4) result.notes.push("WHOOP record display limit reached.");
+}
+function finalize(result) {
+  if (result.captureStatus === "not_requested") return empty(result.source, "not_requested");
+  for (const row of result.resources) {
+    const count = row.resource === "body" ? Number(!!result.body) : row.resource === "recovery" ? result.recoveries.length : result[row.resource].length;
+    if (row.record_count !== count) result.notes.push(`WHOOP ${row.resource} record count does not match retained data.`);
+  }
+  result.notes = [...new Set(result.notes)];
+  return result;
+}
+function parseWhoopSection(value) {
+  const raw = object(value);
+  if (!raw || raw.schema !== "healthmd.provider.whoop_daily" || raw.schema_version !== 1 || !capture(raw.capture_status)) return void 0;
+  const result = empty("typed", capture(raw.capture_status));
+  if (result.captureStatus === "not_requested") return result;
+  result.fetchedAt = timestamp(raw.fetched_at);
+  for (const key of Object.keys(MAPPERS)) {
+    if (Array.isArray(raw[key])) setRecords(result, key, raw[key]);
+    else result.notes.push(`WHOOP ${key} collection unavailable.`);
+  }
+  if (Array.isArray(raw.resources)) result.resources = raw.resources.map(resource).filter((row) => !!row);
+  const profile = object(raw.body);
+  if ((profile == null ? void 0 : profile.source_kind) === "current_profile_snapshot") result.body = body(profile);
+  if (Array.isArray(raw.warnings) && raw.warnings.length) result.notes.push("WHOOP producer reported capture warnings.");
+  return finalize(result);
+}
+var FLAT_FIELDS = [
+  ["whoop_cycle_strain_score", "cycles", "strain_score", "WHOOP Cycle", "Cycle Strain Score"],
+  ["whoop_cycle_energy_kilojoules", "cycles", "energy_kilojoules", "WHOOP Cycle", "Cycle Energy"],
+  ["whoop_cycle_average_heart_rate_bpm", "cycles", "average_heart_rate_bpm", "WHOOP Cycle", "Cycle Average Heart Rate"],
+  ["whoop_cycle_max_heart_rate_bpm", "cycles", "max_heart_rate_bpm", "WHOOP Cycle", "Cycle Maximum Heart Rate"],
+  ["whoop_recovery_score_percent", "recoveries", "recovery_score_percent", "WHOOP Recovery", "Recovery Score"],
+  ["whoop_resting_heart_rate_bpm", "recoveries", "resting_heart_rate_bpm", "WHOOP Recovery", "Resting Heart Rate"],
+  ["whoop_hrv_rmssd_ms", "recoveries", "hrv_rmssd_ms", "WHOOP Recovery", "HRV (RMSSD)"],
+  ["whoop_spo2_percent", "recoveries", "spo2_percent", "WHOOP Recovery", "SpO\u2082"],
+  ["whoop_skin_temperature_celsius", "recoveries", "skin_temperature_celsius", "WHOOP Recovery", "Skin Temperature"],
+  ...["total_sleep", "total_in_bed", "awake", "light_sleep", "slow_wave_sleep", "rem_sleep", "recent_nap_adjustment"].map((name) => [
+    `whoop_${name}_milliseconds`,
+    "sleep",
+    `${name}_milliseconds`,
+    "WHOOP Sleep",
+    { total_sleep: "Total Sleep", total_in_bed: "Total In Bed", awake: "Awake Duration", light_sleep: "Light Sleep Duration", slow_wave_sleep: "Slow Wave Sleep Duration", rem_sleep: "REM Sleep Duration", recent_nap_adjustment: "Recent Nap Adjustment" }[name]
+  ]),
+  ["whoop_respiratory_rate_breaths_per_minute", "sleep", "respiratory_rate_breaths_per_minute", "WHOOP Sleep", "Respiratory Rate"],
+  ...["performance", "consistency", "efficiency"].map((name) => [
+    `whoop_sleep_${name}_percent`,
+    "sleep",
+    `sleep_${name}_percent`,
+    "WHOOP Sleep",
+    `Sleep ${name[0].toUpperCase()}${name.slice(1)}`
+  ]),
+  ["whoop_workout_sport_name", "workouts", "sport_name", "WHOOP Workout", "Workout Sport"],
+  ["whoop_workout_strain_score", "workouts", "strain_score", "WHOOP Workout", "Workout Strain Score"],
+  ["whoop_workout_average_heart_rate_bpm", "workouts", "average_heart_rate_bpm", "WHOOP Workout", "Workout Average Heart Rate"],
+  ["whoop_workout_max_heart_rate_bpm", "workouts", "max_heart_rate_bpm", "WHOOP Workout", "Workout Maximum Heart Rate"],
+  ["whoop_workout_energy_kilojoules", "workouts", "energy_kilojoules", "WHOOP Workout", "Workout Energy"],
+  ["whoop_workout_distance_meters", "workouts", "distance_meters", "WHOOP Workout", "Workout Distance"],
+  ["whoop_body_height_meters", "body", "height_meters", "WHOOP Body", "Body Height Snapshot"],
+  ["whoop_body_weight_kilograms", "body", "weight_kilograms", "WHOOP Body", "Body Weight Snapshot"],
+  ["whoop_body_max_heart_rate_bpm", "body", "max_heart_rate_bpm", "WHOOP Body", "Maximum Heart Rate Snapshot"]
+];
+function parseWhoopFlat(raw, source = "frontmatter") {
+  var _a;
+  const status = capture(raw.whoop_capture_status);
+  const result = empty(source, status);
+  const groups = {};
+  for (const [key, group, field] of FLAT_FIELDS) {
+    const value = raw[key];
+    if (value === void 0 || value === null || typeof value === "string" && value.trim() === "") continue;
+    ((_a = groups[group]) != null ? _a : groups[group] = {})[field] = field === "sport_name" ? value : typeof value === "string" ? Number(value) : value;
+  }
+  for (const key of Object.keys(MAPPERS)) {
+    if (!groups[key]) continue;
+    const mapped = MAPPERS[key](groups[key]);
+    if (Object.keys(mapped).length) Object.assign(result, { [key]: [{ ...mapped, projection: true }] });
+  }
+  if (groups.body) result.body = body(groups.body);
+  if (!status && !Object.keys(groups).length) return void 0;
+  if (result.cycles.length || result.recoveries.length || result.sleep.length || result.workouts.length || result.body) {
+    result.notes.push("Single-record scalar projection; event identity and timing may be unavailable.");
+  }
+  return finalize(result);
+}
+function parseWhoopCsv(rows) {
+  var _a, _b;
+  const label = (value) => value.trim().toLowerCase();
+  const providerRows = rows.filter((row) => label(row.category).startsWith("whoop "));
+  if (!providerRows.length) return void 0;
+  const flat = {};
+  for (const [key, , , category, metric] of FLAT_FIELDS) {
+    const row = providerRows.find((item) => label(item.category) === label(category) && label(item.metric) === label(metric));
+    if (row) flat[key] = row.value;
+  }
+  flat.whoop_capture_status = (_a = providerRows.find((row) => label(row.category) === "whoop capture" && label(row.metric) === "capture status")) == null ? void 0 : _a.value;
+  const result = (_b = parseWhoopFlat(flat, "csv")) != null ? _b : empty("csv");
+  const structured = [
+    ["cycles", "whoop cycle", "cycle record"],
+    ["recoveries", "whoop recovery", "recovery record"],
+    ["sleep", "whoop sleep", "sleep record"],
+    ["workouts", "whoop workout", "workout record"]
+  ];
+  function decode(row) {
+    try {
+      return JSON.parse(row.value);
+    } catch (e) {
+      result.notes.push("Malformed WHOOP CSV record omitted.");
+      return void 0;
+    }
+  }
+  let hasStructured = false;
+  for (const [key, category, metric] of structured) {
+    const matches = providerRows.filter((row) => label(row.category) === category && label(row.metric) === metric);
+    if (matches.length) {
+      setRecords(result, key, matches.map(decode));
+      hasStructured = true;
+    }
+  }
+  result.resources = providerRows.filter((row) => label(row.category) === "whoop capture" && label(row.metric) === "resource result").map((row) => resource(decode(row))).filter((row) => !!row);
+  const profile = providerRows.find((row) => label(row.category) === "whoop body" && label(row.metric) === "body snapshot");
+  const profileValue = profile ? object(decode(profile)) : void 0;
+  if ((profileValue == null ? void 0 : profileValue.source_kind) === "current_profile_snapshot") result.body = body(profileValue);
+  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record) => record.projection)) {
+    result.notes = result.notes.filter((note2) => !note2.startsWith("Single-record scalar"));
+  }
+  return finalize(result);
+}
+function whoopForDay(day) {
+  var _a, _b;
+  return (_b = day.whoop) != null ? _b : parseWhoopSection((_a = day.providers) == null ? void 0 : _a.whoop);
+}
+function mergeWhoop(preferred, fallback) {
+  if (!preferred) return fallback;
+  if (!fallback) return preferred;
+  const rank = { typed: 3, csv: 2, frontmatter: 1 };
+  if (rank[fallback.source] !== rank[preferred.source]) return rank[fallback.source] > rank[preferred.source] ? fallback : preferred;
+  if (preferred.captureStatus === "not_requested") return preferred;
+  if (fallback.captureStatus === "not_requested") return fallback;
+  if (preferred.fetchedAt && fallback.fetchedAt && Date.parse(fallback.fetchedAt) > Date.parse(preferred.fetchedAt)) return fallback;
+  return preferred;
 }
 
 // src/mood-utils.ts
@@ -11370,7 +11673,7 @@ function moodEntryFromRecord(record, fallbackDate) {
   ].filter((item, index, all) => all.indexOf(item) === index);
   const primaryLabel2 = (_b = (_a = label != null ? label : moodLabel) != null ? _a : labels[0]) != null ? _b : valenceDescription;
   const valence = (_d = (_c = normalizeMoodValence(valenceRaw, "valence")) != null ? _c : normalizeMoodValence(scoreRaw, "score")) != null ? _d : normalizeMoodValence(primaryLabel2, "label");
-  const timestamp = normalizeTimestamp(firstString2(record, [
+  const timestamp2 = normalizeTimestamp(firstString2(record, [
     "timestamp",
     "date",
     "recordedAt",
@@ -11390,8 +11693,8 @@ function moodEntryFromRecord(record, fallbackDate) {
   ].filter((item, index, all) => all.indexOf(item) === index);
   if (valence === void 0 && !primaryLabel2 && !labels.length && !kind) return null;
   return {
-    timestamp,
-    startDate: timestamp,
+    timestamp: timestamp2,
+    startDate: timestamp2,
     endDate,
     kind,
     valence,
@@ -11517,7 +11820,7 @@ function getMoodDaySummary(day) {
 var OMITTED_ROOT_KEYS = /* @__PURE__ */ new Set(["healthkit_record_archive"]);
 var LARGE_ARCHIVE_FAST_PATH_MIN_LENGTH = 512 * 1024;
 var ARCHIVE_ENVELOPE_SCALAR_KEYS = /* @__PURE__ */ new Set(["schema", "schema_version", "capture_status"]);
-var CAPTURE_STATUSES = /* @__PURE__ */ new Set([
+var CAPTURE_STATUSES2 = /* @__PURE__ */ new Set([
   "complete",
   "partial",
   "not_requested",
@@ -11570,7 +11873,7 @@ function parseLargeHealthDataEnvelope(content) {
   }
 }
 function captureStatus(value) {
-  return typeof value === "string" && CAPTURE_STATUSES.has(value) ? value : void 0;
+  return typeof value === "string" && CAPTURE_STATUSES2.has(value) ? value : void 0;
 }
 function emptyQueryStatusCounts() {
   return { success: 0, failure: 0, cancelled: 0, skipped: 0, unsupported: 0, other: 0 };
@@ -11656,9 +11959,9 @@ function normalizedTimeContext(value) {
   };
 }
 function normalizePercent(value) {
-  const number = numberValue(value);
-  if (number === void 0) return void 0;
-  return number > 0 && number <= 1 ? number * 100 : number;
+  const number2 = numberValue(value);
+  if (number2 === void 0) return void 0;
+  return number2 > 0 && number2 <= 1 ? number2 * 100 : number2;
 }
 function normalizePercentageSections(day, schemaVersion) {
   var _a, _b, _c, _d;
@@ -11667,8 +11970,8 @@ function normalizePercentageSections(day, schemaVersion) {
     const samples = Array.isArray(source.bloodOxygenSamples) ? source.bloodOxygenSamples.flatMap((sample) => {
       var _a2;
       if (!isRecord4(sample)) return [];
-      const percent = normalizePercent((_a2 = sample.percent) != null ? _a2 : sample.value);
-      return percent === void 0 ? [] : [{ ...sample, value: percent, percent }];
+      const percent2 = normalizePercent((_a2 = sample.percent) != null ? _a2 : sample.value);
+      return percent2 === void 0 ? [] : [{ ...sample, value: percent2, percent: percent2 }];
     }) : void 0;
     const average4 = normalizePercent((_b = (_a = source.bloodOxygenPercent) != null ? _a : source.bloodOxygenAvg) != null ? _b : source.bloodOxygen);
     const minimum = normalizePercent((_c = source.bloodOxygenMinPercent) != null ? _c : source.bloodOxygenMin);
@@ -11753,6 +12056,9 @@ function parseJSON(content) {
     delete summaryRoot.diagnostics;
     delete summaryRoot.medications;
     const day = summaryRoot;
+    delete day.whoop;
+    const whoop = parseWhoopSection(isRecord4(parsed.providers) ? parsed.providers.whoop : void 0);
+    if (whoop) day.whoop = whoop;
     const schemaVersion = schemaVersionOf(parsed);
     if (schemaVersion > 0) {
       day.schemaVersion = schemaVersion;
@@ -11771,14 +12077,14 @@ function parseJSON(content) {
       day.timeContext = timeContext;
       day.time_context = timeContext;
     }
-    const capture = buildCaptureSummary(
+    const capture2 = buildCaptureSummary(
       parsed.raw_capture_status,
       selective.omittedValues.healthkit_record_archive,
       diagnostics
     );
-    if (capture) {
-      day.rawCapture = capture;
-      day.raw_capture_status = capture.status;
+    if (capture2) {
+      day.rawCapture = capture2;
+      day.raw_capture_status = capture2.status;
     }
     Object.assign(day, normalizeMedicationFields(normalizedMedicationSource(parsed)));
     normalizePercentageSections(day, schemaVersion);
@@ -11962,11 +12268,11 @@ function samplesFromRows(rows, lookups, transformValue = (value) => value) {
   const samples = [];
   for (const row of findRows(rows, lookups)) {
     const parsedValue = parseNumber2(row.value);
-    const timestamp = normalizeTimestamp2(row.date, row.timestamp);
-    if (parsedValue === void 0 || !timestamp) continue;
+    const timestamp2 = normalizeTimestamp2(row.date, row.timestamp);
+    if (parsedValue === void 0 || !timestamp2) continue;
     const value = transformValue(parsedValue);
     if (value === void 0) continue;
-    samples.push({ timestamp, value });
+    samples.push({ timestamp: timestamp2, value });
   }
   return samples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
@@ -11992,7 +12298,7 @@ function moodEntryFromRow(row) {
   const metric = normalizeLabel(row.metric);
   const value = row.value.trim();
   if (!value || isMoodCountMetric(metric, row.unit)) return null;
-  const timestamp = (_b = (_a = normalizeTimestamp2(row.date, row.timestamp)) != null ? _a : timestampFromMetric(row.date, row.metric)) != null ? _b : `${row.date}T12:00:00`;
+  const timestamp2 = (_b = (_a = normalizeTimestamp2(row.date, row.timestamp)) != null ? _a : timestampFromMetric(row.date, row.metric)) != null ? _b : `${row.date}T12:00:00`;
   const isScore = metric.includes("score") || metric.includes("rating") || metric.includes("percent") || normalizeLabel(row.unit) === "percent";
   const isLabel = metric.includes("label") || metric.includes("feeling") || metric.includes("classification");
   const isAssociation = metric.includes("association") || metric.includes("context") || metric.includes("factor");
@@ -12003,8 +12309,8 @@ function moodEntryFromRow(row) {
   const score = isScore ? parseNumber2(value) : void 0;
   if (valence === void 0 && !label && !labels.length && !associations.length) return null;
   return {
-    timestamp,
-    startDate: timestamp,
+    timestamp: timestamp2,
+    startDate: timestamp2,
     kind: csvMoodKind(metric),
     valence,
     score,
@@ -12034,9 +12340,9 @@ function collectMoodEntries(rows, includeAverageRows) {
     if (!includeAverageRows && isAverageMoodMetric(metric)) continue;
     const entry = moodEntryFromRow(row);
     if (!entry) continue;
-    const timestamp = (_b = (_a = entry.timestamp) != null ? _a : entry.startDate) != null ? _b : row.date;
-    const existing = pendingByTimestamp.get(timestamp);
-    pendingByTimestamp.set(timestamp, existing ? mergeMoodEntry(existing, entry) : entry);
+    const timestamp2 = (_b = (_a = entry.timestamp) != null ? _a : entry.startDate) != null ? _b : row.date;
+    const existing = pendingByTimestamp.get(timestamp2);
+    pendingByTimestamp.set(timestamp2, existing ? mergeMoodEntry(existing, entry) : entry);
   }
   return Array.from(pendingByTimestamp.values()).sort((a, b) => {
     var _a2, _b2;
@@ -12162,14 +12468,14 @@ function canonicalMetricsFromCsvRows(rows, dictionary) {
 function isMetadataRow(row) {
   return normalizeLabel(row.category) === "metadata";
 }
-var CAPTURE_STATUSES2 = /* @__PURE__ */ new Set([
+var CAPTURE_STATUSES3 = /* @__PURE__ */ new Set([
   "complete",
   "partial",
   "not_requested",
   "legacy_unavailable"
 ]);
 function stringCaptureStatus(value) {
-  return value && CAPTURE_STATUSES2.has(value) ? value : void 0;
+  return value && CAPTURE_STATUSES3.has(value) ? value : void 0;
 }
 function emptyQueryStatusCounts2() {
   return { success: 0, failure: 0, cancelled: 0, skipped: 0, unsupported: 0, other: 0 };
@@ -12258,7 +12564,7 @@ function parseMedicationRows(rows) {
   var _a, _b;
   const medicationRows = rows.filter((row) => normalizeLabel(row.category) === "medications");
   if (!medicationRows.length) return {};
-  const details = [];
+  const details2 = [];
   const doseEvents = [];
   let currentMedication;
   let currentDoseEvent;
@@ -12266,7 +12572,7 @@ function parseMedicationRows(rows) {
     const metric = normalizeLabel(row.metric);
     if (metric === "medication") {
       currentMedication = { name: row.value, displayName: row.value, display_name: row.value };
-      details.push(currentMedication);
+      details2.push(currentMedication);
       continue;
     }
     if (metric === "dose event") {
@@ -12386,7 +12692,7 @@ function parseMedicationRows(rows) {
     medication_dose_count: getNum(rows, "Medications", "Dose Events"),
     medication_taken_count: getNum(rows, "Medications", "Taken Doses"),
     medication_skipped_count: getNum(rows, "Medications", "Skipped Doses"),
-    medication_details: details,
+    medication_details: details2,
     medication_dose_events: doseEvents
   });
 }
@@ -12398,10 +12704,10 @@ function intervalFor(map2, index) {
   }
   return interval;
 }
-function isoEndDate(start, duration) {
-  if (!start || !duration) return void 0;
+function isoEndDate(start, duration2) {
+  if (!start || !duration2) return void 0;
   const startMs = Date.parse(start);
-  return Number.isFinite(startMs) ? new Date(startMs + duration * 1e3).toISOString() : void 0;
+  return Number.isFinite(startMs) ? new Date(startMs + duration2 * 1e3).toISOString() : void 0;
 }
 function parseWorkoutRows(rows) {
   const workouts = [];
@@ -12538,7 +12844,7 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
     calendar_timezone: calendarTimezone,
     timestamp_timezone: timestampTimezone
   } : void 0;
-  const capture = buildCaptureSummary2(rowsWithMetadata, captureCounts);
+  const capture2 = buildCaptureSummary2(rowsWithMetadata, captureCounts);
   const day = {
     type: "health-data",
     date,
@@ -12550,8 +12856,8 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
     unit_system: unitSystem,
     timeContext,
     time_context: timeContext,
-    rawCapture: capture,
-    raw_capture_status: capture == null ? void 0 : capture.status
+    rawCapture: capture2,
+    raw_capture_status: capture2 == null ? void 0 : capture2.status
   };
   const steps = getNum(rows, "Activity", "Steps");
   const activeCalories = getNum(rows, "Activity", "Active Calories");
@@ -12697,6 +13003,8 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
   const workouts = parseWorkoutRows(rows);
   if (workouts.length) day.workouts = workouts;
   Object.assign(day, parseMedicationRows(rows));
+  const whoop = parseWhoopCsv(rows);
+  if (whoop) day.whoop = whoop;
   const moodSummary2 = createMoodSummary(parseMoodEntries(rows));
   if (moodSummary2) {
     day.mood = moodSummary2;
@@ -12806,16 +13114,16 @@ function normalizeLocaleNumberToken(raw, preferThousandsForSingleComma = false) 
   const match = /^([-+]?)(\d[\d.,]*\d|\d|[.,]\d+)([eE][-+]?\d+)?$/.exec(token);
   if (!match) return void 0;
   const sign = match[1];
-  const body = match[2];
+  const body2 = match[2];
   const exponent = (_a = match[3]) != null ? _a : "";
-  const commaCount = countChar(body, ",");
-  const dotCount = countChar(body, ".");
+  const commaCount = countChar(body2, ",");
+  const dotCount = countChar(body2, ".");
   if (commaCount > 0 && dotCount > 0) {
-    const decimalSeparator = body.lastIndexOf(",") > body.lastIndexOf(".") ? "," : ".";
+    const decimalSeparator = body2.lastIndexOf(",") > body2.lastIndexOf(".") ? "," : ".";
     const groupingSeparator = decimalSeparator === "," ? "." : ",";
-    const decimalIndex = body.lastIndexOf(decimalSeparator);
-    const integerPart = body.slice(0, decimalIndex);
-    const fractionalPart = body.slice(decimalIndex + 1);
+    const decimalIndex = body2.lastIndexOf(decimalSeparator);
+    const integerPart = body2.slice(0, decimalIndex);
+    const fractionalPart = body2.slice(decimalIndex + 1);
     if (!/^\d+$/.test(fractionalPart)) return void 0;
     const integerDigits = integerPart ? normalizeGroupedInteger(integerPart, groupingSeparator) : "0";
     if (integerDigits === void 0) return void 0;
@@ -12823,10 +13131,10 @@ function normalizeLocaleNumberToken(raw, preferThousandsForSingleComma = false) 
   }
   if (commaCount > 0) {
     if (commaCount > 1) {
-      const grouped = normalizeGroupedInteger(body, ",");
+      const grouped = normalizeGroupedInteger(body2, ",");
       return grouped ? `${sign}${grouped}${exponent}` : void 0;
     }
-    const [integerPart, fractionalPart] = body.split(",");
+    const [integerPart, fractionalPart] = body2.split(",");
     if (!/^\d*$/.test(integerPart) || !/^\d+$/.test(fractionalPart)) return void 0;
     if (preferThousandsForSingleComma && integerPart && /^\d{1,3}$/.test(integerPart) && fractionalPart.length === 3) {
       return `${sign}${integerPart}${fractionalPart}${exponent}`;
@@ -12834,10 +13142,10 @@ function normalizeLocaleNumberToken(raw, preferThousandsForSingleComma = false) 
     return `${sign}${integerPart || "0"}.${fractionalPart}${exponent}`;
   }
   if (dotCount > 1) {
-    const grouped = normalizeGroupedInteger(body, ".");
+    const grouped = normalizeGroupedInteger(body2, ".");
     return grouped ? `${sign}${grouped}${exponent}` : void 0;
   }
-  return `${sign}${body.startsWith(".") ? `0${body}` : body}${exponent}`;
+  return `${sign}${body2.startsWith(".") ? `0${body2}` : body2}${exponent}`;
 }
 function parseLocaleNumberToken(raw, key) {
   const normalized = normalizeLocaleNumberToken(raw, prefersThousandsForSingleComma(key));
@@ -12864,12 +13172,12 @@ function parseYamlScalar(raw, key) {
   if (num !== void 0) return num;
   return val;
 }
-function splitYamlKeyValue2(text) {
-  const colonIdx = text.indexOf(":");
+function splitYamlKeyValue2(text3) {
+  const colonIdx = text3.indexOf(":");
   if (colonIdx === -1) return null;
-  const key = text.slice(0, colonIdx).trim();
+  const key = text3.slice(0, colonIdx).trim();
   if (!key) return null;
-  return [key, text.slice(colonIdx + 1).trim()];
+  return [key, text3.slice(colonIdx + 1).trim()];
 }
 function parseYamlBlock(lines, start, indent) {
   if (start >= lines.length) return { value: {}, index: start };
@@ -13082,7 +13390,7 @@ function parseMoodEntriesFromFrontmatter(fm, date) {
     "valenceClassification"
   );
   const kind = getFirstStr(fm, "mood_kind", "moodKind", "feeling_kind", "feelingKind", "state_of_mind_kind", "stateOfMindKind");
-  const timestamp = getFirstStr(fm, "mood_time", "moodTime", "mood_timestamp", "moodTimestamp", "state_of_mind_time", "stateOfMindTime");
+  const timestamp2 = getFirstStr(fm, "mood_time", "moodTime", "mood_timestamp", "moodTimestamp", "state_of_mind_time", "stateOfMindTime");
   const labels = [
     ...stringArrayFromUnknown2(getFirstRaw(fm, "mood_labels", "moodLabels")),
     ...stringArrayFromUnknown2(getFirstRaw(fm, "emotion_labels", "emotionLabels")),
@@ -13095,8 +13403,8 @@ function parseMoodEntriesFromFrontmatter(fm, date) {
   const valence = (_b = (_a = normalizeMoodValence(explicitValence, "valence")) != null ? _a : normalizeMoodValence(explicitScore, "score")) != null ? _b : normalizeMoodValence(label != null ? label : labels[0], "label");
   if (valence !== void 0 || label || labels.length || kind) {
     entries.push({
-      timestamp: timestamp != null ? timestamp : `${date}T12:00:00`,
-      startDate: timestamp != null ? timestamp : `${date}T12:00:00`,
+      timestamp: timestamp2 != null ? timestamp2 : `${date}T12:00:00`,
+      startDate: timestamp2 != null ? timestamp2 : `${date}T12:00:00`,
       kind,
       valence,
       score: explicitScore,
@@ -13239,9 +13547,9 @@ function parseTableLine(line) {
 function isSeparatorRow(cells) {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
 }
-function parseMarkdownTables(body) {
+function parseMarkdownTables(body2) {
   const tables = [];
-  const lines = body.split(/\r?\n/);
+  const lines = body2.split(/\r?\n/);
   let context = "";
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
@@ -13403,7 +13711,7 @@ function parseSleepStageDurationTable(table, date, timeIndex, stageIndex, durati
   }
   return stages;
 }
-function parseGranularMarkdownData(body, date) {
+function parseGranularMarkdownData(body2, date) {
   const data = {
     heartRateSamples: [],
     hrvSamples: [],
@@ -13411,7 +13719,7 @@ function parseGranularMarkdownData(body, date) {
     respiratoryRateSamples: [],
     sleepStages: []
   };
-  for (const table of parseMarkdownTables(body)) {
+  for (const table of parseMarkdownTables(body2)) {
     const headers = normalizedHeaders(table);
     const context = normalizeLabel2(table.context);
     const timeIndex = findHeaderIndex(headers, (header) => header === "time");
@@ -13499,9 +13807,9 @@ function buildLocalDateTime(date, rawTime) {
   if (!clock) return void 0;
   return `${date}T${pad2(clock.h)}:${pad2(clock.m)}:${pad2(clock.s)}`;
 }
-function addSecondsToTimestamp(timestamp, seconds) {
-  if (!timestamp || !Number.isFinite(seconds) || seconds <= 0) return void 0;
-  const ms = Date.parse(timestamp);
+function addSecondsToTimestamp(timestamp2, seconds) {
+  if (!timestamp2 || !Number.isFinite(seconds) || seconds <= 0) return void 0;
+  const ms = Date.parse(timestamp2);
   if (!Number.isFinite(ms)) return void 0;
   return new Date(ms + seconds * 1e3).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
@@ -13562,10 +13870,10 @@ function parseWorkoutIntervalRecords(value, kind) {
     if (!isRecord5(item)) return [];
     const index = (_b = (_a = recordNum(item, kind)) != null ? _a : recordNum(item, "index")) != null ? _b : position + 1;
     const distance = (_c = recordNum(item, "distance_m")) != null ? _c : recordNum(item, "distanceMeters");
-    const duration = (_g = (_f = (_d = recordNum(item, "time_sec")) != null ? _d : recordNum(item, "duration_seconds")) != null ? _f : parseWorkoutDurationSeconds((_e = recordStr(item, "duration")) != null ? _e : "")) != null ? _g : 0;
+    const duration2 = (_g = (_f = (_d = recordNum(item, "time_sec")) != null ? _d : recordNum(item, "duration_seconds")) != null ? _f : parseWorkoutDurationSeconds((_e = recordStr(item, "duration")) != null ? _e : "")) != null ? _g : 0;
     return [{
       index,
-      duration,
+      duration: duration2,
       distance,
       distanceFormatted: formatDistanceField(
         distance,
@@ -13582,11 +13890,11 @@ function parseWorkoutIntervalRecords(value, kind) {
     }];
   });
 }
-function parseWorkoutIntervals(body) {
+function parseWorkoutIntervals(body2) {
   var _a, _b;
   const laps = [];
   const splits = [];
-  for (const table of parseMarkdownTables(body)) {
+  for (const table of parseMarkdownTables(body2)) {
     const context = normalizeLabel2(table.context);
     const target = context.includes("lap") ? laps : context.includes("split") ? splits : null;
     if (!target) continue;
@@ -13602,11 +13910,11 @@ function parseWorkoutIntervals(body) {
     const avgCadenceIndex = findHeaderIndex(headers, (header) => header.includes("avg cadence") || header.includes("average cadence"));
     for (const row of table.rows) {
       const distanceFormatted = cleanDisplayValue(distanceIndex === -1 ? void 0 : row[distanceIndex]);
-      const duration = timeIndex === -1 ? void 0 : parseWorkoutDurationSeconds((_a = row[timeIndex]) != null ? _a : "");
+      const duration2 = timeIndex === -1 ? void 0 : parseWorkoutDurationSeconds((_a = row[timeIndex]) != null ? _a : "");
       const cadenceDisplay = cleanDisplayValue(avgCadenceIndex === -1 ? void 0 : row[avgCadenceIndex]);
       const interval = {
         index: Math.round((_b = parseNumberValue2(indexIndex === -1 ? void 0 : row[indexIndex])) != null ? _b : target.length + 1),
-        duration: duration != null ? duration : 0,
+        duration: duration2 != null ? duration2 : 0,
         distance: parseDistanceToMeters(distanceFormatted),
         distanceFormatted,
         paceFormatted: cleanDisplayValue(paceIndex === -1 ? void 0 : row[paceIndex]),
@@ -13622,7 +13930,7 @@ function parseWorkoutIntervals(body) {
   }
   return { laps, splits };
 }
-function parseWorkoutEntry(fm, body, date) {
+function parseWorkoutEntry(fm, body2, date) {
   var _a, _b, _c, _d, _e, _f, _g;
   if (!frontmatterIndicatesWorkout(fm)) return null;
   const activityType = getFirstStr(fm, "activity_type", "activityType", "workout_type", "workoutType", "value");
@@ -13631,16 +13939,16 @@ function parseWorkoutEntry(fm, body, date) {
   const durationFromString = getFirstStr(fm, "duration", "durationFormatted");
   const durationSeconds = getFirstNum(fm, "duration_sec", "duration_seconds", "durationSeconds");
   const durationMinutes = getFirstNum(fm, "duration_minutes", "duration_min");
-  const duration = (_c = (_b = durationSeconds != null ? durationSeconds : durationMinutes !== void 0 ? durationMinutes * 60 : void 0) != null ? _b : durationFromString ? parseWorkoutDurationSeconds(durationFromString) : void 0) != null ? _c : 0;
+  const duration2 = (_c = (_b = durationSeconds != null ? durationSeconds : durationMinutes !== void 0 ? durationMinutes * 60 : void 0) != null ? _b : durationFromString ? parseWorkoutDurationSeconds(durationFromString) : void 0) != null ? _c : 0;
   const rawStart = getFirstStr(fm, "datetime", "start_datetime", "startTimeISO", "start_time_iso", "startTime", "start");
   const startTimeISO = rawStart && absoluteDateMs(rawStart) !== void 0 ? rawStart : buildLocalDateTime(date, rawStart != null ? rawStart : getFirstStr(fm, "time", "start_time", "start"));
-  const endTimeISO = (_d = getFirstStr(fm, "end_datetime", "endTimeISO", "end_time_iso", "end")) != null ? _d : addSecondsToTimestamp(startTimeISO, duration);
+  const endTimeISO = (_d = getFirstStr(fm, "end_datetime", "endTimeISO", "end_time_iso", "end")) != null ? _d : addSecondsToTimestamp(startTimeISO, duration2);
   const distanceKm = getFirstNum(fm, "distance_km", "distanceKm");
   const distanceMi = getFirstNum(fm, "distance_mi", "distanceMi");
   const distanceMeters = (_f = (_e = getFirstNum(fm, "distance_m", "distance_meters", "distanceMeters")) != null ? _e : distanceKm !== void 0 ? distanceKm * 1e3 : void 0) != null ? _f : distanceMi !== void 0 ? distanceMi * 1609.344 : void 0;
   const legacyDistance = getFirstNum(fm, "distance");
   const distanceFormatted = (_g = getFirstStr(fm, "distance_formatted", "distanceFormatted")) != null ? _g : formatDistanceField(distanceMeters, distanceKm, distanceMi);
-  const bodyIntervals = parseWorkoutIntervals(body);
+  const bodyIntervals = parseWorkoutIntervals(body2);
   const recordLaps = parseWorkoutIntervalRecords(fm.laps, "lap");
   const recordSplits = parseWorkoutIntervalRecords(fm.splits, "split");
   const laps = recordLaps.length ? recordLaps : bodyIntervals.laps;
@@ -13662,11 +13970,11 @@ function parseWorkoutEntry(fm, body, date) {
     "avg_speed",
     "avgSpeedFormatted"
   );
-  const workout = {
+  const workout2 = {
     type,
     activityType,
     sport,
-    duration,
+    duration: duration2,
     durationFormatted: durationFromString,
     calories: getFirstNum(fm, "calories", "active_calories", "energy_kcal"),
     distance: distanceMeters != null ? distanceMeters : legacyDistance,
@@ -13701,12 +14009,12 @@ function parseWorkoutEntry(fm, body, date) {
     routePointCount: getFirstNum(fm, "route_points", "routePoints"),
     routeFile: getFirstStr(fm, "route_file", "routeFile")
   };
-  return workout;
+  return workout2;
 }
-var CAPTURE_STATUSES3 = /* @__PURE__ */ new Set(["complete", "partial", "not_requested", "legacy_unavailable"]);
+var CAPTURE_STATUSES4 = /* @__PURE__ */ new Set(["complete", "partial", "not_requested", "legacy_unavailable"]);
 function captureSummaryFromFrontmatter(fm) {
   const rawStatus = getFirstStr(fm, "raw_capture_status");
-  if (!rawStatus || !CAPTURE_STATUSES3.has(rawStatus)) return void 0;
+  if (!rawStatus || !CAPTURE_STATUSES4.has(rawStatus)) return void 0;
   const status = rawStatus;
   const archiveSchema = getFirstStr(fm, "raw_record_schema");
   const archiveVersion = getFirstNum(fm, "raw_record_schema_version");
@@ -13762,7 +14070,7 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
     calendar_timezone: calendarTimezone,
     timestamp_timezone: timestampTimezone
   } : void 0;
-  const capture = captureSummaryFromFrontmatter(fm);
+  const capture2 = captureSummaryFromFrontmatter(fm);
   const day = {
     type: "health-data",
     date,
@@ -13774,18 +14082,20 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
     unit_system: unitSystem,
     timeContext,
     time_context: timeContext,
-    rawCapture: capture,
-    raw_capture_status: capture == null ? void 0 : capture.status
+    rawCapture: capture2,
+    raw_capture_status: capture2 == null ? void 0 : capture2.status
   };
   const workoutDetails = Array.isArray(fm.workout_details) ? fm.workout_details.flatMap((item) => {
     if (!isRecord5(item)) return [];
-    const workout2 = parseWorkoutEntry(item, "", date);
-    return workout2 ? [workout2] : [];
+    const workout3 = parseWorkoutEntry(item, "", date);
+    return workout3 ? [workout3] : [];
   }) : [];
-  const workout = parseWorkoutEntry(fm, parsed.body, date);
-  const workouts = workoutDetails.length ? workoutDetails : workout ? [workout] : [];
+  const workout2 = parseWorkoutEntry(fm, parsed.body, date);
+  const workouts = workoutDetails.length ? workoutDetails : workout2 ? [workout2] : [];
   if (workouts.length) day.workouts = workouts;
   Object.assign(day, normalizeMedicationFields(fm));
+  const whoop = parseWhoopFlat(fm);
+  if (whoop) day.whoop = whoop;
   const steps = getFirstNum(fm, "steps", "activity_steps");
   const walkingRunningDistanceKmRaw = getFirstNum(
     fm,
@@ -13993,7 +14303,7 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
     day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
   }
   attachCanonicalMetrics(day, canonicalMetricsFromFlatRecord(fm, unitsMap));
-  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics;
+  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop;
   return hasData ? day : null;
 }
 
@@ -14021,8 +14331,8 @@ function numberValue2(value) {
 function normalizedValue(value) {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
-  const number = numberValue2(trimmed);
-  if (number !== void 0) return number;
+  const number2 = numberValue2(trimmed);
+  if (number2 !== void 0) return number2;
   if (trimmed.toLowerCase() === "true") return true;
   if (trimmed.toLowerCase() === "false") return false;
   return trimmed;
@@ -14319,9 +14629,9 @@ function parseRollupJSON(content) {
     return null;
   }
 }
-function parseMarkdownTables2(body) {
+function parseMarkdownTables2(body2) {
   var _a, _b;
-  const lines = body.split(/\r?\n/);
+  const lines = body2.split(/\r?\n/);
   const tables = [];
   let context = "";
   for (let i = 0; i < lines.length; i++) {
@@ -14347,10 +14657,10 @@ function parseMarkdownTables2(body) {
   }
   return tables;
 }
-function metricsFromMarkdown(body) {
+function metricsFromMarkdown(body2) {
   var _a, _b, _c;
   const metrics = {};
-  for (const table of parseMarkdownTables2(body)) {
+  for (const table of parseMarkdownTables2(body2)) {
     const headers = table.headers.map((header) => header.toLowerCase());
     const keyIndex = headers.indexOf("key");
     if (keyIndex < 0) continue;
@@ -14743,18 +15053,18 @@ var DataLoader = class {
     );
     const rollupCache = dedupeRollups(rollups);
     for (const day of cache) {
-      const capture = day.rawCapture;
-      if (!capture) continue;
-      report.captureStatuses[capture.status] = ((_e = report.captureStatuses[capture.status]) != null ? _e : 0) + 1;
-      if (capture.archiveVersion !== void 0) {
-        if (!report.archiveSchemaVersions.includes(capture.archiveVersion)) report.archiveSchemaVersions.push(capture.archiveVersion);
-        if (capture.archiveVersion > SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION) {
-          report.warnings.push(`${day.date} uses source-record archive v${capture.archiveVersion}; compact diagnostics are best-effort.`);
+      const capture2 = day.rawCapture;
+      if (!capture2) continue;
+      report.captureStatuses[capture2.status] = ((_e = report.captureStatuses[capture2.status]) != null ? _e : 0) + 1;
+      if (capture2.archiveVersion !== void 0) {
+        if (!report.archiveSchemaVersions.includes(capture2.archiveVersion)) report.archiveSchemaVersions.push(capture2.archiveVersion);
+        if (capture2.archiveVersion > SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION) {
+          report.warnings.push(`${day.date} uses source-record archive v${capture2.archiveVersion}; compact diagnostics are best-effort.`);
         }
       }
-      if ((_f = capture.validationIssues) == null ? void 0 : _f.length) {
+      if ((_f = capture2.validationIssues) == null ? void 0 : _f.length) {
         report.captureIssueDays++;
-        report.warnings.push(...capture.validationIssues.map((issue) => `${day.date}: ${issue}`));
+        report.warnings.push(...capture2.validationIssues.map((issue) => `${day.date}: ${issue}`));
       }
     }
     report.archiveSchemaVersions.sort((a, b) => a - b);
@@ -14793,9 +15103,9 @@ var DataLoader = class {
     const rollupVersions = report.rollupSchemaVersions.length ? `; roll-up schemas ${report.rollupSchemaVersions.map((version) => version ? `v${version}` : "unversioned CSV").join(", ")}` : "";
     const rollups = report.loadedRollups ? `; indexed ${report.loadedRollups} roll-up${report.loadedRollups === 1 ? "" : "s"}${report.rollupPeriods.length ? ` (${report.rollupPeriods.join(", ")})` : ""}${rollupVersions}` : "";
     const captureStatuses = Object.entries(report.captureStatuses);
-    const capture = captureStatuses.length ? `; lossless capture ${captureStatuses.map(([status, count]) => `${status}: ${count}`).join(", ")}${report.archiveSchemaVersions.length ? ` (archive ${report.archiveSchemaVersions.map((version) => `v${version}`).join(", ")})` : ""}` : "";
+    const capture2 = captureStatuses.length ? `; lossless capture ${captureStatuses.map(([status, count]) => `${status}: ${count}`).join(", ")}${report.archiveSchemaVersions.length ? ` (archive ${report.archiveSchemaVersions.map((version) => `v${version}`).join(", ")})` : ""}` : "";
     const warnings = report.warnings.length ? `; ${report.warnings.length} warning${report.warnings.length === 1 ? "" : "s"}` : "";
-    return `Loaded ${report.loadedDays} health day${report.loadedDays === 1 ? "" : "s"} from Health.md schemas ${versions}${skipped}${dictionary}${rollups}${capture}${warnings}.`;
+    return `Loaded ${report.loadedDays} health day${report.loadedDays === 1 ? "" : "s"} from Health.md schemas ${versions}${skipped}${dictionary}${rollups}${capture2}${warnings}.`;
   }
   async loadDataDictionaryAliases(files) {
     const dictionaryFiles = /* @__PURE__ */ new Map();
@@ -14994,22 +15304,22 @@ var DataLoader = class {
   async attachRouteSidecars(days, report) {
     var _a, _b, _c;
     for (const day of days) {
-      for (const workout of (_a = day.workouts) != null ? _a : []) {
-        if (!workout.routeFile || ((_b = workout.route) == null ? void 0 : _b.length)) continue;
+      for (const workout2 of (_a = day.workouts) != null ? _a : []) {
+        if (!workout2.routeFile || ((_b = workout2.route) == null ? void 0 : _b.length)) continue;
         const notePath = (_c = day.sourcePaths) == null ? void 0 : _c[day.sourcePaths.length - 1];
         if (!notePath) continue;
         const folder = notePath.includes("/") ? notePath.slice(0, notePath.lastIndexOf("/")) : "";
-        const sidecarPath = folder ? `${folder}/${workout.routeFile}` : workout.routeFile;
+        const sidecarPath = folder ? `${folder}/${workout2.routeFile}` : workout2.routeFile;
         const file = this.vault.getAbstractFileByPath(sidecarPath);
         if (!(file instanceof import_obsidian.TFile)) {
-          report.warnings.push(`${notePath} references route file ${workout.routeFile} that was not found.`);
+          report.warnings.push(`${notePath} references route file ${workout2.routeFile} that was not found.`);
           continue;
         }
         try {
           const route = parseRouteSidecar(await this.vault.read(file));
           if (route) {
-            workout.route = route;
-            if (workout.routePointCount === void 0) workout.routePointCount = route.length;
+            workout2.route = route;
+            if (workout2.routePointCount === void 0) workout2.routePointCount = route.length;
           } else {
             report.warnings.push(`${sidecarPath} is not a valid Health.md route file.`);
           }
@@ -15132,22 +15442,22 @@ function dedupeRollups(rollups) {
     return startCompare || a.rollupPeriod.localeCompare(b.rollupPeriod) || a.periodId.localeCompare(b.periodId);
   });
 }
-function workoutDetailScore(workout) {
+function workoutDetailScore(workout2) {
   let score = 0;
-  for (const value of Object.values(workout)) {
+  for (const value of Object.values(workout2)) {
     if (Array.isArray(value)) score += value.length * 3;
     else if (value && typeof value === "object") score += Object.keys(value).length * 2;
     else if (value !== void 0 && value !== null && value !== "") score += 1;
   }
   return score;
 }
-function workoutKey(workout) {
+function workoutKey(workout2) {
   var _a, _b, _c, _d, _e, _f;
-  const type = ((_b = (_a = workout.sport) != null ? _a : workout.type) != null ? _b : "workout").toLowerCase().trim();
-  const start = (_d = (_c = workout.startTimeISO) != null ? _c : workout.startTime) != null ? _d : "";
-  const duration = Number.isFinite(workout.duration) ? Math.round(workout.duration) : 0;
-  const distance = (_f = (_e = workout.distanceMeters) != null ? _e : workout.distance) != null ? _f : 0;
-  return `${start}|${type}|${duration}|${Math.round(distance)}`;
+  const type = ((_b = (_a = workout2.sport) != null ? _a : workout2.type) != null ? _b : "workout").toLowerCase().trim();
+  const start = (_d = (_c = workout2.startTimeISO) != null ? _c : workout2.startTime) != null ? _d : "";
+  const duration2 = Number.isFinite(workout2.duration) ? Math.round(workout2.duration) : 0;
+  const distance = (_f = (_e = workout2.distanceMeters) != null ? _e : workout2.distance) != null ? _f : 0;
+  return `${start}|${type}|${duration2}|${Math.round(distance)}`;
 }
 function preferArray(next, prev) {
   if (next && next.length) return next;
@@ -15175,14 +15485,14 @@ function mergeWorkouts(a, b) {
   if (!all.length) return void 0;
   const byKey = /* @__PURE__ */ new Map();
   const unkeyed = [];
-  for (const workout of all) {
-    const key = workoutKey(workout);
+  for (const workout2 of all) {
+    const key = workoutKey(workout2);
     if (key.startsWith("|") || key.includes("||0|0")) {
-      unkeyed.push(workout);
+      unkeyed.push(workout2);
       continue;
     }
     const existing = byKey.get(key);
-    byKey.set(key, existing ? mergeWorkoutEntries(existing, workout) : workout);
+    byKey.set(key, existing ? mergeWorkoutEntries(existing, workout2) : workout2);
   }
   return [...Array.from(byKey.values()), ...unkeyed].sort((left, right) => {
     var _a, _b, _c, _d;
@@ -15280,24 +15590,24 @@ function dayDetailScore(day) {
     medications: day.medications,
     medicationDetails: (_h = day.medicationDetails) != null ? _h : day.medication_details,
     medicationDoseEvents: (_i = day.medicationDoseEvents) != null ? _i : day.medication_dose_events
-  }) + ((_j = day.workouts) != null ? _j : []).reduce((sum, workout) => sum + workoutDetailScore(workout), 0);
+  }) + ((_j = day.workouts) != null ? _j : []).reduce((sum, workout2) => sum + workoutDetailScore(workout2), 0);
 }
 function preferMeaningfulValue(fallback, preferred) {
   if (preferred === void 0 || preferred === null || preferred === "") return fallback;
   if (Array.isArray(preferred) && preferred.length === 0 && Array.isArray(fallback) && fallback.length > 0) return fallback;
   return preferred;
 }
-function captureDetailScore(capture) {
-  if (!capture) return 0;
+function captureDetailScore(capture2) {
+  if (!capture2) return 0;
   return [
-    capture.archiveSchema,
-    capture.archiveVersion,
-    capture.recordCount,
-    capture.externalRecordCount,
-    capture.queryFailureCount,
-    capture.warningCount,
-    capture.partialFailureCount,
-    capture.queryStatusCounts
+    capture2.archiveSchema,
+    capture2.archiveVersion,
+    capture2.recordCount,
+    capture2.externalRecordCount,
+    capture2.queryFailureCount,
+    capture2.warningCount,
+    capture2.partialFailureCount,
+    capture2.queryStatusCounts
   ].filter((value) => value !== void 0).length;
 }
 function mergeCaptureSummaries(preferred, fallback, preferredSchemaVersion, fallbackSchemaVersion) {
@@ -15354,6 +15664,13 @@ function mergeDays(a, b) {
     schemaVersionOf(fallback)
   );
   const timeContext = (_f = (_e = (_d = preferred.timeContext) != null ? _d : preferred.time_context) != null ? _e : fallback.timeContext) != null ? _f : fallback.time_context;
+  const nativeWhoopDay = preferred.providers && "whoop" in preferred.providers ? preferred : fallback.providers && "whoop" in fallback.providers ? fallback : void 0;
+  const whoop = nativeWhoopDay && !nativeWhoopDay.whoop ? void 0 : mergeWhoop(preferred.whoop, fallback.whoop);
+  const providers = mergeSection(fallback.providers, preferred.providers);
+  if (providers && (whoop == null ? void 0 : whoop.source) === "typed") {
+    const owner = whoop === preferred.whoop ? preferred : fallback;
+    if (owner.providers) providers.whoop = owner.providers.whoop;
+  }
   return {
     // Preserve versioned summary sections that do not yet have dedicated
     // visualizations. Parsers remove canonical archive payloads before merge.
@@ -15398,7 +15715,9 @@ function mergeDays(a, b) {
     medicationDoseEvents: mergeMedicationDoseEvents((_K = fallback.medicationDoseEvents) != null ? _K : fallback.medication_dose_events, (_L = preferred.medicationDoseEvents) != null ? _L : preferred.medication_dose_events),
     medication_dose_events: mergeMedicationDoseEvents((_M = fallback.medication_dose_events) != null ? _M : fallback.medicationDoseEvents, (_N = preferred.medication_dose_events) != null ? _N : preferred.medicationDoseEvents),
     hearing: mergeSection(fallback.hearing, preferred.hearing),
-    canonicalMetrics: mergeSection(fallback.canonicalMetrics, preferred.canonicalMetrics)
+    canonicalMetrics: mergeSection(fallback.canonicalMetrics, preferred.canonicalMetrics),
+    providers,
+    whoop
   };
 }
 
@@ -15793,7 +16112,7 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     var _a, _b;
     return (_b = (_a = d.heart) == null ? void 0 : _a.heartRateSamples) == null ? void 0 : _b.length;
   });
-  const grid = [];
+  const grid2 = [];
   let minBPM = 999, maxBPM = 0;
   days.forEach((day) => {
     const col = new Array(BUCKETS).fill(null);
@@ -15818,9 +16137,9 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
         maxBPM = Math.max(maxBPM, v);
       }
     });
-    grid.push({ date: day.date, col: averaged });
+    grid2.push({ date: day.date, col: averaged });
   });
-  if (grid.length === 0) {
+  if (grid2.length === 0) {
     const heartDays = data.filter((d) => d.heart && d.heart.averageHeartRate > 0);
     if (!heartDays.length) {
       statsEl.empty();
@@ -15885,12 +16204,12 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     ]);
     return;
   }
-  const colW = W / grid.length;
+  const colW = W / grid2.length;
   const rowH = H / BUCKETS;
-  grid.forEach((day, x) => {
-    day.col.forEach((bpm, y) => {
-      if (bpm === null) return;
-      const t = (bpm - minBPM) / (maxBPM - minBPM);
+  grid2.forEach((day, x) => {
+    day.col.forEach((bpm2, y) => {
+      if (bpm2 === null) return;
+      const t = (bpm2 - minBPM) / (maxBPM - minBPM);
       const h = lerp(220, 0, t);
       const s = lerp(60, 100, t);
       const l = lerp(theme.isDark ? 12 : 30, theme.isDark ? 55 : 65, t);
@@ -15928,10 +16247,10 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
 };
 
 // src/time-utils.ts
-function parseHour(timestamp, fallbackDate) {
+function parseHour(timestamp2, fallbackDate) {
   var _a, _b, _c;
-  if (!timestamp) return void 0;
-  const trimmed = timestamp.trim();
+  if (!timestamp2) return void 0;
+  const trimmed = timestamp2.trim();
   const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
   const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
   const match = dateTime != null ? dateTime : timeOnly;
@@ -15950,8 +16269,8 @@ function parseHour(timestamp, fallbackDate) {
   if (h > 23 || m > 59 || s > 59) return void 0;
   return h + m / 60 + s / 3600;
 }
-function formatClockTime(timestamp) {
-  const hour = parseHour(timestamp);
+function formatClockTime(timestamp2) {
+  const hour = parseHour(timestamp2);
   if (hour === void 0) return void 0;
   const totalMinutes = Math.floor(hour * 60 + 1e-7);
   const date = new Date(2e3, 0, 1, Math.floor(totalMinutes / 60), totalMinutes % 60);
@@ -15964,18 +16283,18 @@ function formatClockTime(timestamp) {
 // src/visualizations/sleep-polar.ts
 function buildSyntheticStages(night) {
   var _a, _b, _c, _d;
-  const sleep = night.sleep;
-  if (!sleep.bedtime || !sleep.wakeTime) return [];
+  const sleep2 = night.sleep;
+  if (!sleep2.bedtime || !sleep2.wakeTime) return [];
   const isTimeOnly = (s) => /^\d{1,2}:\d{2}$/.test(s);
   let bedMs;
   let wakeMs;
-  if (isTimeOnly(sleep.bedtime)) {
-    bedMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.bedtime}:00`)).getTime();
-    wakeMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.wakeTime}:00`)).getTime();
+  if (isTimeOnly(sleep2.bedtime)) {
+    bedMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep2.bedtime}:00`)).getTime();
+    wakeMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep2.wakeTime}:00`)).getTime();
     if (wakeMs <= bedMs) wakeMs += 864e5;
   } else {
-    bedMs = Date.parse(sleep.bedtime);
-    wakeMs = Date.parse(sleep.wakeTime);
+    bedMs = Date.parse(sleep2.bedtime);
+    wakeMs = Date.parse(sleep2.wakeTime);
   }
   if (!isFinite(bedMs) || !isFinite(wakeMs) || wakeMs <= bedMs) return [];
   const stages = [];
@@ -15986,10 +16305,10 @@ function buildSyntheticStages(night) {
     cursor += secs * 1e3;
     stages.push({ stage, startDate, endDate: new Date(cursor).toISOString(), durationSeconds: Math.round(secs) });
   }
-  const awake = (_a = sleep.awakeTime) != null ? _a : 0;
-  const core = (_b = sleep.coreSleep) != null ? _b : 0;
-  const deep = (_c = sleep.deepSleep) != null ? _c : 0;
-  const rem = (_d = sleep.remSleep) != null ? _d : 0;
+  const awake = (_a = sleep2.awakeTime) != null ? _a : 0;
+  const core = (_b = sleep2.coreSleep) != null ? _b : 0;
+  const deep = (_c = sleep2.deepSleep) != null ? _c : 0;
+  const rem = (_d = sleep2.remSleep) != null ? _d : 0;
   addStage("awake", awake * 0.3);
   addStage("core", core * 0.45);
   addStage("deep", deep);
@@ -16085,9 +16404,9 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
         offsetY + ringSize + labelH / 2
       );
     }
-    const sleep = night.sleep;
-    const bedtime = (_a = formatClockTime(sleep.bedtime)) != null ? _a : formatClockTime(sleep.bedtimeISO);
-    const wakeTime = (_b = formatClockTime(sleep.wakeTime)) != null ? _b : formatClockTime(sleep.wakeTimeISO);
+    const sleep2 = night.sleep;
+    const bedtime = (_a = formatClockTime(sleep2.bedtime)) != null ? _a : formatClockTime(sleep2.bedtimeISO);
+    const wakeTime = (_b = formatClockTime(sleep2.wakeTime)) != null ? _b : formatClockTime(sleep2.wakeTimeISO);
     hits.add({
       shape: "circle",
       cx,
@@ -16095,11 +16414,11 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
       r: r + 6,
       title: formatDate(night.date),
       details: [
-        { label: "Total", value: formatDuration(sleep.totalDuration) },
-        { label: "Deep", value: formatDuration(sleep.deepSleep) },
-        { label: "REM", value: formatDuration(sleep.remSleep) },
-        { label: "Core", value: formatDuration(sleep.coreSleep) },
-        ...sleep.awakeTime ? [{ label: "Awake", value: formatDuration(sleep.awakeTime) }] : [],
+        { label: "Total", value: formatDuration(sleep2.totalDuration) },
+        { label: "Deep", value: formatDuration(sleep2.deepSleep) },
+        { label: "REM", value: formatDuration(sleep2.remSleep) },
+        { label: "Core", value: formatDuration(sleep2.coreSleep) },
+        ...sleep2.awakeTime ? [{ label: "Awake", value: formatDuration(sleep2.awakeTime) }] : [],
         ...bedtime ? [{ label: "Bedtime", value: bedtime }] : [],
         ...wakeTime ? [{ label: "Wake", value: wakeTime }] : []
       ],
@@ -16574,18 +16893,18 @@ var renderWalkingSymmetry = (ctx, data, W, H, _config, theme, _statsEl, hits) =>
 // src/visualizations/sleep-architecture.ts
 function buildSyntheticStages2(night) {
   var _a, _b, _c, _d;
-  const sleep = night.sleep;
-  if (!sleep.bedtime || !sleep.wakeTime) return [];
+  const sleep2 = night.sleep;
+  if (!sleep2.bedtime || !sleep2.wakeTime) return [];
   const isTimeOnly = (s) => /^\d{1,2}:\d{2}$/.test(s);
   let bedMs;
   let wakeMs;
-  if (isTimeOnly(sleep.bedtime)) {
-    bedMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.bedtime}:00`)).getTime();
-    wakeMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep.wakeTime}:00`)).getTime();
+  if (isTimeOnly(sleep2.bedtime)) {
+    bedMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep2.bedtime}:00`)).getTime();
+    wakeMs = (/* @__PURE__ */ new Date(`${night.date}T${sleep2.wakeTime}:00`)).getTime();
     if (wakeMs <= bedMs) wakeMs += 864e5;
   } else {
-    bedMs = Date.parse(sleep.bedtime);
-    wakeMs = Date.parse(sleep.wakeTime);
+    bedMs = Date.parse(sleep2.bedtime);
+    wakeMs = Date.parse(sleep2.wakeTime);
   }
   if (!isFinite(bedMs) || !isFinite(wakeMs) || wakeMs <= bedMs) return [];
   const stages = [];
@@ -16596,10 +16915,10 @@ function buildSyntheticStages2(night) {
     cursor += secs * 1e3;
     stages.push({ stage, startDate, endDate: new Date(cursor).toISOString(), durationSeconds: Math.round(secs) });
   }
-  const awake = (_a = sleep.awakeTime) != null ? _a : 0;
-  const core = (_b = sleep.coreSleep) != null ? _b : 0;
-  const deep = (_c = sleep.deepSleep) != null ? _c : 0;
-  const rem = (_d = sleep.remSleep) != null ? _d : 0;
+  const awake = (_a = sleep2.awakeTime) != null ? _a : 0;
+  const core = (_b = sleep2.coreSleep) != null ? _b : 0;
+  const deep = (_c = sleep2.deepSleep) != null ? _c : 0;
+  const rem = (_d = sleep2.remSleep) != null ? _d : 0;
   addStage("awake", awake * 0.3);
   addStage("core", core * 0.45);
   addStage("deep", deep);
@@ -16835,6 +17154,412 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   ]);
 };
 
+// src/whoop-viz-utils.ts
+function whoopIsScored(record) {
+  return record.score_state === void 0 || record.score_state === "SCORED";
+}
+function whoopRecoveryPairs(data) {
+  return [...data].sort((a, b) => a.date.localeCompare(b.date)).flatMap((day) => {
+    const provider = whoopForDay(day);
+    if (!provider) return [];
+    const byID = /* @__PURE__ */ new Map();
+    for (const cycle2 of provider.cycles) if (cycle2.id) byID.set(cycle2.id, cycle2);
+    return provider.recoveries.flatMap((recovery2) => {
+      const projection = recovery2.projection === true && provider.recoveries.length === 1 && provider.cycles.length === 1 && provider.cycles[0].projection === true;
+      const cycle2 = projection ? provider.cycles[0] : recovery2.cycle_id ? byID.get(recovery2.cycle_id) : void 0;
+      if (!cycle2 || !whoopIsScored(cycle2) || !whoopIsScored(recovery2) || cycle2.strain_score === void 0 || recovery2.recovery_score_percent === void 0) return [];
+      return [{ day, cycle: cycle2, recovery: recovery2, strain: cycle2.strain_score, score: recovery2.recovery_score_percent, projection }];
+    });
+  });
+}
+function whoopSleepEntries(data, scope = "all") {
+  return data.flatMap((day) => {
+    var _a, _b;
+    return ((_b = (_a = whoopForDay(day)) == null ? void 0 : _a.sleep) != null ? _b : []).map((sleep2) => ({ day, sleep: sleep2 }));
+  }).filter(({ sleep: sleep2 }) => scope === "main" ? sleep2.is_nap === false : scope === "naps" ? sleep2.is_nap === true : true).sort((a, b) => {
+    var _a, _b, _c, _d;
+    return a.day.date.localeCompare(b.day.date) || ((_a = a.sleep.start_time) != null ? _a : "").localeCompare((_b = b.sleep.start_time) != null ? _b : "") || ((_c = a.sleep.id) != null ? _c : "").localeCompare((_d = b.sleep.id) != null ? _d : "");
+  });
+}
+var WHOOP_SLEEP_NEED_COMPONENTS = [
+  { key: "baseline_sleep_need_milliseconds", label: "Baseline", color: "#5b8ff9" },
+  { key: "sleep_debt_need_milliseconds", label: "Sleep debt", color: "#f6bd16" },
+  { key: "recent_strain_need_milliseconds", label: "Recent strain", color: "#e8684a" },
+  { key: "recent_nap_adjustment_milliseconds", label: "Nap adjustment", color: "#9270ca" }
+];
+function whoopSleepNeed(sleep2) {
+  if (!whoopIsScored(sleep2)) return void 0;
+  const values = WHOOP_SLEEP_NEED_COMPONENTS.map(({ key }) => sleep2[key]);
+  if (values.some((value) => value === void 0)) return void 0;
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return Number.isSafeInteger(total) && total >= 0 ? total : void 0;
+}
+function whoopSleepLabel(sleep2) {
+  return sleep2.is_nap === true ? "Nap" : sleep2.is_nap === false ? "Sleep" : "Sleep (nap status unavailable)";
+}
+function whoopWorkoutEntries(data) {
+  return data.flatMap((day) => {
+    var _a, _b;
+    return ((_b = (_a = whoopForDay(day)) == null ? void 0 : _a.workouts) != null ? _b : []).map((workout2) => ({ day, workout: workout2 }));
+  }).sort((a, b) => {
+    var _a, _b, _c, _d;
+    return a.day.date.localeCompare(b.day.date) || ((_a = a.workout.start_time) != null ? _a : "").localeCompare((_b = b.workout.start_time) != null ? _b : "") || ((_c = a.workout.id) != null ? _c : "").localeCompare((_d = b.workout.id) != null ? _d : "");
+  });
+}
+function whoopWorkoutZones(workout2) {
+  if (!whoopIsScored(workout2)) return [];
+  return WHOOP_ZONE_KEYS.flatMap((key, index) => {
+    var _a;
+    return ((_a = workout2.zone_durations) == null ? void 0 : _a[key]) === void 0 ? [] : [{ index, milliseconds: workout2.zone_durations[key] }];
+  });
+}
+function whoopWorkoutElapsed(workout2) {
+  if (!workout2.start_time || !workout2.end_time) return void 0;
+  const elapsed = Date.parse(workout2.end_time) - Date.parse(workout2.start_time);
+  return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : void 0;
+}
+function whoopCoverage(data) {
+  const sections = data.map(whoopForDay).filter((value) => value !== void 0);
+  const partial = sections.filter((value) => value.captureStatus === "partial").length;
+  const disabled = sections.filter((value) => value.captureStatus === "not_requested").length;
+  const failed = sections.reduce((sum, value) => sum + value.resources.filter((row) => row.status !== "success").length, 0);
+  const notes = [...new Set(sections.flatMap((value) => value.notes))];
+  return [partial ? `${partial} partial capture(s)` : "", disabled ? `${disabled} not requested` : "", failed ? `${failed} non-success resource(s)` : "", ...notes].filter(Boolean).join(" \xB7 ") || "WHOOP only \xB7 Missing values are not zero";
+}
+
+// src/visualizations/whoop.ts
+var SCORE_SERIES = [
+  { key: "sleep_performance_percent", label: "Performance", color: "#5b8ff9" },
+  { key: "sleep_consistency_percent", label: "Consistency", color: "#9270ca" },
+  { key: "sleep_efficiency_percent", label: "Efficiency", color: "#61d9a5" }
+];
+var ZONE_COLORS = ["#9aa0ac", "#5b8ff9", "#61d9a5", "#f6bd16", "#e8684a", "#9270ca"];
+var HOUR_MS = 36e5;
+function limit(value, fallback, maximum = 365) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(maximum, Math.floor(parsed) || 1) : fallback;
+}
+function prepare(ctx, W, H, minimum, theme, stats) {
+  if (H < minimum) {
+    const dpr = typeof activeWindow === "undefined" ? 1 : activeWindow.devicePixelRatio || 1;
+    ctx.canvas.width = W * dpr;
+    ctx.canvas.height = minimum * dpr;
+    ctx.canvas.style.width = `${W}px`;
+    ctx.canvas.style.height = `${minimum}px`;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    H = minimum;
+  }
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  stats.empty();
+  return H;
+}
+function text2(ctx, value, x, y, color, align = "left", width) {
+  ctx.fillStyle = color;
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = align;
+  ctx.textBaseline = "middle";
+  if (width !== void 0) ctx.fillText(value, x, y, Math.max(1, width));
+  else ctx.fillText(value, x, y);
+}
+function note(stats, data, extra) {
+  stats.createDiv({ cls: "health-md-whoop-note", text: [extra, whoopCoverage(data)].filter(Boolean).join(" \xB7 ") });
+}
+function empty2(ctx, W, H, theme, stats, data, message) {
+  text2(ctx, message, W / 2, H / 2, theme.muted, "center", W - 24);
+  note(stats, data);
+}
+function details(day, record) {
+  var _a, _b;
+  return [
+    { label: "Source", value: "WHOOP" },
+    { label: "Capture", value: (_b = (_a = whoopForDay(day)) == null ? void 0 : _a.captureStatus) != null ? _b : "Unavailable" },
+    ...record.id ? [{ label: "Provider ID", value: record.id }] : [],
+    ...record.score_state ? [{ label: "Score state", value: record.score_state }] : [],
+    ...record.start_time ? [{ label: "Start", value: record.start_time }] : [],
+    ...record.end_time ? [{ label: "End", value: record.end_time }] : [],
+    ...record.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
+  ];
+}
+function grid(ctx, W, top, bottom, left, right, max, theme, suffix) {
+  for (let i = 0; i <= 4; i++) {
+    const y = bottom - i / 4 * (bottom - top);
+    ctx.strokeStyle = hexToRgba(theme.fg, 0.1);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(W - right, y);
+    ctx.stroke();
+    text2(ctx, `${Number((max * i / 4).toFixed(1))}${suffix}`, left - 5, y, theme.muted, "right");
+  }
+}
+function dateLabels(ctx, dates, x, y, theme, W) {
+  const step = Math.max(1, Math.ceil(dates.length / Math.max(2, Math.floor(W / 80))));
+  dates.forEach((date, index) => {
+    if (index % step === 0 || index === dates.length - 1) text2(ctx, date.slice(5), x(index), y, theme.muted, "center");
+  });
+}
+function legend(ctx, items, W, y, theme) {
+  const cols = W < 440 ? 3 : items.length;
+  const colW = (W - 36) / cols;
+  items.forEach((item, i) => {
+    const x = 18 + i % cols * colW;
+    const rowY = y + Math.floor(i / cols) * 16;
+    ctx.fillStyle = item.color;
+    ctx.fillRect(x, rowY - 3, 7, 7);
+    text2(ctx, item.label, x + 11, rowY, theme.muted, "left", colW - 16);
+  });
+}
+var renderWhoopRecoveryStrain = (ctx, data, W, H, config, theme, stats, hits) => {
+  H = prepare(ctx, W, H, 220, theme, stats);
+  const allPairs = whoopRecoveryPairs(data);
+  const pairs = allPairs.slice(-limit(config.limit, 2e3, 1e4));
+  if (!pairs.length) return empty2(ctx, W, H, theme, stats, data, "No scored WHOOP recovery / cycle-strain pairs");
+  const left = 44, right = 18, top = 36, bottom = H - 42;
+  text2(ctx, "WHOOP recovery (%)", left, 15, theme.fg);
+  grid(ctx, W, top, bottom, left, right, 100, theme, "%");
+  const x = (strain) => left + strain / 21 * Math.max(1, W - left - right);
+  const y = (score) => bottom - score / 100 * (bottom - top);
+  [0, 7, 14, 21].forEach((value) => text2(ctx, String(value), x(value), bottom + 13, theme.muted, "center"));
+  text2(ctx, "Cycle strain (0\u201321)", W / 2, H - 9, theme.muted, "center");
+  pairs.forEach((pair) => {
+    ctx.fillStyle = hexToRgba(theme.colors.accent, pair.recovery.user_calibrating ? 0.4 : 0.8);
+    ctx.beginPath();
+    ctx.arc(x(pair.strain), y(pair.score), 5, 0, Math.PI * 2);
+    ctx.fill();
+    hits.add({
+      shape: "circle",
+      cx: x(pair.strain),
+      cy: y(pair.score),
+      r: 8,
+      title: `${formatDate(pair.day.date)} \xB7 WHOOP recovery`,
+      payload: pair.day,
+      details: [
+        { label: "Recovery", value: `${pair.score}%` },
+        { label: "Cycle strain", value: `${pair.strain} / 21` },
+        ...pair.recovery.cycle_id ? [{ label: "Cycle ID", value: pair.recovery.cycle_id }] : [],
+        ...pair.recovery.sleep_id ? [{ label: "Sleep ID", value: pair.recovery.sleep_id }] : [],
+        ...pair.recovery.hrv_rmssd_ms !== void 0 ? [{ label: "HRV (RMSSD)", value: `${pair.recovery.hrv_rmssd_ms} ms` }] : [],
+        ...pair.recovery.user_calibrating !== void 0 ? [{ label: "Calibrating", value: pair.recovery.user_calibrating ? "Yes" : "No" }] : [],
+        ...details(pair.day, pair.recovery)
+      ]
+    });
+  });
+  const recoveries = data.reduce((sum, day) => {
+    var _a, _b;
+    return sum + ((_b = (_a = whoopForDay(day)) == null ? void 0 : _a.recoveries.length) != null ? _b : 0);
+  }, 0);
+  renderStatBoxes(stats, [
+    { label: "Same-cycle pairs", value: String(pairs.length) },
+    { label: "Unpaired / unscored", value: String(recoveries - allPairs.length) }
+  ]);
+  note(stats, data, `${allPairs.length} pairs in selection \xB7 Same-cycle association only; strain is not summed or averaged`);
+};
+var renderWhoopSleepNeed = (ctx, data, W, H, config, theme, stats, hits) => {
+  var _a;
+  H = prepare(ctx, W, H, 260, theme, stats);
+  const all = whoopSleepEntries(data, String((_a = config.sleep) != null ? _a : "all"));
+  const entries = all.slice(-limit(config.limit, 30)).filter(({ sleep: sleep2 }) => whoopIsScored(sleep2) && [sleep2.total_sleep_milliseconds, ...WHOOP_SLEEP_NEED_COMPONENTS.map(({ key }) => sleep2[key])].some((value) => value !== void 0));
+  if (!entries.length) return empty2(ctx, W, H, theme, stats, data, "No scored WHOOP sleep duration or need components");
+  legend(ctx, [...WHOOP_SLEEP_NEED_COMPONENTS, { label: "Achieved", color: theme.colors.secondary }], W, 16, theme);
+  const top = W < 440 ? 58 : 42, left = 42, right = 16, bottom = H - 48;
+  const positive = (sleep2) => WHOOP_SLEEP_NEED_COMPONENTS.slice(0, 3).reduce((sum, { key }) => {
+    var _a2;
+    return sum + ((_a2 = sleep2[key]) != null ? _a2 : 0);
+  }, 0);
+  const max = Math.max(1, ...entries.map(({ sleep: sleep2 }) => {
+    var _a2;
+    return Math.max(positive(sleep2), (_a2 = sleep2.total_sleep_milliseconds) != null ? _a2 : 0) / HOUR_MS;
+  }));
+  const maxHours = Math.ceil(max);
+  grid(ctx, W, top, bottom, left, right, maxHours, theme, "h");
+  const slot = Math.max(1, W - left - right) / entries.length;
+  const bar = Math.max(0.5, Math.min(22, slot * 0.3));
+  const y = (ms) => bottom - ms / HOUR_MS / maxHours * (bottom - top);
+  entries.forEach(({ day, sleep: sleep2 }, index) => {
+    const center = left + (index + 0.5) * slot;
+    let sum = 0;
+    for (const component of WHOOP_SLEEP_NEED_COMPONENTS.slice(0, 3)) {
+      const value = sleep2[component.key];
+      if (value === void 0) continue;
+      ctx.fillStyle = component.color;
+      ctx.fillRect(center - bar - 1, y(sum + value), bar, Math.max(0, y(sum) - y(sum + value)));
+      sum += value;
+    }
+    const need = whoopSleepNeed(sleep2);
+    if (need !== void 0) {
+      const adjustment = sleep2.recent_nap_adjustment_milliseconds;
+      if (adjustment < 0) {
+        ctx.fillStyle = hexToRgba("#9270ca", 0.65);
+        ctx.fillRect(center - bar - 1, y(sum), bar, Math.max(0, y(need) - y(sum)));
+      }
+      ctx.strokeStyle = theme.fg;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(center - bar - 3, y(need));
+      ctx.lineTo(center + 1, y(need));
+      ctx.stroke();
+    }
+    if (sleep2.total_sleep_milliseconds !== void 0) {
+      ctx.fillStyle = theme.colors.secondary;
+      ctx.fillRect(center + 2, y(sleep2.total_sleep_milliseconds), bar, Math.max(0, bottom - y(sleep2.total_sleep_milliseconds)));
+    }
+    hits.add({
+      shape: "rect",
+      x: center - slot / 2,
+      y: top,
+      w: slot,
+      h: bottom - top,
+      title: `${formatDate(day.date)} \xB7 ${whoopSleepLabel(sleep2)}`,
+      payload: day,
+      details: [
+        { label: "Achieved", value: sleep2.total_sleep_milliseconds === void 0 ? "Unavailable" : formatDuration(sleep2.total_sleep_milliseconds / 1e3) },
+        ...WHOOP_SLEEP_NEED_COMPONENTS.map(({ key, label }) => ({ label, value: sleep2[key] === void 0 ? "Unavailable" : `${sleep2[key] < 0 ? "\u2212" : ""}${formatDuration(Math.abs(sleep2[key]) / 1e3)} (${sleep2[key]} ms)` })),
+        { label: "Need (component sum)", value: need === void 0 ? "Unavailable \u2014 incomplete or invalid components" : formatDuration(need / 1e3) },
+        ...sleep2.cycle_id ? [{ label: "Cycle ID", value: sleep2.cycle_id }] : [],
+        ...details(day, sleep2)
+      ]
+    });
+  });
+  dateLabels(ctx, entries.map(({ day }) => day.date), (i) => left + (i + 0.5) * slot, bottom + 16, theme, W);
+  text2(ctx, "Need stack / achieved \xB7 marker = net need", W / 2, H - 10, theme.muted, "center", W - 24);
+  renderStatBoxes(stats, [
+    { label: "Sessions shown", value: String(entries.length) },
+    { label: "Complete need components", value: String(entries.filter(({ sleep: sleep2 }) => whoopSleepNeed(sleep2) !== void 0).length) }
+  ]);
+  note(stats, data, `Per-session totals, not stage timelines \xB7 ${all.length} sessions in selection \xB7 Incomplete need stacks are partial, not zero-filled`);
+};
+var renderWhoopSleepTrends = (ctx, data, W, H, config, theme, stats, hits) => {
+  var _a;
+  H = prepare(ctx, W, H, 220, theme, stats);
+  const entries = whoopSleepEntries(data, String((_a = config.sleep) != null ? _a : "all")).slice(-limit(config.limit, 180, 2e3));
+  if (!entries.some(({ sleep: sleep2 }) => whoopIsScored(sleep2) && SCORE_SERIES.some(({ key }) => sleep2[key] !== void 0))) {
+    return empty2(ctx, W, H, theme, stats, data, "No WHOOP sleep assessment percentages");
+  }
+  legend(ctx, [...SCORE_SERIES], W, 16, theme);
+  const left = 42, right = 16, top = 40, bottom = H - 30;
+  grid(ctx, W, top, bottom, left, right, 100, theme, "%");
+  const x = (index) => left + (entries.length === 1 ? 0.5 : index / (entries.length - 1)) * Math.max(1, W - left - right);
+  const y = (value) => bottom - value / 100 * (bottom - top);
+  for (const series of SCORE_SERIES) {
+    let previous;
+    entries.forEach(({ day, sleep: sleep2 }, index) => {
+      const value = whoopIsScored(sleep2) ? sleep2[series.key] : void 0;
+      if (value === void 0) {
+        previous = void 0;
+        return;
+      }
+      ctx.strokeStyle = series.color;
+      ctx.lineWidth = 1.6;
+      const gap = previous ? Date.parse(`${day.date}T00:00:00Z`) - Date.parse(`${previous.date}T00:00:00Z`) : 0;
+      if (previous && gap <= 864e5) {
+        ctx.beginPath();
+        ctx.moveTo(x(previous.index), y(previous.value));
+        ctx.lineTo(x(index), y(value));
+        ctx.stroke();
+      }
+      ctx.fillStyle = series.color;
+      ctx.beginPath();
+      ctx.arc(x(index), y(value), 3, 0, Math.PI * 2);
+      ctx.fill();
+      hits.add({
+        shape: "circle",
+        cx: x(index),
+        cy: y(value),
+        r: 7,
+        title: `${formatDate(day.date)} \xB7 ${whoopSleepLabel(sleep2)}`,
+        payload: day,
+        details: [{ label: series.label, value: `${value}%` }, ...details(day, sleep2)]
+      });
+      previous = { index, value, date: day.date };
+    });
+  }
+  dateLabels(ctx, entries.map(({ day }) => day.date), x, bottom + 16, theme, W);
+  renderStatBoxes(stats, SCORE_SERIES.map((series) => {
+    const latest = [...entries].reverse().find(({ sleep: sleep2 }) => whoopIsScored(sleep2) && sleep2[series.key] !== void 0);
+    return { label: `Latest ${series.label.toLowerCase()}`, value: latest ? `${latest.sleep[series.key]}%` : "Unavailable", color: series.color };
+  }));
+  note(stats, data, `Provider-reported percentages \xB7 ${entries.length} sessions shown \xB7 Lines break at missing scores and calendar gaps`);
+};
+var renderWhoopWorkoutStrain = (ctx, data, W, H, config, theme, stats, hits) => {
+  const all = whoopWorkoutEntries(data).filter(({ day }) => config.date === void 0 || day.date === String(config.date));
+  const entries = all.slice(-limit(config.limit, 12, 50));
+  H = prepare(ctx, W, H, Math.max(200, 86 + entries.length * 44), theme, stats);
+  if (!entries.length) return empty2(ctx, W, H, theme, stats, data, "No WHOOP workouts in selection");
+  legend(ctx, ZONE_COLORS.map((color, i) => ({ label: `WHOOP Z${i}`, color })), W, 13, theme);
+  const labelW = Math.min(140, W * 0.27), strainX = labelW + 8, strainW = Math.max(26, W * 0.2);
+  const zoneX = strainX + strainW + 16, zoneW = Math.max(1, W - zoneX - 16);
+  const top = W < 440 ? 68 : 52;
+  text2(ctx, "Strain / 21", strainX, top - 12, theme.muted, "left", strainW);
+  text2(ctx, "Reported zone share", zoneX, top - 12, theme.muted, "left", zoneW);
+  entries.forEach(({ day, workout: workout2 }, index) => {
+    var _a, _b;
+    const y = top + index * 44;
+    text2(ctx, (_a = workout2.sport_name) != null ? _a : "Workout", 12, y + 8, theme.fg, "left", labelW - 16);
+    text2(ctx, day.date, 12, y + 23, theme.muted, "left", labelW - 16);
+    const strain = whoopIsScored(workout2) ? workout2.strain_score : void 0;
+    const zones = whoopWorkoutZones(workout2);
+    const total = zones.reduce((sum, zone) => sum + zone.milliseconds, 0);
+    ctx.fillStyle = hexToRgba(theme.fg, 0.08);
+    ctx.fillRect(strainX, y, strainW, 15);
+    if (strain !== void 0) {
+      ctx.fillStyle = theme.colors.accent;
+      ctx.fillRect(strainX, y, strainW * strain / 21, 15);
+    }
+    text2(ctx, strain === void 0 ? "Unscored / missing" : String(strain), strainX, y + 25, theme.muted, "left", strainW);
+    const elapsed = whoopWorkoutElapsed(workout2);
+    const rowDetails = [
+      { label: "Strain", value: strain === void 0 ? "Unavailable" : `${strain} / 21` },
+      { label: "Elapsed", value: elapsed === void 0 ? "Unavailable" : formatDuration(elapsed / 1e3) },
+      { label: "Recording coverage", value: workout2.percent_recorded === void 0 ? "Unavailable" : `${workout2.percent_recorded}%` },
+      { label: "Reported zone time", value: zones.length ? formatDuration(total / 1e3) : "Unavailable" },
+      { label: "Zones reported", value: `${zones.length} / 6 (missing zones are not zero)` },
+      ...details(day, workout2)
+    ];
+    hits.add({
+      shape: "rect",
+      x: 8,
+      y: y - 4,
+      w: Math.max(1, W - 16),
+      h: 40,
+      title: `${formatDate(day.date)} \xB7 ${(_b = workout2.sport_name) != null ? _b : "WHOOP workout"}`,
+      payload: day,
+      details: rowDetails
+    });
+    if (total > 0) {
+      let x = zoneX;
+      for (const zone of zones) {
+        const width = zoneW * zone.milliseconds / total;
+        ctx.fillStyle = ZONE_COLORS[zone.index];
+        ctx.fillRect(x, y, width, 15);
+        if (width > 22) text2(ctx, `Z${zone.index}`, x + width / 2, y + 8, theme.bg, "center");
+        if (width > 0) hits.add({
+          shape: "rect",
+          x,
+          y,
+          w: width,
+          h: 15,
+          title: `WHOOP zone ${zone.index}`,
+          payload: day,
+          details: [
+            { label: "Duration", value: `${formatDuration(zone.milliseconds / 1e3)} (${zone.milliseconds} ms)` },
+            { label: "Share of reported zones", value: `${(zone.milliseconds / total * 100).toFixed(1)}%` },
+            ...rowDetails
+          ]
+        });
+        x += width;
+      }
+    } else text2(ctx, zones.length ? "0 reported zone time" : "No zone data", zoneX, y + 8, theme.muted, "left", zoneW);
+    text2(ctx, workout2.percent_recorded === void 0 ? "Coverage unavailable" : `${workout2.percent_recorded}% recorded`, zoneX, y + 25, theme.muted, "left", zoneW);
+  });
+  renderStatBoxes(stats, [
+    { label: "Workouts shown", value: String(entries.length) },
+    { label: "Scored strain", value: String(entries.filter(({ workout: workout2 }) => whoopIsScored(workout2) && workout2.strain_score !== void 0).length) }
+  ]);
+  note(stats, data, `${all.length} workouts in selection \xB7 Zone time is not elapsed duration \xB7 WHOOP zones are not Apple-derived zones \xB7 Strain is not additive`);
+};
+
 // src/visualizations/activity-heatmap.ts
 var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 var renderActivityHeatmap = (ctx, data, W, H, config, theme, statsEl, hits) => {
@@ -16981,7 +17706,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
     ctx.textAlign = "right";
     ctx.fillText(`${h}h`, padL - 4, y + 3);
   }
-  const legend = [
+  const legend2 = [
     { label: "Deep", color: theme.colors.sleep.deep },
     { label: "REM", color: theme.colors.sleep.rem },
     { label: "Core", color: theme.colors.sleep.core },
@@ -16990,7 +17715,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   let lx = padL;
   ctx.font = "8px sans-serif";
   ctx.textAlign = "left";
-  for (const item of legend) {
+  for (const item of legend2) {
     ctx.fillStyle = item.color;
     ctx.fillRect(lx, padT - 12, 8, 6);
     ctx.fillStyle = theme.muted;
@@ -17121,14 +17846,14 @@ function parseDistanceFormatted(value) {
   if (/\bm\b|meters?\b/.test(normalized)) return n;
   return void 0;
 }
-function workoutDistanceMeters(workout) {
-  if (workout.distanceMeters != null) return workout.distanceMeters;
-  if (workout.distanceKm != null) return workout.distanceKm * 1e3;
-  if (workout.distanceMi != null) return workout.distanceMi * 1609.344;
-  const formattedMeters = parseDistanceFormatted(workout.distanceFormatted);
+function workoutDistanceMeters(workout2) {
+  if (workout2.distanceMeters != null) return workout2.distanceMeters;
+  if (workout2.distanceKm != null) return workout2.distanceKm * 1e3;
+  if (workout2.distanceMi != null) return workout2.distanceMi * 1609.344;
+  const formattedMeters = parseDistanceFormatted(workout2.distanceFormatted);
   if (formattedMeters != null) return formattedMeters;
-  if (workout.distance == null) return void 0;
-  return workout.distance > 100 ? workout.distance : workout.distance * 1e3;
+  if (workout2.distance == null) return void 0;
+  return workout2.distance > 100 ? workout2.distance : workout2.distance * 1e3;
 }
 function formatDistance(meters, day, preFormatted, preference) {
   if (preferPreFormatted(day, preFormatted, preference)) return preFormatted;
@@ -17142,9 +17867,9 @@ function formatDistanceMeters(meters, system) {
   const km = meters / 1e3;
   return km >= 10 ? `${km.toFixed(1)} km` : `${km.toFixed(2)} km`;
 }
-function formatWorkoutDistance(workout, day, preference) {
-  const meters = workoutDistanceMeters(workout);
-  return meters == null ? void 0 : formatDistance(meters, day, workout.distanceFormatted, preference);
+function formatWorkoutDistance(workout2, day, preference) {
+  const meters = workoutDistanceMeters(workout2);
+  return meters == null ? void 0 : formatDistance(meters, day, workout2.distanceFormatted, preference);
 }
 function intervalRateDisplay(interval) {
   var _a;
@@ -18617,10 +19342,10 @@ function parseAbsoluteMs(raw) {
   if (!(raw == null ? void 0 : raw.trim())) return NaN;
   return Date.parse(raw.trim());
 }
-function resolveExplicitBedWake(night, sleep) {
+function resolveExplicitBedWake(night, sleep2) {
   var _a, _b, _c, _d;
-  const bedRaw = (_b = (_a = sleep.bedtimeISO) != null ? _a : sleep.sessionStart) != null ? _b : sleep.bedtime;
-  const wakeRaw = (_d = (_c = sleep.wakeTimeISO) != null ? _c : sleep.sessionEnd) != null ? _d : sleep.wakeTime;
+  const bedRaw = (_b = (_a = sleep2.bedtimeISO) != null ? _a : sleep2.sessionStart) != null ? _b : sleep2.bedtime;
+  const wakeRaw = (_d = (_c = sleep2.wakeTimeISO) != null ? _c : sleep2.sessionEnd) != null ? _d : sleep2.wakeTime;
   if (!bedRaw || !wakeRaw) return null;
   const bedClock = parseClockTime2(bedRaw);
   const wakeClock = parseClockTime2(wakeRaw);
@@ -18631,9 +19356,9 @@ function resolveExplicitBedWake(night, sleep) {
   if (wakeMs <= bedMs) return null;
   return { bedMs, wakeMs };
 }
-function resolveStageBedWake(sleep) {
+function resolveStageBedWake(sleep2) {
   var _a;
-  const stages = (_a = sleep.sleepStages) != null ? _a : [];
+  const stages = (_a = sleep2.sleepStages) != null ? _a : [];
   let bedMs = Infinity;
   let wakeMs = -Infinity;
   for (const stage of stages) {
@@ -18647,9 +19372,9 @@ function resolveStageBedWake(sleep) {
 }
 function resolveBedWake(night) {
   var _a;
-  const sleep = night.sleep;
-  if (!sleep) return null;
-  return (_a = resolveExplicitBedWake(night, sleep)) != null ? _a : resolveStageBedWake(sleep);
+  const sleep2 = night.sleep;
+  if (!sleep2) return null;
+  return (_a = resolveExplicitBedWake(night, sleep2)) != null ? _a : resolveStageBedWake(sleep2);
 }
 function formatHour(ms) {
   return new Date(ms).toLocaleTimeString("en-US", {
@@ -19264,9 +19989,9 @@ var renderWorkoutZones = (ctx, data, W, H, config, theme, statsEl, hits) => {
     statsEl.empty();
     return;
   }
-  const { day, workout } = picked;
-  const zones = ((_a = workout.heartRateZones) != null ? _a : []).filter((zone) => zone.seconds > 0);
-  const fallbackZones = zones.length ? [] : zonesFromSamples((_c = (_b = workout.timeSeries) == null ? void 0 : _b.heartRate) != null ? _c : [], resolveMaxHeartRate(config, theme));
+  const { day, workout: workout2 } = picked;
+  const zones = ((_a = workout2.heartRateZones) != null ? _a : []).filter((zone) => zone.seconds > 0);
+  const fallbackZones = zones.length ? [] : zonesFromSamples((_c = (_b = workout2.timeSeries) == null ? void 0 : _b.heartRate) != null ? _c : [], resolveMaxHeartRate(config, theme));
   const visibleZones = zones.length ? zones : fallbackZones;
   if (!visibleZones.length) {
     drawEmptyState(ctx, W, H, theme.bg, theme.muted, "No heart-rate zones for this workout");
@@ -19297,7 +20022,7 @@ var renderWorkoutZones = (ctx, data, W, H, config, theme, statsEl, hits) => {
   ctx.font = "600 13px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText(`${(_d = workout.activityType) != null ? _d : workout.type} zones`, padX, titleY);
+  ctx.fillText(`${(_d = workout2.activityType) != null ? _d : workout2.type} zones`, padX, titleY);
   ctx.fillStyle = theme.muted;
   ctx.font = "10px sans-serif";
   ctx.fillText(day.date, padX, titleY + 18);
@@ -19374,8 +20099,8 @@ var ZONES = [
   { label: "Z4", loFrac: 0.8, hiFrac: 0.9, hue: 40 },
   { label: "Z5", loFrac: 0.9, hiFrac: 1, hue: 0 }
 ];
-function zoneFor(bpm, maxHr) {
-  const frac = bpm / maxHr;
+function zoneFor(bpm2, maxHr) {
+  const frac = bpm2 / maxHr;
   for (const z of ZONES) {
     if (frac >= z.loFrac && frac < z.hiFrac) return z;
   }
@@ -19393,15 +20118,15 @@ function resolveMaxHeartRate2(config, theme) {
 }
 function resolveWorkoutEndMs(picked) {
   var _a;
-  const { workout } = picked;
-  if (workout.endTimeISO) {
-    const endMs = Date.parse(workout.endTimeISO);
+  const { workout: workout2 } = picked;
+  if (workout2.endTimeISO) {
+    const endMs = Date.parse(workout2.endTimeISO);
     if (Number.isFinite(endMs)) return endMs;
   }
-  const start = (_a = workout.startTimeISO) != null ? _a : workout.startTime;
+  const start = (_a = workout2.startTimeISO) != null ? _a : workout2.startTime;
   const startMs = start ? Date.parse(start) : NaN;
-  if (Number.isFinite(startMs) && Number.isFinite(workout.duration)) {
-    return startMs + workout.duration * 1e3;
+  if (Number.isFinite(startMs) && Number.isFinite(workout2.duration)) {
+    return startMs + workout2.duration * 1e3;
   }
   return NaN;
 }
@@ -19474,7 +20199,7 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
     xMax = Math.max(xMax, Math.ceil(maxHr));
   }
   if (xMax - xMin < 20) xMax = xMin + 20;
-  const xFor = (bpm) => padL + (bpm - xMin) / (xMax - xMin || 1) * plotW;
+  const xFor = (bpm2) => padL + (bpm2 - xMin) / (xMax - xMin || 1) * plotW;
   ctx.fillStyle = theme.fg;
   ctx.font = "600 13px sans-serif";
   ctx.textAlign = "left";
@@ -19508,13 +20233,13 @@ function drawSummaryFallback(ctx, W, H, theme, stats, maxHr) {
   const xRange = xMax - xMin;
   const xStep = xRange <= 40 ? 10 : xRange <= 100 ? 20 : 40;
   const tickStart = Math.ceil(xMin / xStep) * xStep;
-  for (let bpm = tickStart; bpm <= xMax; bpm += xStep) {
-    const x = xFor(bpm);
+  for (let bpm2 = tickStart; bpm2 <= xMax; bpm2 += xStep) {
+    const x = xFor(bpm2);
     ctx.beginPath();
     ctx.moveTo(x, padT);
     ctx.lineTo(x, padT + plotH);
     ctx.stroke();
-    ctx.fillText(String(bpm), x, padT + plotH + 6);
+    ctx.fillText(String(bpm2), x, padT + plotH + 6);
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.14);
   ctx.lineWidth = 2;
@@ -19563,9 +20288,9 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     statsEl.empty();
     return;
   }
-  const { workout } = picked;
+  const { workout: workout2 } = picked;
   const maxHr = resolveMaxHeartRate2(config, theme);
-  const workoutStart = (_a = workout.startTimeISO) != null ? _a : workout.startTime;
+  const workoutStart = (_a = workout2.startTimeISO) != null ? _a : workout2.startTime;
   const sources = heartRateSampleSources(picked);
   let pts = [];
   let sampleSource = null;
@@ -19578,13 +20303,13 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
     }
   }
   if (!pts.length) {
-    if ((_b = workout.heartRateZones) == null ? void 0 : _b.some((zone) => zone.seconds > 0)) {
+    if ((_b = workout2.heartRateZones) == null ? void 0 : _b.some((zone) => zone.seconds > 0)) {
       renderWorkoutZones(ctx, data, W, H, config, theme, statsEl, hits);
       return;
     }
-    const avg5 = workout.avgHeartRate;
-    const lo2 = workout.minHeartRate;
-    const hi2 = workout.maxHeartRate;
+    const avg5 = workout2.avgHeartRate;
+    const lo2 = workout2.minHeartRate;
+    const hi2 = workout2.maxHeartRate;
     if (avg5 == null && lo2 == null && hi2 == null) {
       drawEmptyState(
         ctx,
@@ -19614,7 +20339,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
   }
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
-  const tMax = Math.max(workout.duration || 0, pts[pts.length - 1].t);
+  const tMax = Math.max(workout2.duration || 0, pts[pts.length - 1].t);
   const tMin = 0;
   let yMin = Math.max(0, Math.floor(minBpm - 5));
   let yMax = Math.ceil(maxBpm + 5);
@@ -19720,16 +20445,16 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       }
     }
     const p = pts[bestIdx];
-    const details = [
+    const details2 = [
       { label: "Time", value: formatElapsed(p.t) },
       { label: "BPM", value: String(Math.round(p.v)) }
     ];
     if (maxHr) {
       const z = zoneFor(p.v, maxHr);
-      details.push({ label: "Zone", value: z ? z.label : "below Z1" });
+      details2.push({ label: "Zone", value: z ? z.label : "below Z1" });
     }
     if (sampleSource === "daily") {
-      details.push({ label: "Source", value: "daily samples" });
+      details2.push({ label: "Source", value: "daily samples" });
     }
     hits.add({
       shape: "rect",
@@ -19738,7 +20463,7 @@ var renderWorkoutHeartRate = (ctx, data, W, H, config, theme, statsEl, hits) => 
       w: STRIDE,
       h: plotH,
       title: "Heart rate",
-      details,
+      details: details2,
       payload: picked.day
     });
   }
@@ -19771,7 +20496,7 @@ var METRICS5 = [
     label: "Duration",
     unit: () => "min",
     color: (theme) => theme.colors.accent,
-    value: (workout) => workout.duration > 0 ? workout.duration / 60 : void 0,
+    value: (workout2) => workout2.duration > 0 ? workout2.duration / 60 : void 0,
     format: (value) => formatDuration(value * 60)
   },
   {
@@ -19779,8 +20504,8 @@ var METRICS5 = [
     label: "Distance",
     unit: (theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? "mi" : "km",
     color: (theme) => theme.colors.secondary,
-    value: (workout) => {
-      const meters = workoutDistanceMeters(workout);
+    value: (workout2) => {
+      const meters = workoutDistanceMeters(workout2);
       return meters == null ? void 0 : meters / 1e3;
     },
     toDisplay: (value, theme) => effectiveUnitSystem(theme.unitPreference) === "imperial" ? kmToMi(value) : value,
@@ -19791,7 +20516,7 @@ var METRICS5 = [
     label: "Calories",
     unit: () => "kcal",
     color: () => "#f97316",
-    value: (workout) => workout.calories,
+    value: (workout2) => workout2.calories,
     format: (value) => `${Math.round(value)} kcal`
   },
   {
@@ -19799,7 +20524,7 @@ var METRICS5 = [
     label: "Avg HR",
     unit: () => "bpm",
     color: (theme) => theme.colors.heart,
-    value: (workout) => workout.avgHeartRate,
+    value: (workout2) => workout2.avgHeartRate,
     format: (value) => `${Math.round(value)} BPM`
   },
   {
@@ -19807,7 +20532,7 @@ var METRICS5 = [
     label: "Avg Power",
     unit: () => "W",
     color: () => "#a855f7",
-    value: (workout) => workout.avgPower,
+    value: (workout2) => workout2.avgPower,
     format: (value) => `${Math.round(value)} W`
   }
 ];
@@ -19832,13 +20557,13 @@ function collectWorkoutPoints(data) {
   var _a, _b, _c;
   const points = [];
   for (const day of data) {
-    for (const workout of (_a = day.workouts) != null ? _a : []) {
-      const timestamp = (_c = (_b = workout.startTimeISO) != null ? _b : workout.startTime) != null ? _c : `${day.date}T00:00:00`;
-      const ms = Date.parse(timestamp);
+    for (const workout2 of (_a = day.workouts) != null ? _a : []) {
+      const timestamp2 = (_c = (_b = workout2.startTimeISO) != null ? _b : workout2.startTime) != null ? _c : `${day.date}T00:00:00`;
+      const ms = Date.parse(timestamp2);
       points.push({
         day,
-        workout,
-        timestamp,
+        workout: workout2,
+        timestamp: timestamp2,
         ms: Number.isFinite(ms) ? ms : Date.parse(`${day.date}T00:00:00`)
       });
     }
@@ -20082,37 +20807,37 @@ function totalRouteDistance(route) {
   }
   return d;
 }
-function renderHeader(host, day, workout, unitPreference) {
+function renderHeader(host, day, workout2, unitPreference) {
   var _a, _b;
   const header = host.createDiv({ cls: "health-md-workout-header" });
   const title = header.createDiv({ cls: "health-md-workout-title" });
-  title.textContent = workout.type ? workout.type.charAt(0).toUpperCase() + workout.type.slice(1) : "Workout";
+  title.textContent = workout2.type ? workout2.type.charAt(0).toUpperCase() + workout2.type.slice(1) : "Workout";
   const stats = header.createDiv({ cls: "health-md-workout-stats" });
   const addStat2 = (label, value) => {
     const cell = stats.createDiv({ cls: "health-md-workout-stat" });
     cell.createDiv({ cls: "health-md-workout-stat-label", text: label });
     cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
   };
-  const distanceMeters = workoutDistanceMeters(workout);
-  const distanceDisplay = formatWorkoutDistance(workout, day, unitPreference);
+  const distanceMeters = workoutDistanceMeters(workout2);
+  const distanceDisplay = formatWorkoutDistance(workout2, day, unitPreference);
   if (distanceDisplay) {
     addStat2("Distance", distanceDisplay);
   }
-  addStat2("Duration", (_a = workout.durationFormatted) != null ? _a : formatDuration(workout.duration));
-  if (distanceMeters != null && workout.duration > 0) {
+  addStat2("Duration", (_a = workout2.durationFormatted) != null ? _a : formatDuration(workout2.duration));
+  if (distanceMeters != null && workout2.duration > 0) {
     addStat2(
-      workout.avgSpeedFormatted ? "Avg speed" : "Avg pace",
-      (_b = workout.avgSpeedFormatted) != null ? _b : formatPace(distanceMeters, workout.duration, day, workout.avgPaceFormatted, unitPreference)
+      workout2.avgSpeedFormatted ? "Avg speed" : "Avg pace",
+      (_b = workout2.avgSpeedFormatted) != null ? _b : formatPace(distanceMeters, workout2.duration, day, workout2.avgPaceFormatted, unitPreference)
     );
   }
-  if (workout.elevationGainMeters != null) {
-    addStat2("Elev gain", formatElevation(workout.elevationGainMeters, day, unitPreference));
+  if (workout2.elevationGainMeters != null) {
+    addStat2("Elev gain", formatElevation(workout2.elevationGainMeters, day, unitPreference));
   }
-  if (workout.elevationLossMeters != null) {
-    addStat2("Elev loss", formatElevation(workout.elevationLossMeters, day, unitPreference));
+  if (workout2.elevationLossMeters != null) {
+    addStat2("Elev loss", formatElevation(workout2.elevationLossMeters, day, unitPreference));
   }
-  if (workout.avgHeartRate != null) {
-    addStat2("Avg HR", `${Math.round(workout.avgHeartRate)} BPM`);
+  if (workout2.avgHeartRate != null) {
+    addStat2("Avg HR", `${Math.round(workout2.avgHeartRate)} BPM`);
   }
 }
 function renderEmptyMessage(host, message) {
@@ -20173,12 +20898,12 @@ function renderLeafletMap(host, route, colorBy, hrSamples, theme, configHeight) 
     sampled.map((p) => [p.latitude, p.longitude])
   );
   map2.fitBounds(bounds, { padding: [20, 20] });
-  const legend = mapEl.createDiv({ cls: "health-md-workout-map-legend" });
+  const legend2 = mapEl.createDiv({ cls: "health-md-workout-map-legend" });
   const label = colorBy === "hr" ? "HR" : "Speed";
   const speedSystem = effectiveUnitSystem(theme.unitPreference);
   const lo = colorBy === "hr" ? `${Math.round(vMin)} BPM` : formatSpeedKmh(vMin * 3.6, speedSystem);
   const hi = colorBy === "hr" ? `${Math.round(vMax)} BPM` : formatSpeedKmh(vMax * 3.6, speedSystem);
-  legend.textContent = `${label} ${lo} \u2013 ${hi}`;
+  legend2.textContent = `${label} ${lo} \u2013 ${hi}`;
 }
 function renderCanvasPolyline(host, route, colorBy, hrSamples, theme, width, height) {
   const wrapper = host.createDiv({
@@ -20254,13 +20979,13 @@ var renderWorkoutMap = (data, el, config, theme) => {
     renderEmptyMessage(el, "No workout found");
     return;
   }
-  const { day, workout } = picked;
-  renderHeader(el, day, workout, theme.unitPreference);
-  const route = (_a = workout.route) != null ? _a : [];
+  const { day, workout: workout2 } = picked;
+  renderHeader(el, day, workout2, theme.unitPreference);
+  const route = (_a = workout2.route) != null ? _a : [];
   if (!route.length) {
     renderEmptyMessage(
       el,
-      workout.routePointCount && workout.routePointCount > 0 ? `GPS route recorded (${workout.routePointCount} ${workout.routePointCount === 1 ? "point" : "points"}) \u2014 coordinates are only included in the daily JSON export, not individual workout notes. Export this day as JSON to view the map.` : "No GPS route data available for this workout."
+      workout2.routePointCount && workout2.routePointCount > 0 ? `GPS route recorded (${workout2.routePointCount} ${workout2.routePointCount === 1 ? "point" : "points"}) \u2014 coordinates are only included in the daily JSON export, not individual workout notes. Export this day as JSON to view the map.` : "No GPS route data available for this workout."
     );
     return;
   }
@@ -20269,7 +20994,7 @@ var renderWorkoutMap = (data, el, config, theme) => {
     return;
   }
   const colorBy = String((_b = config.colorBy) != null ? _b : "speed").toLowerCase() === "hr" ? "hr" : "speed";
-  const hrSamples = (_c = workout.timeSeries) == null ? void 0 : _c.heartRate;
+  const hrSamples = (_c = workout2.timeSeries) == null ? void 0 : _c.heartRate;
   const widthCfg = typeof config.width === "number" ? config.width : 800;
   const heightCfg = typeof config.height === "number" ? config.height : 360;
   if (theme.mapTilesEnabled) {
@@ -20289,11 +21014,11 @@ function renderEmptyMessage2(host, message) {
   const msg = host.createDiv({ cls: "health-md-workout-empty" });
   msg.textContent = message;
 }
-function renderHeader2(host, day, workout, unitPreference) {
+function renderHeader2(host, day, workout2, unitPreference) {
   var _a, _b;
   const header = host.createDiv({ cls: "health-md-workout-header" });
   const title = header.createDiv({ cls: "health-md-workout-title" });
-  title.textContent = `${titleCase((_a = workout.activityType) != null ? _a : workout.type)} \u2014 ${day.date}`;
+  title.textContent = `${titleCase((_a = workout2.activityType) != null ? _a : workout2.type)} \u2014 ${day.date}`;
   const stats = header.createDiv({ cls: "health-md-workout-stats" });
   const addStat2 = (label, value) => {
     if (!value) return;
@@ -20301,10 +21026,10 @@ function renderHeader2(host, day, workout, unitPreference) {
     cell.createDiv({ cls: "health-md-workout-stat-label", text: label });
     cell.createDiv({ cls: "health-md-workout-stat-value", text: value });
   };
-  addStat2("Duration", (_b = workout.durationFormatted) != null ? _b : formatDuration(workout.duration));
-  addStat2("Distance", formatWorkoutDistance(workout, day, unitPreference));
-  addStat2("Avg HR", workout.avgHeartRate != null ? `${Math.round(workout.avgHeartRate)} BPM` : void 0);
-  addStat2("Avg Power", workout.avgPower != null ? `${Math.round(workout.avgPower)} W` : void 0);
+  addStat2("Duration", (_b = workout2.durationFormatted) != null ? _b : formatDuration(workout2.duration));
+  addStat2("Distance", formatWorkoutDistance(workout2, day, unitPreference));
+  addStat2("Avg HR", workout2.avgHeartRate != null ? `${Math.round(workout2.avgHeartRate)} BPM` : void 0);
+  addStat2("Avg Power", workout2.avgPower != null ? `${Math.round(workout2.avgPower)} W` : void 0);
 }
 function formatMaybeNumber(value, suffix) {
   return value == null ? "\u2014" : `${Math.round(value)} ${suffix}`;
@@ -20342,18 +21067,18 @@ var renderWorkoutIntervals = (data, el, config, theme) => {
     renderEmptyMessage2(el, "No workout found");
     return;
   }
-  const { day, workout } = picked;
-  renderHeader2(el, day, workout, theme.unitPreference);
+  const { day, workout: workout2 } = picked;
+  renderHeader2(el, day, workout2, theme.unitPreference);
   const kind = String((_b = (_a = config.kind) != null ? _a : config.table) != null ? _b : "auto").trim().toLowerCase();
   const showLaps = kind === "auto" || kind === "laps" || kind === "lap";
   const showSplits = kind === "auto" || kind === "splits" || kind === "split";
   let rendered = false;
-  if (showLaps && ((_c = workout.laps) == null ? void 0 : _c.length)) {
-    renderIntervalTable(el, "Laps", workout.laps, day, theme.unitPreference);
+  if (showLaps && ((_c = workout2.laps) == null ? void 0 : _c.length)) {
+    renderIntervalTable(el, "Laps", workout2.laps, day, theme.unitPreference);
     rendered = true;
   }
-  if (showSplits && ((_d = workout.splits) == null ? void 0 : _d.length)) {
-    renderIntervalTable(el, "Splits", workout.splits, day, theme.unitPreference);
+  if (showSplits && ((_d = workout2.splits) == null ? void 0 : _d.length)) {
+    renderIntervalTable(el, "Splits", workout2.splits, day, theme.unitPreference);
     rendered = true;
   }
   if (!rendered) {
@@ -20407,7 +21132,7 @@ function valencePercent(valence) {
 function dayExerciseMinutes(day) {
   var _a, _b, _c;
   const activityMinutes = (_b = (_a = day.activity) == null ? void 0 : _a.exerciseMinutes) != null ? _b : 0;
-  const workoutMinutes = ((_c = day.workouts) != null ? _c : []).reduce((sum, workout) => sum + (workout.duration || 0) / 60, 0);
+  const workoutMinutes = ((_c = day.workouts) != null ? _c : []).reduce((sum, workout2) => sum + (workout2.duration || 0) / 60, 0);
   return Math.max(activityMinutes, workoutMinutes);
 }
 function shortDate(iso) {
@@ -20476,14 +21201,14 @@ function collectMoodEntries2(data) {
 function moodDaysWithValues(data) {
   return collectMoodDays(data).filter((day) => day.averageValence !== void 0);
 }
-function emptyState(ctx, W, H, theme, statsEl, text = "No mood data in range") {
+function emptyState(ctx, W, H, theme, statsEl, text3 = "No mood data in range") {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = theme.muted;
   ctx.font = "12px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(text, W / 2, H / 2);
+  ctx.fillText(text3, W / 2, H / 2);
   statsEl.empty();
 }
 function drawTitle(ctx, theme, title, subtitle, x = 18, y = 24) {
@@ -20708,7 +21433,7 @@ var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
     }
     const sleepSeconds = (_a = point.day.sleep) == null ? void 0 : _a.totalDuration;
     const exerciseMinutes = dayExerciseMinutes(point.day);
-    const details = [
+    const details2 = [
       ...point.valence !== void 0 ? [{ label: "Mood", value: `${moodLabelForValence(point.valence)} (${formatMoodValence(point.valence)})` }] : [],
       ...point.label ? [{ label: "Label", value: point.label }] : [],
       ...point.entries ? [{ label: "Entries", value: String(point.entries) }] : [],
@@ -20723,7 +21448,7 @@ var renderMoodTrend = (ctx, data, W, H, config, theme, statsEl, hits) => {
       w: slot,
       h: plotH + padB,
       title: formatDate(point.date),
-      details,
+      details: details2,
       payload: point.day
     });
   });
@@ -20978,14 +21703,14 @@ var renderMoodAssociationBreakdown = (ctx, data, W, H, config, theme, statsEl, h
   var _a;
   const entries = collectMoodEntries2(data).filter((entry) => entry.valence !== void 0);
   if (!entries.length) return emptyState(ctx, W, H, theme, statsEl);
-  const limit = Math.max(3, Math.floor(configNumber(config.limit, 10)));
+  const limit2 = Math.max(3, Math.floor(configNumber(config.limit, 10)));
   const sort = configString(config.sort, "count");
   const buckets = aggregate(entries.flatMap((entry) => (entry.associations.length ? entry.associations : ["Unspecified"]).map((key) => ({ key, valence: entry.valence }))));
   buckets.sort((a, b) => {
     var _a2, _b;
     return sort === "valence" ? ((_a2 = bucketAverage(b)) != null ? _a2 : 0) - ((_b = bucketAverage(a)) != null ? _b : 0) : b.count - a.count;
   });
-  const shown = buckets.slice(0, limit);
+  const shown = buckets.slice(0, limit2);
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
   const padL = 120, padR = 26, padT = 60, padB = 24;
@@ -21025,13 +21750,13 @@ var renderMoodLabelCloud = (ctx, data, W, H, config, theme, statsEl, hits) => {
   var _a;
   const entries = collectMoodEntries2(data).filter((entry) => entry.valence !== void 0);
   if (!entries.length) return emptyState(ctx, W, H, theme, statsEl);
-  const limit = Math.max(5, Math.floor(configNumber(config.limit, 28)));
+  const limit2 = Math.max(5, Math.floor(configNumber(config.limit, 28)));
   const buckets = aggregate(entries.flatMap((entry) => {
     var _a2;
     return (entry.labels.length ? entry.labels : [(_a2 = entry.label) != null ? _a2 : moodLabelForValence(entry.valence)]).map((key) => ({ key, valence: entry.valence }));
   }));
   buckets.sort((a, b) => b.count - a.count);
-  const shown = buckets.slice(0, limit);
+  const shown = buckets.slice(0, limit2);
   const maxCount = Math.max(...shown.map((bucket) => bucket.count));
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
@@ -21567,8 +22292,8 @@ function drawMetricPanel(ctx, days, context, theme, hits, options) {
   const yFor = (value) => options.y + (1 - (value - domain.min) / (domain.max - domain.min)) * options.h;
   ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
   ctx.lineWidth = 1;
-  for (let grid = 0; grid <= 2; grid++) {
-    const y = options.y + grid / 2 * options.h;
+  for (let grid2 = 0; grid2 <= 2; grid2++) {
+    const y = options.y + grid2 / 2 * options.h;
     ctx.beginPath();
     ctx.moveTo(options.x, y);
     ctx.lineTo(options.x + options.w, y);
@@ -21765,8 +22490,8 @@ var renderMetricTrend = (ctx, data, W, H, config, theme, statsEl, hits, context)
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
   ctx.lineWidth = 1;
-  for (let grid = 0; grid <= 3; grid++) {
-    const ratio = grid / 3;
+  for (let grid2 = 0; grid2 <= 3; grid2++) {
+    const ratio = grid2 / 3;
     const y = padT + ratio * plotH;
     const value = domain.max - ratio * (domain.max - domain.min);
     ctx.beginPath();
@@ -22016,8 +22741,8 @@ var renderCardioFitnessFreshness = (ctx, data, W, H, _config, theme, statsEl, hi
   }
   ctx.strokeStyle = hexToRgba(theme.fg, 0.08);
   ctx.lineWidth = 1;
-  for (let grid = 0; grid <= 3; grid++) {
-    const ratio = grid / 3;
+  for (let grid2 = 0; grid2 <= 3; grid2++) {
+    const ratio = grid2 / 3;
     const y = padT + ratio * plotH;
     ctx.beginPath();
     ctx.moveTo(padL, y);
@@ -22082,7 +22807,7 @@ var renderCardioFitnessFreshness = (ctx, data, W, H, _config, theme, statsEl, hi
     const source = resolveMetricScalar(point.day, "vo2_max_source_start", context == null ? void 0 : context.dictionary);
     const sourceText = typeof source === "string" && source.trim() ? source.trim() : void 0;
     const hasProvenance = carriedScalar !== void 0 || age !== void 0 || sourceText !== void 0;
-    const details = [
+    const details2 = [
       { label: definition.label, value: formatMetricValue(point.value, definition, theme.unitPreference) },
       hasProvenance ? { label: "Status", value: state === "carried" ? "Carried forward" : state === "measured" ? "Measured" : "Provenance unavailable" } : { label: "Provenance", value: "Provenance unavailable" },
       ...age === void 0 ? [] : [{ label: "Measurement age", value: formatMeasurementAge(age) }],
@@ -22094,7 +22819,7 @@ var renderCardioFitnessFreshness = (ctx, data, W, H, _config, theme, statsEl, hi
       cy: y,
       r: 9,
       title: formatDate(point.day.date),
-      details,
+      details: details2,
       // Only navigation-safe summary fields are exposed; provenance source UUIDs
       // and any raw archive payloads are deliberately excluded.
       payload: { date: point.day.date, sourcePaths: point.day.sourcePaths }
@@ -22524,25 +23249,25 @@ function addDays2(iso, amount) {
   return isoDate2(date);
 }
 function tooltipDetails(item) {
-  const details = [{ label: "Status", value: STATUS_LABELS[item.status] }];
+  const details2 = [{ label: "Status", value: STATUS_LABELS[item.status] }];
   const summary = item.summary;
-  if (!summary) return details;
-  if (summary.recordCount !== void 0) details.push({ label: "Records", value: String(summary.recordCount) });
-  if (summary.externalRecordCount !== void 0) details.push({ label: "External records", value: String(summary.externalRecordCount) });
-  if (summary.queryFailureCount !== void 0) details.push({ label: "Query failures", value: String(summary.queryFailureCount) });
-  if (summary.partialFailureCount !== void 0) details.push({ label: "Partial failures", value: String(summary.partialFailureCount) });
-  if (summary.warningCount !== void 0) details.push({ label: "Warnings", value: String(summary.warningCount) });
+  if (!summary) return details2;
+  if (summary.recordCount !== void 0) details2.push({ label: "Records", value: String(summary.recordCount) });
+  if (summary.externalRecordCount !== void 0) details2.push({ label: "External records", value: String(summary.externalRecordCount) });
+  if (summary.queryFailureCount !== void 0) details2.push({ label: "Query failures", value: String(summary.queryFailureCount) });
+  if (summary.partialFailureCount !== void 0) details2.push({ label: "Partial failures", value: String(summary.partialFailureCount) });
+  if (summary.warningCount !== void 0) details2.push({ label: "Warnings", value: String(summary.warningCount) });
   if (summary.queryStatusCounts) {
     const counts = summary.queryStatusCounts;
-    details.push({
+    details2.push({
       label: "Queries",
       value: `success ${counts.success}, failure ${counts.failure}, cancelled ${counts.cancelled}, skipped ${counts.skipped}, unsupported ${counts.unsupported}, other ${counts.other}`
     });
   }
   if (summary.validationIssues) {
-    details.push({ label: "Validation issues", value: String(summary.validationIssues.length) });
+    details2.push({ label: "Validation issues", value: String(summary.validationIssues.length) });
   }
-  return details;
+  return details2;
 }
 function emptyState3(ctx, W, H, theme) {
   ctx.fillStyle = theme.bg;
@@ -22670,11 +23395,11 @@ function configBoolean(value) {
 function safeText(value, fallback = "Recorded") {
   if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return fallback;
   const primitive = typeof value === "string" ? value : String(value);
-  const text = Array.from(primitive, (character) => {
+  const text3 = Array.from(primitive, (character) => {
     const code = character.charCodeAt(0);
     return code < 32 || code === 127 ? " " : character;
   }).join("").replace(/\s+/g, " ").trim();
-  return (text || fallback).slice(0, 80);
+  return (text3 || fallback).slice(0, 80);
 }
 function categoryLabel(value) {
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -22703,8 +23428,8 @@ function moodSummary(day, context) {
   var _a;
   let valence = resolveNumericMetric(day, "average_mood_valence", context == null ? void 0 : context.dictionary);
   if (valence === void 0) {
-    const percent = resolveNumericMetric(day, "average_mood_percent", context == null ? void 0 : context.dictionary);
-    if (percent !== void 0) valence = percent / 50 - 1;
+    const percent2 = resolveNumericMetric(day, "average_mood_percent", context == null ? void 0 : context.dictionary);
+    if (percent2 !== void 0) valence = percent2 / 50 - 1;
   }
   if (valence !== void 0) {
     const bounded = Math.max(-1, Math.min(1, valence));
@@ -22733,14 +23458,14 @@ function symptomDetails(day, symptomKeys, context) {
       count
     }];
   }).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-  const details = recorded.slice(0, 8).map((item) => ({
+  const details2 = recorded.slice(0, 8).map((item) => ({
     label: item.label,
     value: `${item.count.toLocaleString()} record${item.count === 1 ? "" : "s"}`
   }));
-  if (recorded.length > details.length) {
-    details.push({ label: "Additional symptoms", value: String(recorded.length - details.length) });
+  if (recorded.length > details2.length) {
+    details2.push({ label: "Additional symptoms", value: String(recorded.length - details2.length) });
   }
-  return details;
+  return details2;
 }
 function emptyState4(ctx, W, H, theme) {
   ctx.fillStyle = theme.bg;
@@ -22833,9 +23558,9 @@ var renderCycleTimeline = (ctx, data, W, H, config, theme, statsEl, hits, contex
         return;
       }
       if (lane.kind === "symptoms") {
-        const details = symptomDetails(day, symptomKeys, context);
-        if (!details.length) return;
-        const color = categoryColor("symptoms", details[0].label, theme);
+        const details2 = symptomDetails(day, symptomKeys, context);
+        if (!details2.length) return;
+        const color = categoryColor("symptoms", details2[0].label, theme);
         ctx.fillStyle = hexToRgba(color, 0.76);
         ctx.beginPath();
         ctx.roundRect(markX, markY, markW, markH, Math.min(4, markH / 2));
@@ -22847,7 +23572,7 @@ var renderCycleTimeline = (ctx, data, W, H, config, theme, statsEl, hits, contex
           w: columnW,
           h: laneH,
           title: `Symptom records \u2014 ${formatDate(day.date)}`,
-          details,
+          details: details2,
           payload: day
         });
         return;
@@ -22897,10 +23622,10 @@ var PERIODS = /* @__PURE__ */ new Set(["weekly", "monthly", "yearly", "range"]);
 var DEFAULT_LIMIT = 12;
 var MAX_LIMIT = 100;
 var MAX_VALUE_LENGTH = 500;
-function appendElement(host, tag, text, className) {
+function appendElement(host, tag, text3, className) {
   const element = host.ownerDocument.createElement(tag);
   if (className) element.className = className;
-  if (text !== void 0) element.textContent = text;
+  if (text3 !== void 0) element.textContent = text3;
   host.appendChild(element);
   return element;
 }
@@ -22992,10 +23717,10 @@ function renderStatistics(host, metric, selectedStatistic) {
     const th = appendElement(headerRow, "th", heading);
     th.scope = "col";
   }
-  const body = appendElement(table, "tbody");
+  const body2 = appendElement(table, "tbody");
   for (const [name, value] of entries) {
     const selected = selectedStatistic !== void 0 && name.toLowerCase() === selectedStatistic.toLowerCase();
-    const row = appendElement(body, "tr", void 0, selected ? "is-selected-statistic" : void 0);
+    const row = appendElement(body2, "tr", void 0, selected ? "is-selected-statistic" : void 0);
     const nameCell = appendElement(row, "th", name);
     nameCell.scope = "row";
     appendElement(row, "td", safeValue(value));
@@ -23009,10 +23734,10 @@ function renderMetric(host, metric, rollup, selectedStatistic, context) {
   const primary = appendElement(article, "div", void 0, "health-md-rollup-primary");
   appendElement(primary, "strong", safeValue((_a = metric.primaryValue) != null ? _a : metric.value), "health-md-rollup-primary-value");
   appendElement(primary, "span", metricUnit(metric, rollup), "health-md-rollup-unit");
-  const details = appendElement(article, "dl", void 0, "health-md-rollup-metric-details");
-  addDefinition(details, "Exporter rule", (_b = metric.rule) != null ? _b : "\u2014");
-  addDefinition(details, "Days counted", metric.daysCounted === void 0 ? "\u2014" : String(metric.daysCounted));
-  if (metric.notes) addDefinition(details, "Exporter notes", metric.notes);
+  const details2 = appendElement(article, "dl", void 0, "health-md-rollup-metric-details");
+  addDefinition(details2, "Exporter rule", (_b = metric.rule) != null ? _b : "\u2014");
+  addDefinition(details2, "Days counted", metric.daysCounted === void 0 ? "\u2014" : String(metric.daysCounted));
+  if (metric.notes) addDefinition(details2, "Exporter notes", metric.notes);
   if (selectedStatistic) {
     const match = Object.entries((_c = metric.statistics) != null ? _c : {}).find(
       ([name]) => name.toLowerCase() === selectedStatistic.toLowerCase()
@@ -23053,8 +23778,8 @@ var renderRollupExplorer = (_data, el, config, _theme, context) => {
   const period = requestedPeriod(config);
   const metricFilter = canonicalMetricFilter(config, context);
   const selectedStatistic = statisticFilter(config);
-  const limit = boundedLimit(config.limit);
-  const matching = [...(_a = context == null ? void 0 : context.rollups) != null ? _a : []].filter((rollup) => period === "all" || rollup.rollupPeriod === period).filter((rollup) => !metricFilter || periodMetrics(rollup, metricFilter).length > 0).sort((left, right) => rollupDateKey(right).localeCompare(rollupDateKey(left))).slice(0, limit);
+  const limit2 = boundedLimit(config.limit);
+  const matching = [...(_a = context == null ? void 0 : context.rollups) != null ? _a : []].filter((rollup) => period === "all" || rollup.rollupPeriod === period).filter((rollup) => !metricFilter || periodMetrics(rollup, metricFilter).length > 0).sort((left, right) => rollupDateKey(right).localeCompare(rollupDateKey(left))).slice(0, limit2);
   const header = appendElement(el, "header", void 0, "health-md-rollup-header");
   appendElement(header, "h2", "Roll-up explorer", "health-md-rollup-title");
   const summaryParts = [period === "all" ? "All periods" : period, `${matching.length} shown`];
@@ -23086,10 +23811,10 @@ var TIMELINE_DEFAULT_LIMIT = 24;
 var REASONS_DEFAULT_LIMIT = 20;
 var MAX_LIMIT2 = 100;
 var MAX_LABEL_LENGTH = 120;
-function appendElement2(host, tag, text, className) {
+function appendElement2(host, tag, text3, className) {
   const element = host.ownerDocument.createElement(tag);
   if (className) element.className = className;
-  if (text !== void 0) element.textContent = text;
+  if (text3 !== void 0) element.textContent = text3;
   host.appendChild(element);
   return element;
 }
@@ -23239,9 +23964,9 @@ function renderTimelineGroup(host, group, items) {
     const th = appendElement2(headerRow, "th", label);
     th.scope = "col";
   }
-  const body = appendElement2(table, "tbody");
+  const body2 = appendElement2(table, "tbody");
   for (const { day, event } of items) {
-    const row = appendElement2(body, "tr");
+    const row = appendElement2(body2, "tr");
     for (const value of [
       safeLabel(day.date, "\u2014"),
       eventMedicationName(event),
@@ -23257,9 +23982,9 @@ function renderTimelineGroup(host, group, items) {
 }
 var renderMedicationScheduleTimeline = (data, el, config) => {
   el.classList.add("health-md-med-schedule-timeline");
-  const limit = boundedLimit2(config.limit, TIMELINE_DEFAULT_LIMIT);
+  const limit2 = boundedLimit2(config.limit, TIMELINE_DEFAULT_LIMIT);
   const allEvents = allDoseEvents(data);
-  const events = allEvents.sort((left, right) => eventSortKey(right).localeCompare(eventSortKey(left))).slice(0, limit);
+  const events = allEvents.sort((left, right) => eventSortKey(right).localeCompare(eventSortKey(left))).slice(0, limit2);
   const header = appendElement2(el, "header", void 0, "health-md-med-timeline-header");
   appendElement2(header, "h2", "Medication schedule timeline", "health-md-med-timeline-title");
   appendElement2(
@@ -23322,9 +24047,9 @@ function countSkipReasons(data) {
 }
 var renderMedicationSkipReasons = (data, el, config) => {
   el.classList.add("health-md-med-skip-reasons");
-  const limit = boundedLimit2(config.limit, REASONS_DEFAULT_LIMIT);
+  const limit2 = boundedLimit2(config.limit, REASONS_DEFAULT_LIMIT);
   const allReasons = countSkipReasons(data);
-  const reasons = allReasons.slice(0, limit);
+  const reasons = allReasons.slice(0, limit2);
   const skippedCount = allReasons.reduce((sum, reason) => sum + reason.count, 0);
   const header = appendElement2(el, "header", void 0, "health-md-med-skip-reasons-header");
   appendElement2(header, "h2", "Medication skip reasons", "health-md-med-skip-reasons-title");
@@ -23513,13 +24238,13 @@ function renderAdherence(host, taken, skipped, other) {
   bar.createDiv({ cls: "health-md-med-stack-segment is-taken", attr: { style: `width:${pct(taken, total)}` } });
   bar.createDiv({ cls: "health-md-med-stack-segment is-skipped", attr: { style: `width:${pct(skipped, total)}` } });
   bar.createDiv({ cls: "health-md-med-stack-segment is-other", attr: { style: `width:${pct(other, total)}` } });
-  const legend = section.createDiv({ cls: "health-md-med-legend" });
+  const legend2 = section.createDiv({ cls: "health-md-med-legend" });
   [
     { label: "Taken", value: taken, kind: "taken" },
     { label: "Skipped", value: skipped, kind: "skipped" },
     ...other > 0 ? [{ label: "Other", value: other, kind: "other" }] : []
   ].forEach((item) => {
-    const el = legend.createSpan({ cls: `health-md-med-legend-item ${statusClass2(item.kind)}` });
+    const el = legend2.createSpan({ cls: `health-md-med-legend-item ${statusClass2(item.kind)}` });
     el.createSpan({ cls: "health-md-med-legend-swatch" });
     el.appendChild(activeDocument.createTextNode(`${item.label}: ${item.value}`));
   });
@@ -23590,12 +24315,12 @@ function renderTrend(host, days, config) {
 }
 function renderRecentEvents(host, days, latestDetails, config) {
   var _a;
-  const limit = parsePositiveInt((_a = config.limit) != null ? _a : config.recent, 12);
+  const limit2 = parsePositiveInt((_a = config.limit) != null ? _a : config.recent, 12);
   const events = days.flatMap((day) => {
     const summary = getMedicationDaySummary(day);
-    const details = summary.details.length ? summary.details : latestDetails;
-    return summary.doseEvents.map((event) => ({ day, event, details }));
-  }).sort((a, b) => medicationEventTimestamp(b.event).localeCompare(medicationEventTimestamp(a.event))).slice(0, limit);
+    const details2 = summary.details.length ? summary.details : latestDetails;
+    return summary.doseEvents.map((event) => ({ day, event, details: details2 }));
+  }).sort((a, b) => medicationEventTimestamp(b.event).localeCompare(medicationEventTimestamp(a.event))).slice(0, limit2);
   const section = host.createDiv({ cls: "health-md-med-section" });
   section.createEl("h4", { cls: "health-md-med-section-title", text: "Recent dose events" });
   if (!events.length) {
@@ -23608,10 +24333,10 @@ function renderRecentEvents(host, days, latestDetails, config) {
   const headerRow = thead.createEl("tr");
   ["Medication", "Status", "Time", "Dose", "Schedule"].forEach((heading) => headerRow.createEl("th", { text: heading }));
   const tbody = table.createEl("tbody");
-  events.forEach(({ event, details }) => {
+  events.forEach(({ event, details: details2 }) => {
     var _a2, _b;
     const tr = tbody.createEl("tr");
-    tr.createEl("td", { text: doseEventMedicationName(event, details) });
+    tr.createEl("td", { text: doseEventMedicationName(event, details2) });
     const statusCell = tr.createEl("td");
     addStatusBadge(statusCell, event.status);
     tr.createEl("td", { text: formatDateTime(medicationEventTimestamp(event)) });
@@ -23695,6 +24420,10 @@ var renderMedicationOverview = (data, el, config, _theme) => {
 
 // src/visualizations/index.ts
 var VISUALIZATIONS = {
+  "whoop-recovery-strain": renderWhoopRecoveryStrain,
+  "whoop-sleep-need": renderWhoopSleepNeed,
+  "whoop-sleep-trends": renderWhoopSleepTrends,
+  "whoop-workout-strain": renderWhoopWorkoutStrain,
   "heart-terrain": renderHeartTerrain,
   "sleep-polar": renderSleepPolar,
   "step-spiral": renderStepSpiral,
@@ -24309,9 +25038,9 @@ function sliceBoundaryDay(d, fromMs, toMs) {
   if (medicationEvents) {
     const slicedEvents = medicationEvents.filter((event) => {
       var _a2, _b2, _c, _d, _e;
-      const timestamp = (_e = (_d = (_c = (_b2 = (_a2 = event.scheduledDate) != null ? _a2 : event.scheduled_date) != null ? _b2 : event.startDate) != null ? _c : event.start_date) != null ? _d : event.endDate) != null ? _e : event.end_date;
-      if (!timestamp) return true;
-      const ms = Date.parse(timestamp);
+      const timestamp2 = (_e = (_d = (_c = (_b2 = (_a2 = event.scheduledDate) != null ? _a2 : event.scheduled_date) != null ? _b2 : event.startDate) != null ? _c : event.start_date) != null ? _d : event.endDate) != null ? _e : event.end_date;
+      if (!timestamp2) return true;
+      const ms = Date.parse(timestamp2);
       if (Number.isNaN(ms)) return true;
       if (fromMs !== void 0 && ms < fromMs) return false;
       if (toMs !== void 0 && ms > toMs) return false;
@@ -24394,9 +25123,9 @@ function renderTooltipContent(tooltipEl, region) {
     cls: "health-md-tooltip-title",
     text: region.title
   });
-  const body = tooltipEl.createDiv({ cls: "health-md-tooltip-details" });
+  const body2 = tooltipEl.createDiv({ cls: "health-md-tooltip-details" });
   region.details.forEach(({ label, value }) => {
-    const row = body.createDiv({ cls: "health-md-tooltip-row" });
+    const row = body2.createDiv({ cls: "health-md-tooltip-row" });
     row.createSpan({ cls: "health-md-tooltip-label", text: label });
     row.createSpan({ cls: "health-md-tooltip-value", text: value });
   });
@@ -24838,6 +25567,10 @@ var ALL_DAILY_EXPORT_SOURCES = [
 ];
 var SAMPLE_NOTE = "Needs granular sample rows \u2014 daily JSON and CSV exports include them; Markdown/Bases frontmatter does not.";
 var EXPORT_SOURCES_BY_TYPE = {
+  "whoop-recovery-strain": [...ALL_DAILY_EXPORT_SOURCES],
+  "whoop-sleep-need": ["daily-json", "daily-csv"],
+  "whoop-sleep-trends": [...ALL_DAILY_EXPORT_SOURCES],
+  "whoop-workout-strain": [...ALL_DAILY_EXPORT_SOURCES],
   // Sample-level charts: JSON always, CSV with sample rows, no Markdown.
   "heart-terrain": ["daily-json", "daily-csv"],
   "oxygen-river": ["daily-json", "daily-csv"],
@@ -24865,6 +25598,10 @@ var EXPORT_SOURCES_BY_TYPE = {
   "rollup-explorer": ["rollups"]
 };
 var EXPORT_NOTES_BY_TYPE = {
+  "whoop-recovery-strain": "Apple v8 typed WHOOP v1 or CSV records join by cycle ID. Markdown/Bases support only unambiguous single-record projections. Same-cycle association, not a causal recommendation.",
+  "whoop-sleep-need": "Full sleep-need components require Apple v8 WHOOP JSON or structured CSV records. Each sleep/nap is separate; missing components are not zero and nap adjustment keeps its negative sign.",
+  "whoop-sleep-trends": "WHOOP-reported performance, consistency and efficiency percentages. JSON/CSV retain sessions and naps; Markdown/Bases contain only single-record projections with no nap identity.",
+  "whoop-workout-strain": "WHOOP strain and reported zones 0\u20135, separate from Apple-derived zones. Markdown/Bases show single-workout strain only, without zone durations. Android native Raw API Snapshots and provider sidecars are not parsed by these charts.",
   "heart-terrain": SAMPLE_NOTE,
   "oxygen-river": SAMPLE_NOTE,
   "breathing-wave": SAMPLE_NOTE,
@@ -24879,6 +25616,11 @@ var EXPORT_NOTES_BY_TYPE = {
   "rollup-explorer": "Reads Health/Rollups/ historical weekly/monthly/yearly roll-ups and v9 range summaries in every format."
 };
 var VISUALIZATION_CATEGORIES = [
+  {
+    id: "whoop",
+    label: "WHOOP",
+    description: "Provider-specific recovery, strain, sleep need, sleep assessments, and workout zones."
+  },
   {
     id: "all",
     label: "All visualizations",
@@ -25021,7 +25763,49 @@ var WORKOUT_TREND_METRICS = [
   { value: "hr_avg", label: "Average heart rate" },
   { value: "power_avg", label: "Average power" }
 ];
+var WHOOP_SLEEP_PARAMS = [
+  { kind: "select", key: "sleep", label: "Sleep sessions", desc: "Show all sessions, identified main sleeps, or identified naps. Flat projections lack nap identity and appear only with all.", options: [{ value: "all", label: "All sessions" }, { value: "main", label: "Main sleep only" }, { value: "naps", label: "Naps only" }], defaultValue: "all" }
+];
 var BASE_VISUALIZATION_CATALOG = [
+  {
+    type: "whoop-recovery-strain",
+    label: "WHOOP recovery \xD7 strain",
+    category: "whoop",
+    description: "Scatterplot of recovery (0\u2013100%) versus strain (0\u201321) for the same WHOOP physiological cycle. No Apple/Health Connect values are merged.",
+    defaultLast: 30,
+    defaultHeight: 280,
+    params: [{ kind: "text", key: "limit", label: "Maximum pairs", desc: "Show the latest same-cycle pairs, up to 10000.", defaultValue: "2000", validation: "positive-integer" }]
+  },
+  {
+    type: "whoop-sleep-need",
+    label: "WHOOP sleep achieved vs need",
+    category: "whoop",
+    description: "Per-session achieved sleep beside baseline, debt and recent-strain need, with a signed subtractive nap adjustment and net-need marker.",
+    defaultLast: 30,
+    defaultHeight: 300,
+    params: [...WHOOP_SLEEP_PARAMS, { kind: "text", key: "limit", label: "Maximum sessions", desc: "Show the latest sessions, up to 365. Records are never summed into daily sleep.", defaultValue: "30", validation: "positive-integer" }]
+  },
+  {
+    type: "whoop-sleep-trends",
+    label: "WHOOP sleep assessment trends",
+    category: "whoop",
+    description: "Provider-reported performance, consistency and efficiency percentages, with gaps for missing or unscored sessions.",
+    defaultLast: 60,
+    defaultHeight: 260,
+    params: [...WHOOP_SLEEP_PARAMS, { kind: "text", key: "limit", label: "Maximum sessions", desc: "Show the latest sessions, up to 2000.", defaultValue: "180", validation: "positive-integer" }]
+  },
+  {
+    type: "whoop-workout-strain",
+    label: "WHOOP workout strain & zones",
+    category: "whoop",
+    description: "Individual workout strain bars and WHOOP-reported six-zone duration shares, with recording coverage and elapsed-time context.",
+    defaultLast: 30,
+    defaultHeight: 360,
+    params: [
+      { kind: "text", key: "limit", label: "Maximum workouts", desc: "Show the latest workouts, up to 50. Strain is not additive.", defaultValue: "12", validation: "positive-integer" },
+      { kind: "text", key: "date", label: "Workout date", desc: "Optional owner day in YYYY-MM-DD format.", optional: true, validation: "date" }
+    ]
+  },
   {
     type: "intro-stats",
     label: "Intro stats",
@@ -26023,14 +26807,14 @@ var VisualizationTypeModal = class extends import_obsidian3.SuggestModal {
     const scoped = this.categoryId === "all" ? VISUALIZATION_CATALOG : VISUALIZATION_CATALOG.filter((item) => item.category === this.categoryId);
     if (!q) return scoped;
     return scoped.filter((item) => {
-      const text = [
+      const text3 = [
         item.type,
         item.label,
         item.description,
         categoryLabel2(item.category),
         ...item.params.map(paramSearchText)
       ].join(" ").toLowerCase();
-      return text.includes(q);
+      return text3.includes(q);
     });
   }
   renderSuggestion(item, el) {
@@ -26101,27 +26885,27 @@ var VisualizationConfigModal = class extends import_obsidian3.Modal {
       })
     );
     lastDaysSetting = new import_obsidian3.Setting(contentEl).setName("Last days").setDesc("Number of calendar days to include.").addText(
-      (text) => text.setPlaceholder(String(this.option.defaultLast)).setValue(this.lastDays).onChange((value) => {
+      (text3) => text3.setPlaceholder(String(this.option.defaultLast)).setValue(this.lastDays).onChange((value) => {
         this.lastDays = value;
       })
     );
     toDateSetting = new import_obsidian3.Setting(contentEl).setName("Anchor to date").setDesc("Optional end date/datetime. Leave blank to end today.").addText(
-      (text) => text.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.toDate).onChange((value) => {
+      (text3) => text3.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.toDate).onChange((value) => {
         this.toDate = value;
       })
     );
     singleDateSetting = new import_obsidian3.Setting(contentEl).setName("Day").setDesc("Date to use for both from and to.").addText(
-      (text) => text.setPlaceholder(DATE_PLACEHOLDER).setValue(this.singleDate).onChange((value) => {
+      (text3) => text3.setPlaceholder(DATE_PLACEHOLDER).setValue(this.singleDate).onChange((value) => {
         this.singleDate = value;
       })
     );
     fromDateSetting = new import_obsidian3.Setting(contentEl).setName("From").setDesc("Inclusive start date or datetime.").addText(
-      (text) => text.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.fromDate).onChange((value) => {
+      (text3) => text3.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.fromDate).onChange((value) => {
         this.fromDate = value;
       })
     );
     customToDateSetting = new import_obsidian3.Setting(contentEl).setName("To").setDesc("Inclusive end date or datetime.").addText(
-      (text) => text.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.customToDate).onChange((value) => {
+      (text3) => text3.setPlaceholder(DATE_OR_DATETIME_PLACEHOLDER).setValue(this.customToDate).onChange((value) => {
         this.customToDate = value;
       })
     );
@@ -26136,12 +26920,12 @@ var VisualizationConfigModal = class extends import_obsidian3.Modal {
     }
     new import_obsidian3.Setting(contentEl).setName("Size").setHeading();
     new import_obsidian3.Setting(contentEl).setName("Height").setDesc("Optional render height in pixels. Clear to use the plugin default.").addText(
-      (text) => text.setPlaceholder(String(this.settings.defaultHeight)).setValue(this.height).onChange((value) => {
+      (text3) => text3.setPlaceholder(String(this.settings.defaultHeight)).setValue(this.height).onChange((value) => {
         this.height = value;
       })
     );
     new import_obsidian3.Setting(contentEl).setName("Width").setDesc("Optional maximum render width in pixels.").addText(
-      (text) => text.setPlaceholder(String(this.settings.defaultWidth)).setValue(this.width).onChange((value) => {
+      (text3) => text3.setPlaceholder(String(this.settings.defaultWidth)).setValue(this.width).onChange((value) => {
         this.width = value;
       })
     );
@@ -26172,9 +26956,9 @@ var VisualizationConfigModal = class extends import_obsidian3.Modal {
         );
       } else {
         new import_obsidian3.Setting(contentEl).setName(param.label).setDesc(param.desc).addText(
-          (text) => {
+          (text3) => {
             var _a, _b, _c;
-            return text.setPlaceholder((_b = (_a = param.placeholder) != null ? _a : param.defaultValue) != null ? _b : "").setValue(String((_c = this.paramValues[param.key]) != null ? _c : "")).onChange((value) => {
+            return text3.setPlaceholder((_b = (_a = param.placeholder) != null ? _a : param.defaultValue) != null ? _b : "").setValue(String((_c = this.paramValues[param.key]) != null ? _c : "")).onChange((value) => {
               this.paramValues[param.key] = value;
             });
           }
@@ -26324,8 +27108,8 @@ ${lines.join("\n")}
 // src/dashboard-note.ts
 var DASHBOARD_NOTE_PATH = "Health Dashboard.md";
 var CODE_FENCE = "```";
-function escapeTableCell(text) {
-  return text.replace(/\|/g, "\\|").replace(/\n/g, " ");
+function escapeTableCell(text3) {
+  return text3.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 function paramDefaultLabel(param) {
   if (param.kind === "toggle") return `\`${param.defaultValue ? "true" : "false"}\``;
@@ -26335,13 +27119,13 @@ function paramDefaultLabel(param) {
   return "*(optional)*";
 }
 function paramDescriptionCell(param) {
-  let text = param.desc;
+  let text3 = param.desc;
   if (param.kind === "select" && param.options.length > 0) {
     const values = param.options.map((option) => `\`${option.value}\``).join(", ");
-    text += ` One of: ${values}.`;
+    text3 += ` One of: ${values}.`;
   }
-  if (param.optional && !/\boptional\b/i.test(text)) text += " Optional.";
-  return escapeTableCell(text);
+  if (param.optional && !/\boptional\b/i.test(text3)) text3 += " Optional.";
+  return escapeTableCell(text3);
 }
 function buildExampleBlock(option) {
   const lines = [`type: ${option.type}`];
@@ -26460,9 +27244,9 @@ function parseCsvPreview(content) {
   }
   return { rows, truncatedRows, truncatedColumns };
 }
-function renderPre(container, text, language) {
+function renderPre(container, text3, language) {
   const pre = container.createEl("pre", { cls: `health-md-source-pre language-${language}` });
-  pre.createEl("code", { text, cls: `language-${language}` });
+  pre.createEl("code", { text: text3, cls: `language-${language}` });
 }
 var HealthMdSourceFileView = class extends import_obsidian4.FileView {
   constructor(leaf) {
@@ -26561,9 +27345,9 @@ var HealthMdSourceFileView = class extends import_obsidian4.FileView {
       }
     });
     if (content.length <= INLINE_RAW_MAX_BYTES) {
-      const details = root.createEl("details", { cls: "health-md-source-raw" });
-      details.createEl("summary", { text: "Raw CSV" });
-      renderPre(details, content, "csv");
+      const details2 = root.createEl("details", { cls: "health-md-source-raw" });
+      details2.createEl("summary", { text: "Raw CSV" });
+      renderPre(details2, content, "csv");
     } else {
       root.createDiv({
         cls: "health-md-source-warning",
@@ -26761,10 +27545,10 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
   }
 };
 var ConfirmModal = class extends import_obsidian5.Modal {
-  constructor(app, title, body, confirmLabel, onConfirm) {
+  constructor(app, title, body2, confirmLabel, onConfirm) {
     super(app);
     this.title = title;
-    this.body = body;
+    this.body = body2;
     this.confirmLabel = confirmLabel;
     this.onConfirm = onConfirm;
   }
@@ -26928,7 +27712,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
         desc: `Used when Data folder structure is Custom. Available variables: ${customTemplateVariables}. Example: {year}/{month}/{day}.`,
         render: (setting) => {
           setting.addText(
-            (text) => text.setPlaceholder(DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE).setValue(this.plugin.settings.dataFolderCustomPathTemplate).onChange(async (value) => {
+            (text3) => text3.setPlaceholder(DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE).setValue(this.plugin.settings.dataFolderCustomPathTemplate).onChange(async (value) => {
               await updateCustomPathTemplate(value);
             })
           );
@@ -26939,7 +27723,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
         desc: "Glob pattern to match file names or nested paths. Use * to include all supported files.",
         render: (setting) => {
           setting.addText(
-            (text) => text.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
+            (text3) => text3.setPlaceholder("*").setValue(this.plugin.settings.filePattern).onChange(async (value) => {
               this.plugin.settings.filePattern = value.trim();
               this.plugin.dataLoader.invalidate();
               await this.plugin.saveSettings();
@@ -26994,7 +27778,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
         desc: "Default canvas width in pixels",
         render: (setting) => {
           setting.addText(
-            (text) => text.setValue(String(this.plugin.settings.defaultWidth)).onChange(async (value) => {
+            (text3) => text3.setValue(String(this.plugin.settings.defaultWidth)).onChange(async (value) => {
               const num = parseInt(value, 10);
               if (!isNaN(num) && num > 0) {
                 this.plugin.settings.defaultWidth = num;
@@ -27009,7 +27793,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
         desc: "Default canvas height in pixels",
         render: (setting) => {
           setting.addText(
-            (text) => text.setValue(String(this.plugin.settings.defaultHeight)).onChange(async (value) => {
+            (text3) => text3.setValue(String(this.plugin.settings.defaultHeight)).onChange(async (value) => {
               const num = parseInt(value, 10);
               if (!isNaN(num) && num > 0) {
                 this.plugin.settings.defaultHeight = num;
@@ -27083,7 +27867,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
             desc: "Your max heart rate in beats per minute, used to draw heart-rate zone bands on workout charts. Leave blank to skip zone bands. A common estimate is 220 minus your age.",
             render: (setting) => {
               setting.addText(
-                (text) => text.setPlaceholder("190").setValue(
+                (text3) => text3.setPlaceholder("190").setValue(
                   this.plugin.settings.maxHeartRate != null ? String(this.plugin.settings.maxHeartRate) : ""
                 ).onChange(async (value) => {
                   const trimmed = value.trim();
@@ -27119,7 +27903,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
             desc: "Leaflet tile URL template. Replace with a different provider's URL if you have your own API key.",
             render: (setting) => {
               setting.addText(
-                (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl).setValue(this.plugin.settings.mapTileUrl).onChange(async (value) => {
+                (text3) => text3.setPlaceholder(DEFAULT_SETTINGS.mapTileUrl).setValue(this.plugin.settings.mapTileUrl).onChange(async (value) => {
                   this.plugin.settings.mapTileUrl = value.trim() || DEFAULT_SETTINGS.mapTileUrl;
                   await this.plugin.saveSettings();
                   this.plugin.redrawAll();
@@ -27132,7 +27916,7 @@ var HealthMdSettingTab = class extends import_obsidian5.PluginSettingTab {
             desc: "Attribution string shown on the map. Required by most tile providers.",
             render: (setting) => {
               setting.addText(
-                (text) => text.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution).setValue(this.plugin.settings.mapTileAttribution).onChange(async (value) => {
+                (text3) => text3.setPlaceholder(DEFAULT_SETTINGS.mapTileAttribution).setValue(this.plugin.settings.mapTileAttribution).onChange(async (value) => {
                   this.plugin.settings.mapTileAttribution = value.trim() || DEFAULT_SETTINGS.mapTileAttribution;
                   await this.plugin.saveSettings();
                   this.plugin.redrawAll();

@@ -1,5 +1,6 @@
 import type { HealthMdUnitMap, ParsedHealthMetricDataDictionary } from "./healthmd-schema";
 import type { UnitPreference, UnitSystem } from "./units";
+import type { WhoopDayData } from "./whoop-types";
 
 export type { UnitPreference, UnitSystem };
 
@@ -302,6 +303,8 @@ export interface HealthDay {
 	raw_capture_status?: RawCaptureStatus;
 	/** Provider-native daily sections introduced by Apple daily schema v8. */
 	providers?: Record<string, unknown>;
+	/** Reviewed WHOOP facts, isolated from canonical Apple/Health Connect summaries. */
+	whoop?: WhoopDayData;
 	/** Scalar daily summary values keyed by Health.md canonical metric key. */
 	canonicalMetrics?: Record<string, HealthMetricScalar>;
 	activity?: {

@@ -24,6 +24,7 @@ import {
 	stringArrayFromUnknown,
 } from "../mood-utils";
 import { hasMedicationData, normalizeMedicationFields } from "../medication-utils";
+import { parseWhoopFlat } from "../whoop-data";
 import { attachCanonicalMetrics, canonicalMetricsFromFlatRecord } from "../summary-metric-normalizer";
 
 interface ParsedFrontmatter {
@@ -1341,6 +1342,8 @@ export function parseMarkdown(
 	if (workouts.length) day.workouts = workouts;
 
 	Object.assign(day, normalizeMedicationFields(fm));
+	const whoop = parseWhoopFlat(fm);
+	if (whoop) day.whoop = whoop;
 
 	// --- Activity ---
 	// Bases keys: steps, active_calories, exercise_minutes, walking_running_km, vo2_max, etc.
@@ -1628,6 +1631,6 @@ export function parseMarkdown(
 
 	// Only return if we found at least some health data beyond just a date
 	const hasData =
-		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics;
+		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop;
 	return hasData ? day : null;
 }

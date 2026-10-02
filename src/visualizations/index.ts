@@ -8,6 +8,7 @@ import { renderVitalsRings } from "./vitals-rings";
 import { renderWalkingSymmetry } from "./walking-symmetry";
 import { renderSleepArchitecture } from "./sleep-architecture";
 import { renderHrvTrend } from "./hrv-trend";
+import { renderWhoopRecoveryStrain, renderWhoopSleepNeed, renderWhoopSleepTrends, renderWhoopWorkoutStrain } from "./whoop";
 import { renderActivityHeatmap } from "./activity-heatmap";
 import { renderSleepQualityBars } from "./sleep-quality-bars";
 import { renderWorkoutLog } from "./workout-log";
@@ -62,6 +63,10 @@ import {
 } from "./medication-overview";
 
 export const VISUALIZATIONS: Record<string, RenderFn> = {
+	"whoop-recovery-strain": renderWhoopRecoveryStrain,
+	"whoop-sleep-need": renderWhoopSleepNeed,
+	"whoop-sleep-trends": renderWhoopSleepTrends,
+	"whoop-workout-strain": renderWhoopWorkoutStrain,
 	"heart-terrain": renderHeartTerrain,
 	"sleep-polar": renderSleepPolar,
 	"step-spiral": renderStepSpiral,

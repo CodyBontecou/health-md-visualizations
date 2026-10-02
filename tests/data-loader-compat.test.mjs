@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -654,4 +654,61 @@ route_file: gone.route.json
 	assert.equal(workout.routePointCount, 900);
 	const report = loader.getLastLoadReport();
 	assert.ok(report.warnings.some((w) => w.includes("gone.route.json")));
+});
+
+async function loadWhoopVault(contents) {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const root = new TFolder("Health", Object.keys(contents).map((name) => new TFile(`Health/${name}`)));
+	root.children.forEach((file) => { file.parent = root; });
+	const index = new Map([[root.path, root], ...root.children.map((file) => [file.path, file])]);
+	const vault = {
+		getAbstractFileByPath(filePath) { return index.get(filePath) ?? null; },
+		async read(file) { return contents[file.name] ?? ""; },
+	};
+	return new DataLoader(vault, { dataFolder: "Health", filePattern: "*", dataFormat: "auto", dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" }).load();
+}
+
+const whoopFixture = (name) => readFile(path.join(process.cwd(), "tests/fixtures/schema-v8", name), "utf8");
+
+test("DataLoader retains the native WHOOP capture atomically across JSON, CSV and Bases duplicates", async () => {
+	const [json, csv, bases] = await Promise.all([whoopFixture("provider-day.json"), whoopFixture("provider-day.csv"), whoopFixture("provider-day-bases.md")]);
+	for (const contents of [
+		{ "a.json": json, "b.csv": csv, "c.md": bases },
+		{ "c.json": json, "b.csv": csv, "a.md": bases },
+	]) {
+		const [day] = await loadWhoopVault(contents);
+		assert.equal(day.whoop.source, "typed");
+		assert.equal(day.whoop.sleep.length, 1);
+		assert.equal(day.whoop.sleep[0].id, "202");
+		assert.equal(day.whoop.sleep[0].recent_nap_adjustment_milliseconds, -900000);
+		assert.equal(day.whoop.workouts.length, 1, "same event in three formats is not triple counted");
+		assert.equal(day.sourcePaths.length, 3);
+		assert.equal(day.canonicalMetrics.hrv_ms, undefined);
+	}
+});
+
+test("DataLoader does not resurrect flat WHOOP values after a newer complete-empty or not-requested native capture", async () => {
+	const [json, csv] = await Promise.all([whoopFixture("provider-day.json"), whoopFixture("provider-day.csv")]);
+	for (const capture_status of ["complete", "not_requested"]) {
+		const newer = JSON.parse(json);
+		Object.assign(newer.providers.whoop, {
+			capture_status, fetched_at: capture_status === "not_requested" ? null : "2026-03-16T00:00:00Z", cycles: [], recoveries: [], sleep: [], workouts: [], resources: [],
+		});
+		delete newer.providers.whoop.body;
+		const [day] = await loadWhoopVault({ "a-new.json": JSON.stringify(newer), "b-old.json": json, "c.csv": csv });
+		assert.equal(day.whoop.captureStatus, capture_status);
+		assert.equal(day.whoop.sleep.length, 0);
+		assert.equal(day.whoop.recoveries.length, 0);
+		assert.equal(day.whoop.workouts.length, 0);
+		assert.equal(day.providers.whoop.sleep.length, 0, "retained namespace agrees with selected native capture");
+	}
+});
+
+test("DataLoader preserves an unknown WHOOP native version without interpreting older CSV projections as that capture", async () => {
+	const [json, csv] = await Promise.all([whoopFixture("provider-day.json"), whoopFixture("provider-day.csv")]);
+	const future = JSON.parse(json);
+	future.providers.whoop.schema_version = 2;
+	const [day] = await loadWhoopVault({ "a.csv": csv, "b.json": JSON.stringify(future) });
+	assert.equal(day.providers.whoop.schema_version, 2);
+	assert.equal(day.whoop, undefined);
 });

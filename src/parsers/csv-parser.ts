@@ -9,6 +9,7 @@ import {
 } from "../healthmd-schema";
 import { isBlankCsvRecord, iterateCsvRecords } from "../csv-utils";
 import { normalizeMedicationFields } from "../medication-utils";
+import { parseWhoopCsv } from "../whoop-data";
 import {
 	HealthDay,
 	HealthMdCaptureSummary,
@@ -1103,6 +1104,8 @@ function buildDayFromRows(
 	if (workouts.length) day.workouts = workouts;
 
 	Object.assign(day, parseMedicationRows(rows));
+	const whoop = parseWhoopCsv(rows);
+	if (whoop) day.whoop = whoop;
 
 	// Mood / State of Mind
 	const moodSummary = createMoodSummary(parseMoodEntries(rows));

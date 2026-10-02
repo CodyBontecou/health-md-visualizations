@@ -110,6 +110,12 @@ muted: #9ca3af
 
 Supported appearance keys are `theme` (`auto`, `dark`, `light`), `colorScheme`/`palette` (`theme`, `default`, `ocean`, `forest`, `sunset`, `aurora`, `monochrome`), `background`/`bg`, `foreground`/`fg`, `muted`, `accent`, `secondary`, `heart`, `sleepDeep`, `sleepRem`, `sleepCore`, and `sleepAwake`.
 
+### WHOOP visualizations
+
+Apple daily v8 exports add four WHOOP-specific views: `whoop-recovery-strain`, `whoop-sleep-need`, `whoop-sleep-trends`, and `whoop-workout-strain`. Find them in the **WHOOP** insertion-wizard category or regenerate **Health Dashboard.md**. They preserve WHOOP identity, missingness, signed nap adjustments and provider-reported zones without merging values into Apple/Health Connect summaries.
+
+JSON and structured CSV supply the full event model. Markdown/Bases support limited single-record recovery, sleep-assessment and workout-strain projections; full sleep-need components and workout zones require JSON/CSV. Native sidecars, Android raw snapshots and roll-ups are not inputs to these views. See [WHOOP examples and options](examples/whoop-visualizations.md).
+
 ### Health.md schema compatibility
 
 The plugin supports legacy/unversioned Health.md daily exports as schema `v0` and all published `healthmd.health_data` versions through `schema_version: 8`. Versions 5, 6, and 7 remain valid historical files. A mixed vault can load v0 through v8 without relabeling older exports, while versions newer than v8 are reported as best-effort. Apple daily v8 provider-native sections such as `providers.whoop` are retained without folding them into canonical HealthKit summary metrics.

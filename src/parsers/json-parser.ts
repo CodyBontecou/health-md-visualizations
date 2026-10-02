@@ -14,6 +14,7 @@ import {
 } from "../json-utils";
 import { normalizeMedicationFields } from "../medication-utils";
 import { attachCanonicalMetrics } from "../summary-metric-normalizer";
+import { parseWhoopSection } from "../whoop-data";
 import { getMoodDaySummary } from "../mood-utils";
 import {
 	HealthDay,
@@ -330,6 +331,10 @@ export function parseJSON(content: string): HealthDay | null {
 		delete summaryRoot.diagnostics;
 		delete summaryRoot.medications;
 		const day = summaryRoot as unknown as HealthDay;
+		// Do not trust a consumer-only `whoop` root field in an export.
+		delete day.whoop;
+		const whoop = parseWhoopSection(isRecord(parsed.providers) ? parsed.providers.whoop : undefined);
+		if (whoop) day.whoop = whoop;
 		const schemaVersion = schemaVersionOf(parsed);
 		if (schemaVersion > 0) {
 			day.schemaVersion = schemaVersion;

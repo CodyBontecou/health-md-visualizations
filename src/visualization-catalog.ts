@@ -21,7 +21,8 @@ export type VisualizationCategoryId =
 	| "symptoms"
 	| "reproductive"
 	| "hearing"
-	| "data-quality";
+	| "data-quality"
+	| "whoop";
 
 export type CategoryFilterId = VisualizationCategoryId | "all";
 
@@ -133,6 +134,10 @@ const SAMPLE_NOTE =
  * Anything absent falls back to ALL_DAILY_EXPORT_SOURCES.
  */
 const EXPORT_SOURCES_BY_TYPE: Record<string, ExportSourceId[]> = {
+	"whoop-recovery-strain": [...ALL_DAILY_EXPORT_SOURCES],
+	"whoop-sleep-need": ["daily-json", "daily-csv"],
+	"whoop-sleep-trends": [...ALL_DAILY_EXPORT_SOURCES],
+	"whoop-workout-strain": [...ALL_DAILY_EXPORT_SOURCES],
 	// Sample-level charts: JSON always, CSV with sample rows, no Markdown.
 	"heart-terrain": ["daily-json", "daily-csv"],
 	"oxygen-river": ["daily-json", "daily-csv"],
@@ -161,6 +166,10 @@ const EXPORT_SOURCES_BY_TYPE: Record<string, ExportSourceId[]> = {
 };
 
 const EXPORT_NOTES_BY_TYPE: Record<string, string> = {
+	"whoop-recovery-strain": "Apple v8 typed WHOOP v1 or CSV records join by cycle ID. Markdown/Bases support only unambiguous single-record projections. Same-cycle association, not a causal recommendation.",
+	"whoop-sleep-need": "Full sleep-need components require Apple v8 WHOOP JSON or structured CSV records. Each sleep/nap is separate; missing components are not zero and nap adjustment keeps its negative sign.",
+	"whoop-sleep-trends": "WHOOP-reported performance, consistency and efficiency percentages. JSON/CSV retain sessions and naps; Markdown/Bases contain only single-record projections with no nap identity.",
+	"whoop-workout-strain": "WHOOP strain and reported zones 0–5, separate from Apple-derived zones. Markdown/Bases show single-workout strain only, without zone durations. Android native Raw API Snapshots and provider sidecars are not parsed by these charts.",
 	"heart-terrain": SAMPLE_NOTE,
 	"oxygen-river": SAMPLE_NOTE,
 	"breathing-wave": SAMPLE_NOTE,
@@ -196,6 +205,11 @@ export interface VisualizationOption {
 }
 
 export const VISUALIZATION_CATEGORIES: VisualizationCategory[] = [
+	{
+		id: "whoop",
+		label: "WHOOP",
+		description: "Provider-specific recovery, strain, sleep need, sleep assessments, and workout zones.",
+	},
 	{
 		id: "all",
 		label: "All visualizations",
@@ -347,7 +361,38 @@ const WORKOUT_TREND_METRICS: SelectOption[] = [
 	{ value: "power_avg", label: "Average power" },
 ];
 
+const WHOOP_SLEEP_PARAMS: ParamDefinition[] = [
+	{ kind: "select", key: "sleep", label: "Sleep sessions", desc: "Show all sessions, identified main sleeps, or identified naps. Flat projections lack nap identity and appear only with all.", options: [{ value: "all", label: "All sessions" }, { value: "main", label: "Main sleep only" }, { value: "naps", label: "Naps only" }], defaultValue: "all" },
+];
+
 const BASE_VISUALIZATION_CATALOG: VisualizationOption[] = [
+	{
+		type: "whoop-recovery-strain", label: "WHOOP recovery × strain", category: "whoop",
+		description: "Scatterplot of recovery (0–100%) versus strain (0–21) for the same WHOOP physiological cycle. No Apple/Health Connect values are merged.",
+		defaultLast: 30, defaultHeight: 280,
+		params: [{ kind: "text", key: "limit", label: "Maximum pairs", desc: "Show the latest same-cycle pairs, up to 10000.", defaultValue: "2000", validation: "positive-integer" }],
+	},
+	{
+		type: "whoop-sleep-need", label: "WHOOP sleep achieved vs need", category: "whoop",
+		description: "Per-session achieved sleep beside baseline, debt and recent-strain need, with a signed subtractive nap adjustment and net-need marker.",
+		defaultLast: 30, defaultHeight: 300,
+		params: [...WHOOP_SLEEP_PARAMS, { kind: "text", key: "limit", label: "Maximum sessions", desc: "Show the latest sessions, up to 365. Records are never summed into daily sleep.", defaultValue: "30", validation: "positive-integer" }],
+	},
+	{
+		type: "whoop-sleep-trends", label: "WHOOP sleep assessment trends", category: "whoop",
+		description: "Provider-reported performance, consistency and efficiency percentages, with gaps for missing or unscored sessions.",
+		defaultLast: 60, defaultHeight: 260,
+		params: [...WHOOP_SLEEP_PARAMS, { kind: "text", key: "limit", label: "Maximum sessions", desc: "Show the latest sessions, up to 2000.", defaultValue: "180", validation: "positive-integer" }],
+	},
+	{
+		type: "whoop-workout-strain", label: "WHOOP workout strain & zones", category: "whoop",
+		description: "Individual workout strain bars and WHOOP-reported six-zone duration shares, with recording coverage and elapsed-time context.",
+		defaultLast: 30, defaultHeight: 360,
+		params: [
+			{ kind: "text", key: "limit", label: "Maximum workouts", desc: "Show the latest workouts, up to 50. Strain is not additive.", defaultValue: "12", validation: "positive-integer" },
+			{ kind: "text", key: "date", label: "Workout date", desc: "Optional owner day in YYYY-MM-DD format.", optional: true, validation: "date" },
+		],
+	},
 	{
 		type: "intro-stats",
 		label: "Intro stats",
