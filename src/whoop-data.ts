@@ -33,6 +33,7 @@ function common(raw: Record<string, unknown>): Record<string, unknown> {
 }
 function cycle(raw: Record<string, unknown>): WhoopCycle {
 	return { ...common(raw), ...defined({
+		step_count: number(raw.step_count, 0, 2_147_483_647, true),
 		strain_score: number(raw.strain_score, 0, 21), energy_kilojoules: number(raw.energy_kilojoules),
 		average_heart_rate_bpm: bpm(raw.average_heart_rate_bpm), max_heart_rate_bpm: bpm(raw.max_heart_rate_bpm),
 	}) };
@@ -117,7 +118,7 @@ function validRecord(key: Collection, raw: Record<string, unknown>): boolean {
 	if (!timestamp(raw.end_time) || Date.parse(String(raw.end_time)) < Date.parse(String(raw.start_time))) return false;
 	return key === "sleep" ? !!text(raw.cycle_id) && typeof raw.is_nap === "boolean" : !!text(raw.sport_name, 128);
 }
-function setRecords(result: WhoopDayData, key: Collection, values: unknown[]): void {
+function setRecords(result: WhoopDayData, key: Collection, values: unknown[], cycleSteps = true): void {
 	const mapped: Array<WhoopRecord & { cycle_id?: string }> = [];
 	for (const value of values.slice(0, 10_000)) {
 		const raw = object(value);
@@ -125,7 +126,7 @@ function setRecords(result: WhoopDayData, key: Collection, values: unknown[]): v
 			result.notes.push(`Invalid WHOOP ${key} record omitted.`);
 			continue;
 		}
-		mapped.push(MAPPERS[key](raw));
+		mapped.push(key === "cycles" && !cycleSteps ? cycle({ ...raw, step_count: undefined }) : MAPPERS[key](raw));
 	}
 	mapped.sort((a, b) => (a.start_time ?? "").localeCompare(b.start_time ?? "") || (a.id ?? a.cycle_id ?? "").localeCompare(b.id ?? b.cycle_id ?? ""));
 	Object.assign(result, { [key]: mapped });
@@ -144,12 +145,12 @@ function finalize(result: WhoopDayData): WhoopDayData {
 /** Accept only the reviewed independently-versioned typed model; unknown versions remain in providers. */
 export function parseWhoopSection(value: unknown): WhoopDayData | undefined {
 	const raw = object(value);
-	if (!raw || raw.schema !== "healthmd.provider.whoop_daily" || raw.schema_version !== 1 || !capture(raw.capture_status)) return undefined;
+	if (!raw || raw.schema !== "healthmd.provider.whoop_daily" || (raw.schema_version !== 1 && raw.schema_version !== 2) || !capture(raw.capture_status)) return undefined;
 	const result = empty("typed", capture(raw.capture_status));
 	if (result.captureStatus === "not_requested") return result;
 	result.fetchedAt = timestamp(raw.fetched_at);
 	for (const key of Object.keys(MAPPERS) as Collection[]) {
-		if (Array.isArray(raw[key])) setRecords(result, key, raw[key]);
+		if (Array.isArray(raw[key])) setRecords(result, key, raw[key], raw.schema_version === 2);
 		else result.notes.push(`WHOOP ${key} collection unavailable.`);
 	}
 	if (Array.isArray(raw.resources)) result.resources = raw.resources.map(resource).filter((row): row is WhoopResource => !!row);
@@ -159,9 +160,10 @@ export function parseWhoopSection(value: unknown): WhoopDayData | undefined {
 	return finalize(result);
 }
 
-// Explicit labels from the production v8 flat projection; never guess unprefixed canonical aliases.
+// Explicit v8/v10 flat labels; never guess unprefixed canonical or daily-step aliases.
 const FLAT_FIELDS: Array<[string, Collection | "body", string, string, string]> = [
 	["whoop_cycle_strain_score", "cycles", "strain_score", "WHOOP Cycle", "Cycle Strain Score"],
+	["whoop_cycle_step_count", "cycles", "step_count", "WHOOP Cycle", "Physiological-Cycle Steps"],
 	["whoop_cycle_energy_kilojoules", "cycles", "energy_kilojoules", "WHOOP Cycle", "Cycle Energy"],
 	["whoop_cycle_average_heart_rate_bpm", "cycles", "average_heart_rate_bpm", "WHOOP Cycle", "Cycle Average Heart Rate"],
 	["whoop_cycle_max_heart_rate_bpm", "cycles", "max_heart_rate_bpm", "WHOOP Cycle", "Cycle Maximum Heart Rate"],

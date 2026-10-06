@@ -1144,7 +1144,39 @@ test("Markdown parser reads granular Health.md tables and derives aggregates", a
 	assert.equal(day.vitals?.respiratoryRateAvg, 15);
 });
 
-test("canonical daily schema v8 provider fixtures are current and accepted in every format", async () => {
+test("native Apple v10 WHOOP v2 fixtures retain cycle steps in every format", async () => {
+	const { parseJSON, parseCSV, parseMarkdown, detectJsonSchema, detectCsvSchema } = await loadParsers();
+	const content = await Promise.all(["provider-day.json", "provider-day.csv", "provider-day-bases.md", "provider-day.md"]
+		.map((name) => readFile(path.join(process.cwd(), "tests/fixtures/schema-v10", name), "utf8")));
+	const days = [parseJSON(content[0]), parseCSV(content[1])[0], parseMarkdown(content[2]), parseMarkdown(content[3])];
+	for (const day of days) {
+		assert.equal(day.whoop.cycles[0].step_count, 8234);
+		assert.equal(day.activity.steps, 1);
+	}
+	for (const schema of [detectJsonSchema(content[0]), detectCsvSchema(content[1])]) {
+		assert.equal(schema.version, 10);
+		assert.equal(schema.isFutureVersion, false);
+	}
+});
+
+test("native range v10 fixtures require daily v10 provenance and retain rules v8", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const contents = await Promise.all(["range-v10.json", "range-v10.csv", "range-v10.md", "range-v10-bases.md"]
+		.map((name) => readFile(path.join(process.cwd(), "tests/fixtures/rollup-summary-v10", name), "utf8")));
+	const parsed = [parseRollupJSON(contents[0]), parseRollupCSV(contents[1]),
+		parseRollupMarkdown(contents[2]), parseRollupMarkdown(contents[3])];
+	for (const rollup of parsed) {
+		assert.ok(rollup);
+		assert.equal(rollup.schemaVersion, 10);
+		assert.equal(rollup.sourceSchemaVersion, 10);
+		assert.equal(rollup.rollupRulesVersion, 8);
+		assert.equal(rollup.calendarTimezone, "UTC");
+	}
+	const wrong = JSON.parse(contents[0]); wrong.source_schema_version = 8;
+	assert.equal(parseRollupJSON(JSON.stringify(wrong)), null);
+});
+
+test("frozen daily schema v8 provider fixtures remain accepted in every format", async () => {
 	const {
 		parseJSON,
 		parseCSV,
@@ -1169,7 +1201,7 @@ test("canonical daily schema v8 provider fixtures are current and accepted in ev
 		assert.equal(createHash("sha256").update(content).digest("hex"), expectedHash, `${name} byte identity`);
 	}
 
-	assert.equal(SUPPORTED_HEALTHMD_SCHEMA_VERSION, 8);
+	assert.equal(SUPPORTED_HEALTHMD_SCHEMA_VERSION, 10);
 	assert.equal(detectJsonSchema({ schema: "healthmd.health_data", schema_version: 9 }).isFutureVersion, true);
 	assert.deepEqual(
 		[detectJsonSchema(jsonContent), detectCsvSchema(csvContent)].map(({ kind, version, isFutureVersion }) => ({ kind, version, isFutureVersion })),

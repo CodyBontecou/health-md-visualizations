@@ -9951,8 +9951,8 @@ var HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
 var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
 var HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
-var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 8;
-var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 9;
+var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 10;
+var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 10;
 var SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 function schemaVersionOf(value) {
   var _a;
@@ -9982,7 +9982,7 @@ function detectKnownSchema(format, schema, version) {
       version,
       format,
       schema,
-      isFutureVersion: version > SUPPORTED_HEALTHMD_SCHEMA_VERSION
+      isFutureVersion: version === 9 || version > SUPPORTED_HEALTHMD_SCHEMA_VERSION
     };
   }
   if (schema === HEALTHMD_ROLLUP_SCHEMA) {
@@ -11218,6 +11218,7 @@ function common(raw) {
 }
 function cycle(raw) {
   return { ...common(raw), ...defined({
+    step_count: number(raw.step_count, 0, 2147483647, true),
     strain_score: number(raw.strain_score, 0, 21),
     energy_kilojoules: number(raw.energy_kilojoules),
     average_heart_rate_bpm: bpm(raw.average_heart_rate_bpm),
@@ -11320,7 +11321,7 @@ function validRecord(key, raw) {
   if (!timestamp(raw.end_time) || Date.parse(String(raw.end_time)) < Date.parse(String(raw.start_time))) return false;
   return key === "sleep" ? !!text(raw.cycle_id) && typeof raw.is_nap === "boolean" : !!text(raw.sport_name, 128);
 }
-function setRecords(result, key, values) {
+function setRecords(result, key, values, cycleSteps = true) {
   const mapped = [];
   for (const value of values.slice(0, 1e4)) {
     const raw = object(value);
@@ -11328,7 +11329,7 @@ function setRecords(result, key, values) {
       result.notes.push(`Invalid WHOOP ${key} record omitted.`);
       continue;
     }
-    mapped.push(MAPPERS[key](raw));
+    mapped.push(key === "cycles" && !cycleSteps ? cycle({ ...raw, step_count: void 0 }) : MAPPERS[key](raw));
   }
   mapped.sort((a, b) => {
     var _a, _b, _c, _d, _e, _f;
@@ -11348,12 +11349,12 @@ function finalize(result) {
 }
 function parseWhoopSection(value) {
   const raw = object(value);
-  if (!raw || raw.schema !== "healthmd.provider.whoop_daily" || raw.schema_version !== 1 || !capture(raw.capture_status)) return void 0;
+  if (!raw || raw.schema !== "healthmd.provider.whoop_daily" || raw.schema_version !== 1 && raw.schema_version !== 2 || !capture(raw.capture_status)) return void 0;
   const result = empty("typed", capture(raw.capture_status));
   if (result.captureStatus === "not_requested") return result;
   result.fetchedAt = timestamp(raw.fetched_at);
   for (const key of Object.keys(MAPPERS)) {
-    if (Array.isArray(raw[key])) setRecords(result, key, raw[key]);
+    if (Array.isArray(raw[key])) setRecords(result, key, raw[key], raw.schema_version === 2);
     else result.notes.push(`WHOOP ${key} collection unavailable.`);
   }
   if (Array.isArray(raw.resources)) result.resources = raw.resources.map(resource).filter((row) => !!row);
@@ -11364,6 +11365,7 @@ function parseWhoopSection(value) {
 }
 var FLAT_FIELDS = [
   ["whoop_cycle_strain_score", "cycles", "strain_score", "WHOOP Cycle", "Cycle Strain Score"],
+  ["whoop_cycle_step_count", "cycles", "step_count", "WHOOP Cycle", "Physiological-Cycle Steps"],
   ["whoop_cycle_energy_kilojoules", "cycles", "energy_kilojoules", "WHOOP Cycle", "Cycle Energy"],
   ["whoop_cycle_average_heart_rate_bpm", "cycles", "average_heart_rate_bpm", "WHOOP Cycle", "Cycle Average Heart Rate"],
   ["whoop_cycle_max_heart_rate_bpm", "cycles", "max_heart_rate_bpm", "WHOOP Cycle", "Cycle Maximum Heart Rate"],
@@ -14337,7 +14339,8 @@ function normalizePeriod(value) {
   return period && SUPPORTED_ROLLUP_PERIODS.has(period) ? period : void 0;
 }
 function isValidVersionPeriod(version, period) {
-  if (!Number.isInteger(version) || version < 0 || version > 9) return false;
+  if (!Number.isInteger(version) || version < 0 || version > 10) return false;
+  if (version === 10) return SUPPORTED_ROLLUP_PERIODS.has(period);
   if (version === 9) return period === "range";
   if (version === 0) return CALENDAR_ROLLUP_PERIODS.has(period);
   return version <= 8 && CALENDAR_ROLLUP_PERIODS.has(period);
@@ -14569,7 +14572,7 @@ function buildRollupSummary(record) {
     parsedGeneratedAt,
     parsedSourceDates
   ];
-  if (contractValues.some((parsed) => !parsed.valid) || schemaVersion === 9 && !parsedCalendarTimezone.value) return null;
+  if (contractValues.some((parsed) => !parsed.valid) || (schemaVersion === 9 || schemaVersion === 10 && rollupPeriod === "range") && !parsedCalendarTimezone.value) return null;
   const calendarTimezone = parsedCalendarTimezone.value;
   const daysExpected = parsedDaysExpected.value;
   const daysCounted = parsedDaysCounted.value;
@@ -14577,7 +14580,7 @@ function buildRollupSummary(record) {
   const sourceSchema = parsedSourceSchema.value;
   const sourceSchemaVersion = parsedSourceSchemaVersion.value;
   const rollupRulesVersion = parsedRollupRulesVersion.value;
-  if (schemaVersion === 9 && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== V9_SOURCE_SCHEMA_VERSION || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10) && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
   const generatedAt = parsedGeneratedAt.value;
   const sourceDates = parsedSourceDates.value;
   return {
@@ -14780,14 +14783,14 @@ function parseRollupCSV(content) {
   const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
   if (schemaVersionIndex >= 0 && parsedSchemaVersion === void 0) return null;
   const schemaVersion = parsedSchemaVersion != null ? parsedSchemaVersion : 0;
-  if (schemaVersion === 9 && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10) && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
   if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
   const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
-  if (schemaVersion === 9 && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10) && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
   const sourceSchema = csvValue(firstRow, sourceSchemaIndex);
   const sourceSchemaVersion = numberValue2(csvValue(firstRow, sourceSchemaVersionIndex));
   const rollupRulesVersion = numberValue2(csvValue(firstRow, rollupRulesVersionIndex));
-  if (schemaVersion === 9 && (sourceSchemaIndex < 0 || sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersionIndex < 0 || sourceSchemaVersion !== V9_SOURCE_SCHEMA_VERSION || rollupRulesVersionIndex < 0 || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10) && (sourceSchemaIndex < 0 || sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersionIndex < 0 || sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersionIndex < 0 || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
   const periodId = csvValue(firstRow, periodIdIndex);
   const startDate = csvValue(firstRow, startDateIndex);

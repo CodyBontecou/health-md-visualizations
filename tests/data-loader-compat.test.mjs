@@ -761,8 +761,8 @@ test("DataLoader does not resurrect flat WHOOP values after a newer complete-emp
 test("DataLoader preserves an unknown WHOOP native version without interpreting older CSV projections as that capture", async () => {
 	const [json, csv] = await Promise.all([whoopFixture("provider-day.json"), whoopFixture("provider-day.csv")]);
 	const future = JSON.parse(json);
-	future.providers.whoop.schema_version = 2;
+	future.providers.whoop.schema_version = 3;
 	const [day] = await loadWhoopVault({ "a.csv": csv, "b.json": JSON.stringify(future) });
-	assert.equal(day.providers.whoop.schema_version, 2);
+	assert.equal(day.providers.whoop.schema_version, 3);
 	assert.equal(day.whoop, undefined);
 });

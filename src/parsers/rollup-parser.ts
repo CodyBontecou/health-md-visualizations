@@ -53,7 +53,8 @@ function normalizePeriod(value: unknown): HealthRollupPeriod | undefined {
 }
 
 function isValidVersionPeriod(version: number, period: HealthRollupPeriod): boolean {
-	if (!Number.isInteger(version) || version < 0 || version > 9) return false;
+	if (!Number.isInteger(version) || version < 0 || version > 10) return false;
+	if (version === 10) return SUPPORTED_ROLLUP_PERIODS.has(period);
 	if (version === 9) return period === "range";
 	if (version === 0) return CALENDAR_ROLLUP_PERIODS.has(period); // Explicit legacy/unversioned behavior.
 	return version <= 8 && CALENDAR_ROLLUP_PERIODS.has(period);
@@ -339,7 +340,7 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 		parsedSourceDates,
 	];
 	if (contractValues.some((parsed) => !parsed.valid)
-		|| (schemaVersion === 9 && !parsedCalendarTimezone.value)) return null;
+		|| ((schemaVersion === 9 || (schemaVersion === 10 && rollupPeriod === "range")) && !parsedCalendarTimezone.value)) return null;
 	const calendarTimezone = parsedCalendarTimezone.value;
 	const daysExpected = parsedDaysExpected.value;
 	const daysCounted = parsedDaysCounted.value;
@@ -347,9 +348,9 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 	const sourceSchema = parsedSourceSchema.value;
 	const sourceSchemaVersion = parsedSourceSchemaVersion.value;
 	const rollupRulesVersion = parsedRollupRulesVersion.value;
-	if (schemaVersion === 9 && (
+	if ((schemaVersion === 9 || schemaVersion === 10) && (
 		sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA
-		|| sourceSchemaVersion !== V9_SOURCE_SCHEMA_VERSION
+		|| sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION)
 		|| rollupRulesVersion !== V9_ROLLUP_RULES_VERSION
 	)) return null;
 	const generatedAt = parsedGeneratedAt.value;
@@ -576,18 +577,18 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 	const schemaVersion = parsedSchemaVersion ?? 0;
 	// Historical CSVs are intentionally structural/unversioned. V9 introduced a
 	// declared contract and must carry its exact schema identity in every row.
-	if (schemaVersion === 9 && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
+	if ((schemaVersion === 9 || schemaVersion === 10) && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
 	if (schema !== undefined && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
 	const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
-	if (schemaVersion === 9 && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
+	if ((schemaVersion === 9 || schemaVersion === 10) && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
 	const sourceSchema = csvValue(firstRow, sourceSchemaIndex);
 	const sourceSchemaVersion = numberValue(csvValue(firstRow, sourceSchemaVersionIndex));
 	const rollupRulesVersion = numberValue(csvValue(firstRow, rollupRulesVersionIndex));
-	if (schemaVersion === 9 && (
+	if ((schemaVersion === 9 || schemaVersion === 10) && (
 		sourceSchemaIndex < 0
 		|| sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA
 		|| sourceSchemaVersionIndex < 0
-		|| sourceSchemaVersion !== V9_SOURCE_SCHEMA_VERSION
+		|| sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION)
 		|| rollupRulesVersionIndex < 0
 		|| rollupRulesVersion !== V9_ROLLUP_RULES_VERSION
 	)) return null;

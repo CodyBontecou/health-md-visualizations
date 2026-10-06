@@ -1,4 +1,4 @@
-/** Reviewed WHOOP v1 facts. Optional identity/timing is only used by flat-format projections. */
+/** Reviewed WHOOP v1/v2 facts. Optional identity/timing is only used by flat-format projections. */
 export interface WhoopRecord {
 	id?: string;
 	start_time?: string;
@@ -10,6 +10,8 @@ export interface WhoopRecord {
 }
 
 export interface WhoopCycle extends WhoopRecord {
+	/** Physiological-cycle count, not calendar-day steps. Missing is not zero. */
+	step_count?: number;
 	strain_score?: number;
 	energy_kilojoules?: number;
 	average_heart_rate_bpm?: number;

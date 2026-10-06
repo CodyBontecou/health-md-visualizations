@@ -77,6 +77,34 @@ const RENDERERS = {
 	"whoop-workout-strain": "renderWhoopWorkoutStrain",
 };
 
+test("v10 WHOOP v2 cycle counts preserve exact zero and missingness without a civil-day total", async () => {
+	const { parseJSON } = await loadModule();
+	const base = JSON.parse(await fixture("provider-day.json"));
+	base.schema_version = 10;
+	base.providers.whoop.schema_version = 2;
+	const cycle = base.providers.whoop.cycles[0];
+	const originalSteps = base.activity.steps;
+	for (const value of [0, 1, 2147483647]) {
+		cycle.step_count = value;
+		const day = parseJSON(JSON.stringify(base));
+		assert.equal(day.whoop.cycles[0].step_count, value);
+		assert.equal(day.activity.steps, originalSteps);
+	}
+	for (const value of [null, -1, 0.5, 2147483648, true, "0"]) {
+		cycle.step_count = value;
+		assert.equal(parseJSON(JSON.stringify(base)).whoop.cycles[0].step_count, undefined);
+	}
+	delete cycle.step_count;
+	assert.equal(parseJSON(JSON.stringify(base)).whoop.cycles[0].step_count, undefined);
+	cycle.step_count = 0;
+	base.providers.whoop.cycles.push({ ...cycle, id: "synthetic-second-cycle", step_count: 17 });
+	const repeated = parseJSON(JSON.stringify(base));
+	assert.deepEqual(repeated.whoop.cycles.map((item) => item.step_count), [0, 17]);
+	assert.equal(repeated.activity.steps, originalSteps);
+	base.providers.whoop.schema_version = 1;
+	assert.ok(parseJSON(JSON.stringify(base)).whoop.cycles.every((item) => item.step_count === undefined));
+});
+
 test("v8 JSON and CSV preserve full reviewed WHOOP events without populating canonical Apple fields", async () => {
 	const { parseJSON, parseCSV, whoopRecoveryPairs, whoopSleepNeed, whoopWorkoutZones } = await loadModule();
 	const json = parseJSON(await fixture("provider-day.json"));
@@ -153,10 +181,10 @@ test("missing, zero, unscored and out-of-range values remain distinct; unknown n
 	assert.deepEqual(whoopWorkoutZones({ zone_durations: { zone_zero_milliseconds: 0 } }), [{ index: 0, milliseconds: 0 }]);
 	assert.deepEqual(whoopWorkoutZones({ score_state: "UNSCORABLE", zone_durations: { zone_zero_milliseconds: 20 } }), []);
 	assert.equal(parseWhoopFlat({ whoop_sleep_efficiency_percent: "1" }).sleep[0].sleep_efficiency_percent, 1, "WHOOP percentage 1 is not multiplied by 100");
-	section.schema_version = 2;
+	section.schema_version = 3;
 	const future = parseJSON(JSON.stringify(raw));
 	assert.equal(future.whoop, undefined);
-	assert.equal(future.providers.whoop.schema_version, 2);
+	assert.equal(future.providers.whoop.schema_version, 3);
 });
 
 test("naps and repeated sleep/workout records survive CSV structured rows without flattening", async () => {
