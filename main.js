@@ -9873,7 +9873,7 @@ var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
 var HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
 var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 11;
-var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 10;
+var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 11;
 var SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 function schemaVersionOf(value) {
   var _a;
@@ -14482,7 +14482,8 @@ function normalizePeriod(value) {
   return period && SUPPORTED_ROLLUP_PERIODS.has(period) ? period : void 0;
 }
 function isValidVersionPeriod(version, period) {
-  if (!Number.isInteger(version) || version < 0 || version > 10) return false;
+  if (!Number.isInteger(version) || version < 0 || version > 11) return false;
+  if (version === 11) return period === "range";
   if (version === 10) return SUPPORTED_ROLLUP_PERIODS.has(period);
   if (version === 9) return period === "range";
   if (version === 0) return CALENDAR_ROLLUP_PERIODS.has(period);
@@ -14677,6 +14678,27 @@ function normalizeMetrics(record2) {
   }
   return Object.keys(result).length ? result : void 0;
 }
+function sleepRangeAuthority(record2, calendar) {
+  const profile = readAliasedValue(record2, ["schema_profile", "schemaProfile"], nonBlankString);
+  const source = readAliasedValue(record2, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
+  if (!profile.valid || profile.value !== "apple-rollup-v11" || !source.valid || source.value !== "apple-v11") return null;
+  const clock = readSleepAuthority({
+    schema: HEALTHMD_HEALTH_DATA_SCHEMA,
+    schema_version: 11,
+    schema_profile: "apple-v11",
+    time_context: record2.time_context,
+    timeContext: record2.timeContext
+  });
+  if (!(clock == null ? void 0 : clock.context) || clock.context.calendar_timezone !== calendar) return null;
+  return {
+    schemaProfile: profile.value,
+    schema_profile: profile.value,
+    sourceSchemaProfile: source.value,
+    source_schema_profile: source.value,
+    timeContext: clock.context,
+    time_context: clock.context
+  };
+}
 function buildRollupSummary(record2) {
   const schemaIdentity = validateIdentityField(record2, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
   const typeIdentity = validateIdentityField(record2, ["type", "Type"], "health_rollup");
@@ -14723,10 +14745,13 @@ function buildRollupSummary(record2) {
   const sourceSchema = parsedSourceSchema.value;
   const sourceSchemaVersion = parsedSourceSchemaVersion.value;
   const rollupRulesVersion = parsedRollupRulesVersion.value;
-  if ((schemaVersion === 9 || schemaVersion === 10) && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION))) return null;
   const generatedAt = parsedGeneratedAt.value;
   const sourceDates = parsedSourceDates.value;
+  const authority = schemaVersion === 11 ? sleepRangeAuthority(record2, calendarTimezone) : {};
+  if (!authority) return null;
   return {
+    ...authority,
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
     schemaVersion: schemaVersion || void 0,
@@ -14849,6 +14874,10 @@ function parseRollupMarkdown(content, cachedFrontmatter) {
   const record2 = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
   const summary = buildRollupSummary(record2);
   if (!summary) return null;
+  if (cachedFrontmatter && (summary.schemaVersion === 11 || readOptionalSchemaVersion(frontmatter).version === 11)) {
+    const physical = buildRollupSummary(frontmatter);
+    if (!physical || physical.schemaVersion !== summary.schemaVersion || physical.schema_profile !== summary.schema_profile || physical.source_schema_profile !== summary.source_schema_profile || JSON.stringify(physical.timeContext) !== JSON.stringify(summary.timeContext)) return null;
+  }
   if (!summary.metrics) summary.metrics = metricsFromMarkdown(parsed.body);
   return summary;
 }
@@ -14887,7 +14916,13 @@ var CSV_CONTRACT_ALIASES = [
   ["Schema"],
   ["Schema Version", "schema_version", "schemaVersion"],
   ["Rollup Rules Version", "rollup_rules_version", "rollupRulesVersion"],
-  ["Calendar Timezone", "calendar_timezone", "calendarTimezone"]
+  ["Calendar Timezone", "calendar_timezone", "calendarTimezone"],
+  ["Schema Profile", "schema_profile", "schemaProfile"],
+  ["Source Schema Profile", "source_schema_profile", "sourceSchemaProfile"],
+  ["Timestamp Timezone", "timestamp_timezone", "timestampTimezone"],
+  ["Sleep Day Attribution", "sleep_day_attribution", "sleepDayAttribution"],
+  ["Sleep Owner Day Rule", "sleep_owner_day_rule", "sleepOwnerDayRule"],
+  ["Sleep Interval Clipping", "sleep_interval_clipping", "sleepIntervalClipping"]
 ];
 function parseRollupCSV(content) {
   var _a, _b, _c;
@@ -14926,20 +14961,35 @@ function parseRollupCSV(content) {
   const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
   if (schemaVersionIndex >= 0 && parsedSchemaVersion === void 0) return null;
   const schemaVersion = parsedSchemaVersion != null ? parsedSchemaVersion : 0;
-  if ((schemaVersion === 9 || schemaVersion === 10) && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
   if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
   const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
-  if ((schemaVersion === 9 || schemaVersion === 10) && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
   const sourceSchema = csvValue(firstRow, sourceSchemaIndex);
   const sourceSchemaVersion = numberValue2(csvValue(firstRow, sourceSchemaVersionIndex));
   const rollupRulesVersion = numberValue2(csvValue(firstRow, rollupRulesVersionIndex));
-  if ((schemaVersion === 9 || schemaVersion === 10) && (sourceSchemaIndex < 0 || sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersionIndex < 0 || sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersionIndex < 0 || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (sourceSchemaIndex < 0 || sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersionIndex < 0 || sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersionIndex < 0 || rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION))) return null;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
   const periodId = csvValue(firstRow, periodIdIndex);
   const startDate = csvValue(firstRow, startDateIndex);
   const endDate = csvValue(firstRow, endDateIndex);
   if (!rollupPeriod || !periodId || !isValidVersionPeriod(schemaVersion, rollupPeriod) || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
+  const authorityHeaders = CSV_CONTRACT_ALIASES.slice(-6);
+  const authorityIndexes = authorityHeaders.map((aliases) => indexOfHeader(header, ...aliases));
+  const authority = schemaVersion === 11 ? sleepRangeAuthority({
+    schema_profile: csvValue(firstRow, authorityIndexes[0]),
+    source_schema_profile: csvValue(firstRow, authorityIndexes[1]),
+    time_context: {
+      calendar_timezone: calendarTimezone,
+      timestamp_timezone: csvValue(firstRow, authorityIndexes[2]),
+      sleep_day_attribution: csvValue(firstRow, authorityIndexes[3]),
+      sleep_owner_day_rule: csvValue(firstRow, authorityIndexes[4]),
+      sleep_interval_clipping: csvValue(firstRow, authorityIndexes[5])
+    }
+  }, calendarTimezone) : {};
+  if (!authority) return null;
   const consistentMetadataIndexes = [
+    ...authorityIndexes,
     schemaIndex,
     schemaVersionIndex,
     sourceSchemaIndex,
@@ -14983,6 +15033,7 @@ function parseRollupCSV(content) {
     if (existing.unit !== void 0) units[metricKey] = existing.unit;
   }
   return {
+    ...authority,
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
     schemaVersion: schemaVersion || void 0,
@@ -15197,7 +15248,7 @@ var DataLoader = class {
     const cache = Array.from(byDate.values()).sort(
       (a, b) => a.date.localeCompare(b.date)
     );
-    const rollupCache = dedupeRollups(rollups);
+    const rollupCache = dedupeRollups(rollups, report.warnings);
     for (const day of cache) {
       const capture2 = day.rawCapture;
       if (!capture2) continue;
@@ -15575,12 +15626,18 @@ function mergeRollups(a, b) {
     sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths)
   };
 }
-function dedupeRollups(rollups) {
+function dedupeRollups(rollups, warnings) {
   const byPeriod = /* @__PURE__ */ new Map();
+  const conflictingPeriods = /* @__PURE__ */ new Set();
   for (const rollup of rollups) {
     const key = rollupKey(rollup);
+    if (conflictingPeriods.has(key)) continue;
     const existing = byPeriod.get(key);
-    byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
+    if (existing && !sleepAuthoritiesAgree(existing, rollup)) {
+      warnings.push(`${rollup.periodId}: conflicting sleep attribution/profile; ambiguous rollup data was omitted.`);
+      conflictingPeriods.add(key);
+      byPeriod.delete(key);
+    } else byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
   }
   return Array.from(byPeriod.values()).sort((a, b) => {
     var _a, _b;
@@ -23931,7 +23988,7 @@ function renderMetric(host, metric, rollup, selectedStatistic, context) {
   renderStatistics(article, metric, selectedStatistic);
 }
 function renderRollupCard(host, rollup, metrics, index, selectedStatistic, context) {
-  var _a, _b, _c, _d, _e, _f;
+  var _a, _b, _c, _d, _e, _f, _g;
   const card = appendElement(host, "section", void 0, `health-md-rollup-card${index === 0 ? " is-first" : ""}`);
   appendElement(card, "h3", rollup.periodId, "health-md-rollup-period-title");
   appendElement(card, "div", rollup.rollupPeriod, "health-md-rollup-period-kind");
@@ -23942,6 +23999,11 @@ function renderRollupCard(host, rollup, metrics, index, selectedStatistic, conte
   const metadata = appendElement(card, "dl", void 0, "health-md-rollup-period-details");
   addDefinition(metadata, "Date span", `${start} \u2013 ${end}`);
   addDefinition(metadata, "Coverage", coverageText(rollup));
+  const timeContext = (_g = rollup.timeContext) != null ? _g : rollup.time_context;
+  if ((timeContext == null ? void 0 : timeContext.sleep_day_attribution) === "morning_ends" || (timeContext == null ? void 0 : timeContext.sleep_day_attribution) === "night_begins") {
+    addDefinition(metadata, "Sleep day attribution", timeContext.sleep_day_attribution === "morning_ends" ? "Morning ends" : "Night begins");
+    if (timeContext.calendar_timezone) addDefinition(metadata, "Calendar timezone", timeContext.calendar_timezone);
+  }
   addDefinition(
     metadata,
     "Period days",

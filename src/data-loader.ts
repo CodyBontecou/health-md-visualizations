@@ -246,7 +246,7 @@ export class DataLoader {
 		const cache = Array.from(byDate.values()).sort((a, b) =>
 			a.date.localeCompare(b.date)
 		);
-		const rollupCache = dedupeRollups(rollups);
+		const rollupCache = dedupeRollups(rollups, report.warnings);
 		for (const day of cache) {
 			const capture = day.rawCapture;
 			if (!capture) continue;
@@ -722,12 +722,18 @@ function mergeRollups(a: HealthRollupSummary, b: HealthRollupSummary): HealthRol
 	};
 }
 
-function dedupeRollups(rollups: HealthRollupSummary[]): HealthRollupSummary[] {
+function dedupeRollups(rollups: HealthRollupSummary[], warnings: string[]): HealthRollupSummary[] {
 	const byPeriod = new Map<string, HealthRollupSummary>();
+	const conflictingPeriods = new Set<string>();
 	for (const rollup of rollups) {
 		const key = rollupKey(rollup);
+		if (conflictingPeriods.has(key)) continue;
 		const existing = byPeriod.get(key);
-		byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
+		if (existing && !sleepAuthoritiesAgree(existing, rollup)) {
+			warnings.push(`${rollup.periodId}: conflicting sleep attribution/profile; ambiguous rollup data was omitted.`);
+			conflictingPeriods.add(key);
+			byPeriod.delete(key);
+		} else byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
 	}
 	return Array.from(byPeriod.values()).sort((a, b) => {
 		const startCompare = (a.startDate ?? "").localeCompare(b.startDate ?? "");

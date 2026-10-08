@@ -1,3 +1,4 @@
+import { readSleepAuthority } from "../sleep-attribution";
 import {
 	HEALTHMD_HEALTH_DATA_SCHEMA,
 	HEALTHMD_ROLLUP_SCHEMA,
@@ -53,7 +54,8 @@ function normalizePeriod(value: unknown): HealthRollupPeriod | undefined {
 }
 
 function isValidVersionPeriod(version: number, period: HealthRollupPeriod): boolean {
-	if (!Number.isInteger(version) || version < 0 || version > 10) return false;
+	if (!Number.isInteger(version) || version < 0 || version > 11) return false;
+	if (version === 11) return period === "range";
 	if (version === 10) return SUPPORTED_ROLLUP_PERIODS.has(period);
 	if (version === 9) return period === "range";
 	if (version === 0) return CALENDAR_ROLLUP_PERIODS.has(period); // Explicit legacy/unversioned behavior.
@@ -299,6 +301,18 @@ function normalizeMetrics(record: Record<string, unknown>): Record<string, Healt
 	return Object.keys(result).length ? result : undefined;
 }
 
+function sleepRangeAuthority(record: Record<string, unknown>, calendar: string | undefined): Partial<HealthRollupSummary> | null {
+	const profile = readAliasedValue(record, ["schema_profile", "schemaProfile"], nonBlankString);
+	const source = readAliasedValue(record, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
+	if (!profile.valid || profile.value !== "apple-rollup-v11" || !source.valid || source.value !== "apple-v11") return null;
+	const clock = readSleepAuthority({ schema: HEALTHMD_HEALTH_DATA_SCHEMA, schema_version: 11,
+		schema_profile: "apple-v11", time_context: record.time_context, timeContext: record.timeContext });
+	if (!clock?.context || clock.context.calendar_timezone !== calendar) return null;
+	return { schemaProfile: profile.value, schema_profile: profile.value,
+		sourceSchemaProfile: source.value, source_schema_profile: source.value,
+		timeContext: clock.context, time_context: clock.context };
+}
+
 function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummary | null {
 	const schemaIdentity = validateIdentityField(record, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
 	const typeIdentity = validateIdentityField(record, ["type", "Type"], "health_rollup");
@@ -348,15 +362,18 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 	const sourceSchema = parsedSourceSchema.value;
 	const sourceSchemaVersion = parsedSourceSchemaVersion.value;
 	const rollupRulesVersion = parsedRollupRulesVersion.value;
-	if ((schemaVersion === 9 || schemaVersion === 10) && (
+	if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (
 		sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA
-		|| sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION)
-		|| rollupRulesVersion !== V9_ROLLUP_RULES_VERSION
+		|| sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION)
+		|| rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION)
 	)) return null;
 	const generatedAt = parsedGeneratedAt.value;
 	const sourceDates = parsedSourceDates.value;
+	const authority = schemaVersion === 11 ? sleepRangeAuthority(record, calendarTimezone) : {};
+	if (!authority) return null;
 
 	return {
+		...authority,
 		type: "health_rollup",
 		schema: HEALTHMD_ROLLUP_SCHEMA,
 		schemaVersion: schemaVersion || undefined,
@@ -491,6 +508,12 @@ export function parseRollupMarkdown(
 	const record = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
 	const summary = buildRollupSummary(record);
 	if (!summary) return null;
+	if (cachedFrontmatter && (summary.schemaVersion === 11 || readOptionalSchemaVersion(frontmatter).version === 11)) {
+		const physical = buildRollupSummary(frontmatter);
+		if (!physical || physical.schemaVersion !== summary.schemaVersion || physical.schema_profile !== summary.schema_profile
+			|| physical.source_schema_profile !== summary.source_schema_profile
+			|| JSON.stringify(physical.timeContext) !== JSON.stringify(summary.timeContext)) return null;
+	}
 	if (!summary.metrics) summary.metrics = metricsFromMarkdown(parsed.body);
 	return summary;
 }
@@ -535,6 +558,12 @@ const CSV_CONTRACT_ALIASES = [
 	["Schema Version", "schema_version", "schemaVersion"],
 	["Rollup Rules Version", "rollup_rules_version", "rollupRulesVersion"],
 	["Calendar Timezone", "calendar_timezone", "calendarTimezone"],
+	["Schema Profile", "schema_profile", "schemaProfile"],
+	["Source Schema Profile", "source_schema_profile", "sourceSchemaProfile"],
+	["Timestamp Timezone", "timestamp_timezone", "timestampTimezone"],
+	["Sleep Day Attribution", "sleep_day_attribution", "sleepDayAttribution"],
+	["Sleep Owner Day Rule", "sleep_owner_day_rule", "sleepOwnerDayRule"],
+	["Sleep Interval Clipping", "sleep_interval_clipping", "sleepIntervalClipping"],
 ];
 
 export function parseRollupCSV(content: string): HealthRollupSummary | null {
@@ -577,20 +606,20 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 	const schemaVersion = parsedSchemaVersion ?? 0;
 	// Historical CSVs are intentionally structural/unversioned. V9 introduced a
 	// declared contract and must carry its exact schema identity in every row.
-	if ((schemaVersion === 9 || schemaVersion === 10) && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
+	if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
 	if (schema !== undefined && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
 	const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
-	if ((schemaVersion === 9 || schemaVersion === 10) && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
+	if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
 	const sourceSchema = csvValue(firstRow, sourceSchemaIndex);
 	const sourceSchemaVersion = numberValue(csvValue(firstRow, sourceSchemaVersionIndex));
 	const rollupRulesVersion = numberValue(csvValue(firstRow, rollupRulesVersionIndex));
-	if ((schemaVersion === 9 || schemaVersion === 10) && (
+	if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (
 		sourceSchemaIndex < 0
 		|| sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA
 		|| sourceSchemaVersionIndex < 0
-		|| sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION)
+		|| sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION)
 		|| rollupRulesVersionIndex < 0
-		|| rollupRulesVersion !== V9_ROLLUP_RULES_VERSION
+		|| rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION)
 	)) return null;
 	const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
 	const periodId = csvValue(firstRow, periodIdIndex);
@@ -600,7 +629,17 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 		|| !isValidVersionPeriod(schemaVersion, rollupPeriod)
 		|| !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
 
+	const authorityHeaders = CSV_CONTRACT_ALIASES.slice(-6);
+	const authorityIndexes = authorityHeaders.map((aliases) => indexOfHeader(header, ...aliases));
+	const authority = schemaVersion === 11 ? sleepRangeAuthority({
+		schema_profile: csvValue(firstRow, authorityIndexes[0]), source_schema_profile: csvValue(firstRow, authorityIndexes[1]),
+		time_context: { calendar_timezone: calendarTimezone,
+			timestamp_timezone: csvValue(firstRow, authorityIndexes[2]), sleep_day_attribution: csvValue(firstRow, authorityIndexes[3]),
+			sleep_owner_day_rule: csvValue(firstRow, authorityIndexes[4]), sleep_interval_clipping: csvValue(firstRow, authorityIndexes[5]) },
+	}, calendarTimezone) : {};
+	if (!authority) return null;
 	const consistentMetadataIndexes = [
+		...authorityIndexes,
 		schemaIndex,
 		schemaVersionIndex,
 		sourceSchemaIndex,
@@ -646,6 +685,7 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 	}
 
 	return {
+		...authority,
 		type: "health_rollup",
 		schema: HEALTHMD_ROLLUP_SCHEMA,
 		schemaVersion: schemaVersion || undefined,

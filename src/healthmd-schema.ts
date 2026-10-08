@@ -8,7 +8,7 @@ export const HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
 /** Latest Health.md daily export schema supported by this plugin. */
 export const SUPPORTED_HEALTHMD_SCHEMA_VERSION = 11;
 /** Latest Health.md roll-up summary schema supported by this plugin. */
-export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 10;
+export const SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 11;
 /** The source-record archive advances independently from the daily schema. */
 export const SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 

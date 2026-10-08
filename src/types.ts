@@ -159,6 +159,12 @@ export interface HealthRollupMetric {
 }
 
 export interface HealthRollupSummary {
+	schemaProfile?: string;
+	schema_profile?: string;
+	sourceSchemaProfile?: string;
+	source_schema_profile?: string;
+	timeContext?: HealthMdTimeContext;
+	time_context?: HealthMdTimeContext;
 	type: "health_rollup";
 	schema: string;
 	schemaVersion?: number;

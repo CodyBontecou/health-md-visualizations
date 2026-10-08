@@ -71,8 +71,10 @@ export function readSleepAuthority(source: Record<string, unknown>): {
 }
 
 /** Same-date inputs with different ownership/profile promises must never be combined. */
-export function sleepAuthoritiesAgree(a: HealthDay, b: HealthDay): boolean {
-	const context = (day: HealthDay): string => {
+type SleepAuthorityRecord = Pick<HealthDay, "schema_profile" | "timeContext" | "time_context">;
+
+export function sleepAuthoritiesAgree(a: SleepAuthorityRecord, b: SleepAuthorityRecord): boolean {
+	const context = (day: SleepAuthorityRecord): string => {
 		const time = day.timeContext ?? day.time_context;
 		const attribution = time?.sleep_day_attribution ?? "night_begins";
 		return attribution === "morning_ends"

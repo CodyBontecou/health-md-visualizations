@@ -794,3 +794,28 @@ test("DataLoader retains mixed-date sleep versions but omits conflicting same-da
 		assert.ok(loader.getLastLoadReport().warnings.some((warning) => warning.includes("conflicting sleep attribution/profile")));
 	}
 });
+
+
+test("DataLoader omits same-window rollups with conflicting sleep ownership independently of scan order", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const morning = JSON.parse(await readFile(path.join(process.cwd(), "tests/fixtures/rollup-summary-v11/range-v11.json"), "utf8"));
+	const night = { ...morning, schema_version: 9, source_schema_version: 8, rollup_rules_version: 8 };
+	delete night.schema_profile;
+	delete night.source_schema_profile;
+	delete night.time_context;
+	for (const reverse of [false, true]) {
+		const values = reverse ? [morning, morning, night] : [night, morning, morning];
+		const sources = values.map((value, index) => [`Health/Rollups/${index}.json`, value]);
+		const contents = new Map(sources.map(([file, data]) => [file, JSON.stringify(data)]));
+		const files = sources.map(([file]) => new TFile(file));
+		const rollupsFolder = new TFolder("Health/Rollups", files);
+		const folder = new TFolder("Health", [rollupsFolder]);
+		rollupsFolder.parent = folder;
+		for (const file of files) file.parent = rollupsFolder;
+		const loader = new DataLoader({ getAbstractFileByPath: (name) => name === "Health" ? folder : name === "Health/Rollups" ? rollupsFolder : files.find((file) => file.path === name),
+			read: async (file) => contents.get(file.path) }, { dataFolder: "Health", filePattern: "*", dataFormat: "auto",
+			dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" });
+		assert.deepEqual(await loader.loadRollups(), []);
+		assert.ok(loader.getLastLoadReport().warnings.some((warning) => warning.includes("ambiguous rollup data")));
+	}
+});

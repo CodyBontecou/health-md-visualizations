@@ -2383,3 +2383,86 @@ test("native sleep successor fixture bytes match producer provenance", async () 
 		assert.equal(createHash("sha256").update(await readFile(path.join(directory, name))).digest("hex"), digest, name);
 	}
 });
+
+
+test("wake-date range readers retain v11 source and atomic sleep authority in every format", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const directory = path.join(process.cwd(), "tests/fixtures/rollup-summary-v11");
+	for (const name of ["range-v11.json", "range-v11.csv", "range-v11.md", "range-v11-bases.md"]) {
+		const text = await readFile(path.join(directory, name), "utf8");
+		const summary = name.endsWith(".json") ? parseRollupJSON(text) : name.endsWith(".csv") ? parseRollupCSV(text) : parseRollupMarkdown(text);
+		assert.ok(summary, name);
+		assert.equal(summary.schema_profile, "apple-rollup-v11", name);
+		assert.equal(summary.source_schema_profile, "apple-v11", name);
+		assert.equal(summary.sourceSchemaVersion, 11, name);
+		assert.equal(summary.rollupRulesVersion, 11, name);
+		assert.equal(summary.periodId, "2026-10-31_to_2026-11-03", name);
+		assert.equal(summary.daysExpected, 4, name);
+		assert.equal(summary.daysCounted, 2, name);
+		assert.equal(summary.coveragePercent, 50, name);
+		assert.equal(summary.timeContext?.calendar_timezone, "America/New_York", name);
+		assert.equal(summary.timeContext?.sleep_day_attribution, "morning_ends", name);
+		assert.equal(summary.metrics?.sleep_total_hours?.primaryValue, 8.25, name);
+	}
+	const source = JSON.parse(await readFile(path.join(directory, "range-v11.json"), "utf8"));
+	for (const change of [{ source_schema_version: 8 }, { rollup_rules_version: 8 }, { schema_profile: "apple-v11" },
+		{ source_schema_profile: "apple-v8" }, { time_context: {} }, { calendar_timezone: "UTC" },
+		{ timeContext: { ...source.time_context, sleep_day_attribution: "night_begins" } }]) {
+		assert.equal(parseRollupJSON(JSON.stringify({ ...source, ...change })), null);
+	}
+});
+
+test("successor range metadata cannot be overridden by CSV siblings or cached frontmatter", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const directory = path.join(process.cwd(), "tests/fixtures/rollup-summary-v11");
+	const csv = await readFile(path.join(directory, "range-v11.csv"), "utf8");
+	const lines = csv.trimEnd().split("\n");
+	lines[lines.length - 1] = lines[lines.length - 1].replace("morning_ends", "night_begins");
+	assert.equal(parseRollupCSV(lines.join("\n") + "\n"), null);
+	assert.equal(parseRollupCSV(csv.replace("Sleep Owner Day Rule", "Removed Ownership Column")), null);
+	const markdown = await readFile(path.join(directory, "range-v11.md"), "utf8");
+	assert.equal(parseRollupMarkdown(markdown, { calendar_timezone: "UTC", time_context: {
+		calendar_timezone: "UTC", timestamp_timezone: "UTC", sleep_day_attribution: "morning_ends",
+		sleep_owner_day_rule: "session_end_date", sleep_interval_clipping: "none",
+	} }), null);
+	const source = JSON.parse(await readFile(path.join(directory, "range-v11.json"), "utf8"));
+	assert.equal(parseRollupJSON(JSON.stringify({ ...source, sourceSchemaProfile: "apple-v8" })), null);
+	assert.equal(parseRollupJSON(JSON.stringify({ ...source, schemaProfile: "apple-v11" })), null);
+});
+
+
+test("native Apple range artifacts preserve whole-session Core and capture coverage in every reader", async () => {
+	const { parseRollupJSON, parseRollupCSV, parseRollupMarkdown } = await loadParsers();
+	const directory = path.join(process.cwd(), "tests/fixtures/rollup-summary-v11");
+	for (const name of ["native-apple-v11.json", "native-apple-v11.csv", "native-apple-v11.md", "native-apple-v11-bases.md"]) {
+		const text = await readFile(path.join(directory, name), "utf8");
+		const summary = name.endsWith(".json") ? parseRollupJSON(text) : name.endsWith(".csv") ? parseRollupCSV(text) : parseRollupMarkdown(text);
+		assert.ok(summary, name);
+		assert.equal(summary.schema_profile, "apple-rollup-v11", name);
+		assert.equal(summary.source_schema_profile, "apple-v11", name);
+		assert.equal(summary.timeContext?.sleep_day_attribution, "morning_ends", name);
+		assert.equal(summary.periodId, "2026-10-31_to_2026-11-03", name);
+		assert.equal(summary.daysExpected, 4, name);
+		assert.equal(summary.daysCounted, 2, name);
+		assert.equal(summary.coveragePercent, 50, name);
+		if (name.endsWith(".csv")) {
+			assert.equal(summary.sourceDates, undefined, "CSV coverage counts cannot invent source dates");
+		} else {
+		assert.deepEqual(summary.sourceDates, ["2026-11-01", "2026-11-02"], name);
+		}
+		assert.equal(summary.metrics?.sleep_total_hours?.primaryValue, 8.25, name);
+		assert.equal(summary.metrics?.sleep_core_hours?.primaryValue, 4.25, name);
+		assert.equal(summary.metrics?.sleep_light_hours, undefined, name);
+	}
+});
+
+
+test("range fixtures are pinned to the committed native and core producer bytes", async () => {
+	const directory = path.join(process.cwd(), "tests/fixtures/rollup-summary-v11");
+	const provenance = JSON.parse(await readFile(path.join(directory, "provenance.json"), "utf8"));
+	assert.match(provenance.producer_revision, /^[a-f0-9]{40}$/);
+	assert.equal(Object.keys(provenance.sha256).length, 8);
+	for (const [name, digest] of Object.entries(provenance.sha256)) {
+		assert.equal(createHash("sha256").update(await readFile(path.join(directory, name))).digest("hex"), digest, name);
+	}
+});
