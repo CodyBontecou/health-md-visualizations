@@ -2324,3 +2324,62 @@ test("wake-date CSV and Markdown preserve profile, Light and exact source clocks
 	assert.equal(note?.sleep?.lightSleep, 15300);
 	assert.equal(parseMarkdown(noMetadata.replace("clipping: `none`", "clipping: `noon`")), null);
 });
+
+
+test("real Android SDK-boundary DST exports retain Light, ownership and exact CSV clocks", async () => {
+	const { parseCSV, parseJSON, parseMarkdown } = await loadParsers();
+	const directory = path.join(process.cwd(), "tests/fixtures/sleep-successor/android-sleep-v6-dst");
+	for (const name of ["2026-11-01.json", "2026-11-01.csv", "2026-11-01.md", "2026-11-01-bases.md"]) {
+		const text = await readFile(path.join(directory, name), "utf8");
+		const day = name.endsWith(".json") ? parseJSON(text) : name.endsWith(".csv") ? parseCSV(text)[0] : parseMarkdown(text);
+		assert.ok(day, name);
+		assert.equal(day.date, "2026-11-01", name);
+		assert.equal(day.schema_profile, "android-sleep-v6", name);
+		assert.equal(day.timeContext?.sleep_day_attribution, "morning_ends", name);
+		assert.equal(day.timeContext?.calendar_timezone, "America/New_York", name);
+		assert.equal(day.sleep?.lightSleep, 36000.864, name);
+		assert.equal(day.sleep?.coreSleep, undefined, name);
+		assert.equal(day.sleep?.bedtime, "22:00", name);
+		assert.equal(day.sleep?.wakeTime, "07:00", name);
+		if (name.endsWith(".json") || name.endsWith(".csv")) {
+			assert.equal(day.sleep?.bedtimeISO, "2026-11-01T02:00:00.123456789Z", name);
+			assert.equal(day.sleep?.wakeTimeISO, "2026-11-01T12:00:00.987654321Z", name);
+		}
+	}
+});
+
+
+test("real Apple planner DST exports retain Core, whole-session quantities and source clocks", async () => {
+	const { parseCSV, parseJSON, parseMarkdown } = await loadParsers();
+	const directory = path.join(process.cwd(), "tests/fixtures/sleep-successor/apple-v11-dst");
+	for (const name of ["2026-11-01.json", "2026-11-01.csv", "2026-11-01.md", "2026-11-01-bases.md"]) {
+		const text = await readFile(path.join(directory, name), "utf8");
+		const day = name.endsWith(".json") ? parseJSON(text) : name.endsWith(".csv") ? parseCSV(text)[0] : parseMarkdown(text);
+		assert.ok(day, name);
+		assert.equal(day.date, "2026-11-01", name);
+		assert.equal(day.schema_profile, "apple-v11", name);
+		assert.equal(day.timeContext?.sleep_day_attribution, "morning_ends", name);
+		assert.equal(day.timeContext?.calendar_timezone, "America/New_York", name);
+		assert.ok(Math.abs(day.sleep?.totalDuration - 55800.5) < 1e-8, name);
+		assert.ok(Math.abs(day.sleep?.coreSleep - 3600.5) < 1e-8, name);
+		assert.equal(day.sleep?.lightSleep, undefined, name);
+		assert.equal(day.sleep?.bedtime, "22:00", name);
+		assert.equal(day.sleep?.wakeTime, "12:30", name);
+		if (name.endsWith(".json") || name.endsWith(".csv")) {
+			assert.equal(day.sleep?.bedtimeISO, "2026-11-01T02:00:00.250000000Z", name);
+			assert.equal(day.sleep?.wakeTimeISO, "2026-11-01T17:30:00.750000000Z", name);
+		}
+	}
+});
+
+
+test("native sleep successor fixture bytes match producer provenance", async () => {
+	const directory = path.join(process.cwd(), "tests/fixtures/sleep-successor");
+	const provenance = JSON.parse(await readFile(path.join(directory, "provenance.json"), "utf8"));
+	assert.equal(provenance.synthetic, true);
+	assert.match(provenance.producer_revision, /^[a-f0-9]{40}$/);
+	assert.equal(Object.keys(provenance.sha256).length, 8);
+	for (const [name, digest] of Object.entries(provenance.sha256)) {
+		assert.equal(createHash("sha256").update(await readFile(path.join(directory, name))).digest("hex"), digest, name);
+	}
+});

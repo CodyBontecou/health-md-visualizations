@@ -24,4 +24,4 @@ Summary-only records can omit stages and unrecorded statistics. Aggregate charts
 - `npx eslint src`
 - `npm run build` regenerates `main.js` through its owner.
 
-The existing mock-data generator's date-range filename test depends on UTC (it fails under Europe/Lisbon on the unchanged baseline); successor parser/renderer tests also run under Europe/Lisbon. Literal tests are reader controls. Native producer fixture adoption, website pin updates, successor roll-up v11 support, product release and installation in a real Obsidian vault remain separate qualification work.
+The existing mock-data generator's date-range filename test depends on UTC (it fails under Europe/Lisbon on the unchanged baseline); successor parser/renderer tests also run under Europe/Lisbon. Literal tests are reader controls. Verbatim synthetic native-producer fixtures cover all four summary daily formats on both platforms across DST; their source and byte digests are recorded in `tests/fixtures/sleep-successor/provenance.json`. Website pin updates, successor roll-up v11 support, product release and installation in a real Obsidian vault remain separate qualification work.
