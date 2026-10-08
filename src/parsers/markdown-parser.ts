@@ -1,3 +1,4 @@
+import { readSleepAuthority, sleepDeclaration } from "../sleep-attribution";
 import {
 	FrontmatterAliasMap,
 	HEALTHMD_HEALTH_DATA_SCHEMA,
@@ -742,7 +743,7 @@ function normalizeSleepStage(stage: string): string {
 	const normalized = normalizeLabel(stage)
 		.replace(/^asleep[_\s-]*/, "")
 		.replace(/^sleep[_\s-]*/, "");
-	if (normalized === "light") return "core";
+	if (normalized === "light") return "light";
 	if (normalized.includes("deep")) return "deep";
 	if (normalized.includes("rem")) return "rem";
 	if (normalized.includes("awake")) return "awake";
@@ -1274,10 +1275,25 @@ export function parseMarkdown(
 	dictionaryUnits?: HealthMdUnitMap
 ): HealthDay | null {
 	const parsed = parseFrontmatter(content);
-	const fm = applyFrontmatterAliases(
+	let fm = applyFrontmatterAliases(
 		mergeFrontmatter(parsed.frontmatter ?? {}, cachedFrontmatter),
 		frontmatterAliases
 	);
+
+	const declaration = sleepDeclaration(parsed.body);
+	if (declaration === null) return null;
+	if (declaration) {
+		if (Object.keys(fm).some((key) => ["schema", "schema_version", "schema_profile", "time_context"].includes(key))) return null;
+		fm = { ...fm, ...declaration };
+		for (const [label, key] of [["Total Sleep", "sleep_total_hours"], ["Deep Sleep", "sleep_deep_hours"],
+			["REM Sleep", "sleep_rem_hours"], ["Core Sleep", "sleep_core_hours"], ["Light Sleep", "sleep_light_hours"],
+			["Awake Time", "sleep_awake_hours"], ["In Bed", "sleep_in_bed_hours"]]) {
+			const match = new RegExp(`${label}: ([0-9.eE+-]+) (?:hour|hours)`).exec(parsed.body);
+			if (match) fm[key] = Number(match[1]);
+		}
+	}
+	const authority = readSleepAuthority(fm);
+	if (!authority) return null;
 
 	const schema = getFirstStr(fm, "schema", "Schema");
 	const frontmatterType = normalizeLabel(getFirstStr(fm, "type", "Type") ?? "");
@@ -1297,21 +1313,16 @@ export function parseMarkdown(
 	const unitSystem = explicitUnitSystem ?? (schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : undefined);
 
 	const granular = parseGranularMarkdownData(parsed.body, date);
-	const rawTimeContext = isRecord(fm.time_context) ? fm.time_context : undefined;
-	const calendarTimezone = rawTimeContext ? getFirstStr(rawTimeContext, "calendar_timezone", "calendarTimezone") : undefined;
-	const timestampTimezone = rawTimeContext ? getFirstStr(rawTimeContext, "timestamp_timezone", "timestampTimezone") : undefined;
-	const timeContext = calendarTimezone || timestampTimezone ? {
-		calendarTimezone,
-		timestampTimezone,
-		calendar_timezone: calendarTimezone,
-		timestamp_timezone: timestampTimezone,
-	} : undefined;
+	if (!authority.androidSleep) granular.sleepStages = granular.sleepStages.map((stage) => stage.stage === "light" ? { ...stage, stage: "core" } : stage);
+	if (authority.androidSleep && granular.sleepStages.some((stage) => stage.stage === "core")) return null;
+	const timeContext = authority.context;
 	const capture = captureSummaryFromFrontmatter(fm);
 
 	const day: HealthDay = {
 		type: "health-data",
 		date,
 		schema,
+		...(authority.profile ? { schemaProfile: authority.profile, schema_profile: authority.profile } : {}),
 		schemaVersion,
 		schema_version: schemaVersion || undefined,
 		units: unitsMap ?? (typeof rawUnits === "string" ? rawUnits : unitSystem),
@@ -1457,7 +1468,8 @@ export function parseMarkdown(
 	if (sleepTotal !== undefined || granular.sleepStages.length) {
 		const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
 		const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
-		const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours");
+		if (authority.androidSleep && getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "coreSleep") !== undefined) return null;
+		const coreH = getFirstNum(fm, ...(authority.androidSleep ? ["sleep_core_hours"] : ["sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours"]));
 		const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
 		day.sleep = {
 			sleepStages: granular.sleepStages,
@@ -1468,7 +1480,8 @@ export function parseMarkdown(
 			remSleep: remH !== undefined
 				? remH * 3600
 				: (getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep") ?? sumStageSeconds(granular.sleepStages, "rem")),
-			coreSleep: coreH !== undefined
+			...(authority.androidSleep ? { lightSleep: (getFirstNum(fm, "sleep_light_hours", "sleepLightHours") ?? 0) * 3600 } : {}),
+			coreSleep: authority.androidSleep ? undefined : coreH !== undefined
 				? coreH * 3600
 				: (getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light") ?? sumStageSeconds(granular.sleepStages, "core")),
 			awakeTime: awakeH !== undefined

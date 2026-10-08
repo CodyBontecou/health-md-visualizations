@@ -1201,7 +1201,7 @@ test("frozen daily schema v8 provider fixtures remain accepted in every format",
 		assert.equal(createHash("sha256").update(content).digest("hex"), expectedHash, `${name} byte identity`);
 	}
 
-	assert.equal(SUPPORTED_HEALTHMD_SCHEMA_VERSION, 10);
+	assert.equal(SUPPORTED_HEALTHMD_SCHEMA_VERSION, 11);
 	assert.equal(detectJsonSchema({ schema: "healthmd.health_data", schema_version: 9 }).isFutureVersion, true);
 	assert.deepEqual(
 		[detectJsonSchema(jsonContent), detectCsvSchema(csvContent)].map(({ kind, version, isFutureVersion }) => ({ kind, version, isFutureVersion })),
@@ -2260,4 +2260,67 @@ test("nested archive keys never hijack the fast path away from the real root arc
 	assert.equal(day.rawCapture?.archiveVersion, 1);
 	const cached = JSON.stringify(day);
 	assert.ok(!cached.includes("real-archive-record"), "the root archive must stay out of dashboard data");
+});
+
+test("wake-date JSON retains atomic authority and Android Light stays distinct", async () => {
+	const { parseJSON } = await loadParsers();
+	const context = {
+		calendar_timezone: "America/New_York", timestamp_timezone: "UTC",
+		sleep_day_attribution: "morning_ends", sleep_owner_day_rule: "session_end_date", sleep_interval_clipping: "none",
+	};
+	for (const [version, profile] of [[11, "apple-v11"], [6, "android-sleep-v6"]]) {
+		const source = { type: "health-data", date: "2026-08-10", schema: "healthmd.health_data", schema_version: version,
+			schema_profile: profile, time_context: context, sleep: { totalDuration: 27900, lightSleep: 15000 } };
+		const parsed = parseJSON(JSON.stringify(source));
+		assert.equal(parsed?.timeContext?.sleep_day_attribution, "morning_ends");
+		assert.equal(parsed?.schema_profile, profile);
+		if (version === 6) {
+			assert.equal(parsed.sleep.lightSleep, 15000);
+			assert.equal(parsed.sleep.coreSleep, undefined);
+			assert.equal(parsed.canonicalMetrics?.sleep_light_hours, 15000 / 3600);
+		}
+		for (const change of [
+			{ schema_version: 8 }, { schema_profile: "apple-v10" }, { time_context: {} },
+			{ time_context: { ...context, sleep_interval_clipping: "noon" } },
+			{ time_context: { ...context, calendar_timezone: "Invalid/Timezone" } },
+			{ time_context: { ...context, sleep_day_attribution: undefined } },
+		]) assert.equal(parseJSON(JSON.stringify({ ...source, ...change })), null);
+	}
+});
+
+test("wake-date CSV and Markdown preserve profile, Light and exact source clocks", async () => {
+	const { parseCSV, parseMarkdown } = await loadParsers();
+	const metadata = {
+		schema: "healthmd.health_data", schema_version: 6, schema_profile: "android-sleep-v6",
+		"time_context.calendar_timezone": "America/New_York", "time_context.timestamp_timezone": "UTC",
+		"time_context.sleep_day_attribution": "morning_ends", "time_context.sleep_owner_day_rule": "session_end_date",
+		"time_context.sleep_interval_clipping": "none",
+	};
+	const csv = "Date,Category,Metric,Value,Unit,Timestamp\n" + Object.entries(metadata)
+		.map(([key, value]) => `2026-08-10,Metadata,${key},${value},,\n`).join("")
+		+ "2026-08-10,Sleep,Total Sleep,7.75,hours,\n2026-08-10,Sleep,Light Sleep,4.25,hours,\n"
+		+ "2026-08-10,Sleep,Bedtime,23:45,time,2026-08-10T03:45:00.123456789Z\n";
+	const day = parseCSV(csv)[0];
+	assert.equal(day?.timeContext?.sleep_day_attribution, "morning_ends");
+	assert.equal(day?.sleep?.lightSleep, 15300);
+	assert.equal(day?.sleep?.coreSleep, undefined);
+	assert.equal(day?.sleep?.bedtimeISO, "2026-08-10T03:45:00.123456789Z");
+	assert.equal(day?.canonicalMetrics?.sleep_light_hours, 4.25);
+	assert.equal(day?.canonicalMetrics?.sleep_core_hours, undefined);
+	assert.deepEqual(parseCSV(csv + "2026-08-10,Metadata,schema_version,8,,\n"), []);
+	const markdown = "---\nschema: healthmd.health_data\nschema_version: 6\nschema_profile: android-sleep-v6\ndate: 2026-08-10\n"
+		+ "time_context:\n  calendar_timezone: America/New_York\n  timestamp_timezone: UTC\n  sleep_day_attribution: morning_ends\n"
+		+ "  sleep_owner_day_rule: session_end_date\n  sleep_interval_clipping: none\nsleep_total_hours: 7.75\nsleep_light_hours: 4.25\n---\n";
+	const parsed = parseMarkdown(markdown);
+	assert.equal(parsed?.sleep?.lightSleep, 15300);
+	assert.equal(parsed?.sleep?.coreSleep, undefined);
+	assert.equal(parsed?.timeContext?.sleep_day_attribution, "morning_ends");
+	assert.equal(parseMarkdown(markdown.replace("session_end_date", "noon")), null);
+	const noMetadata = "# 2026-08-10\n\n> Health.md sleep attribution: `morning_ends` (Morning ends); whole sessions by wake-up date.\n"
+		+ "> Profile: `android-sleep-v6`; calendar timezone: `America/New_York`; timestamp timezone: `UTC`; owner rule: `session_end_date`; clipping: `none`.\n\n"
+		+ "## Sleep\n- Total Sleep: 7.75 hours\n- Light Sleep: 4.25 hours\n";
+	const note = parseMarkdown(noMetadata);
+	assert.equal(note?.schema_profile, "android-sleep-v6");
+	assert.equal(note?.sleep?.lightSleep, 15300);
+	assert.equal(parseMarkdown(noMetadata.replace("clipping: `none`", "clipping: `noon`")), null);
 });

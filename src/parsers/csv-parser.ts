@@ -1,3 +1,4 @@
+import { readSleepAuthority } from "../sleep-attribution";
 import {
 	HEALTHMD_HEALTH_DATA_SCHEMA,
 	HEALTHMD_RECORD_ARCHIVE_SCHEMA,
@@ -359,7 +360,7 @@ function normalizeSleepStage(stage: string): string {
 	const normalized = normalizeLabel(stage)
 		.replace(/^asleep[_\s-]*/, "")
 		.replace(/^sleep[_\s-]*/, "");
-	if (normalized === "light") return "core";
+	if (normalized === "light") return "light";
 	if (normalized.includes("deep")) return "deep";
 	if (normalized.includes("rem")) return "rem";
 	if (normalized.includes("awake")) return "awake";
@@ -888,19 +889,39 @@ function buildDayFromRows(
 	const schemaVersion = schemaVersionOf({ schema_version: getNum(rowsWithMetadata, "Metadata", "schema_version") });
 	const unitSystem = getString(rowsWithMetadata, "Metadata", "unit_system") ?? (schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : undefined);
 	const units = unitMapFromRows(rows, dictionary);
-	const calendarTimezone = getString(rowsWithMetadata, "Metadata", "time_context.calendar_timezone");
-	const timestampTimezone = getString(rowsWithMetadata, "Metadata", "time_context.timestamp_timezone");
-	const timeContext = calendarTimezone || timestampTimezone ? {
-		calendarTimezone,
-		timestampTimezone,
-		calendar_timezone: calendarTimezone,
-		timestamp_timezone: timestampTimezone,
-	} : undefined;
+	const context: Record<string, unknown> = {};
+	let profile: string | undefined;
+	for (const row of rowsWithMetadata.filter((row) => normalizeLabel(row.category) === "metadata")) {
+		const key = row.metric.startsWith("time_context.") ? row.metric.slice(13) : undefined;
+		if (key) {
+			if (context[key] !== undefined && context[key] !== row.value) return null;
+			context[key] = row.value;
+		}
+		if (row.metric === "schema_profile") {
+			if (profile !== undefined && profile !== row.value) return null;
+			profile = row.value;
+		}
+	}
+	const identity: Record<string, unknown> = {};
+	for (const row of rowsWithMetadata.filter((row) => normalizeLabel(row.category) === "metadata")) {
+		if (["schema", "schema_version", "schemaVersion", "schema_profile", "schemaProfile"].includes(row.metric)) {
+			if (identity[row.metric] !== undefined && identity[row.metric] !== row.value) return null;
+			identity[row.metric] = row.value;
+		}
+	}
+	const authority = readSleepAuthority({ ...identity, schema, schema_version: schemaVersion, schema_profile: profile, time_context: context });
+	if (authority?.androidSleep && units?.sleep_core_hours) {
+		units.sleep_light_hours = units.sleep_core_hours;
+		delete units.sleep_core_hours;
+	}
+	if (!authority) return null;
+	const timeContext = authority.context;
 	const capture = buildCaptureSummary(rowsWithMetadata, captureCounts);
 	const day: HealthDay = {
 		type: "health-data",
 		date,
 		schema,
+		...(authority.profile ? { schemaProfile: authority.profile, schema_profile: authority.profile } : {}),
 		schemaVersion: schemaVersion || undefined,
 		schema_version: schemaVersion || undefined,
 		units,
@@ -992,17 +1013,23 @@ function buildDayFromRows(
 	}
 
 	// Sleep
-	const sleepStages = parseSleepStages(rows);
-	const sleepTotal = getNum(rows, "Sleep", "Total Duration") ??
+	const sleepStages = parseSleepStages(rows).map((stage) => !authority.androidSleep && stage.stage === "light"
+		? { ...stage, stage: "core" } : stage);
+	const sleepSeconds = (metric: string): number | undefined => {
+		const row = findRow(rows, [lookup("Sleep", metric)]);
+		if (!row) return undefined;
+		const value = Number(row.value);
+		return Number.isFinite(value) ? value * (row.unit.startsWith("hour") ? 3600 : 1) : undefined;
+	};
+	const sleepTotal = sleepSeconds("Total Duration") ?? sleepSeconds("Total Sleep") ??
 		sleepStages
 			.filter((stage) => stage.stage !== "awake")
 			.reduce((sum, stage) => sum + stage.durationSeconds, 0);
-	const deepSleep = getNum(rows, "Sleep", "Deep Sleep") ?? sumStageSeconds(sleepStages, "deep");
-	const remSleep = getNum(rows, "Sleep", "REM Sleep") ?? sumStageSeconds(sleepStages, "rem");
-	const coreSleep = getNumFromLookups(rows, [
-		lookup("Sleep", "Core Sleep"),
-		lookup("Sleep", "Light Sleep"),
-	]) ?? sumStageSeconds(sleepStages, "core");
+	const deepSleep = sleepSeconds("Deep Sleep") ?? sumStageSeconds(sleepStages, "deep");
+	const remSleep = sleepSeconds("REM Sleep") ?? sumStageSeconds(sleepStages, "rem");
+	if (authority.androidSleep && (sleepSeconds("Core Sleep") !== undefined || sleepStages.some((stage) => stage.stage === "core"))) return null;
+	const coreSleep = authority.androidSleep ? undefined : sleepSeconds("Core Sleep") ?? sleepSeconds("Light Sleep") ?? sumStageSeconds(sleepStages, "core");
+	const lightSleep = authority.androidSleep ? sleepSeconds("Light Sleep") ?? sumStageSeconds(sleepStages, "light") : undefined;
 	const awakeTime = getNum(rows, "Sleep", "Awake Time") ?? sumStageSeconds(sleepStages, "awake");
 	if (sleepTotal > 0 || sleepStages.length) {
 		day.sleep = {
@@ -1010,12 +1037,12 @@ function buildDayFromRows(
 			totalDuration: sleepTotal,
 			deepSleep,
 			remSleep,
-			coreSleep,
+			coreSleep, ...(authority.androidSleep ? { lightSleep } : {}),
 			awakeTime,
 			bedtime: getString(rows, "Sleep", "Bedtime") ?? sleepStages[0]?.startDate ?? "",
-			bedtimeISO: sleepStages[0]?.startDate,
+			bedtimeISO: findRow(rows, [lookup("Sleep", "Bedtime")])?.timestamp || sleepStages[0]?.startDate,
 			wakeTime: getString(rows, "Sleep", "Wake Time") ?? sleepStages[sleepStages.length - 1]?.endDate ?? "",
-			wakeTimeISO: sleepStages[sleepStages.length - 1]?.endDate,
+			wakeTimeISO: findRow(rows, [lookup("Sleep", "Wake Time")])?.timestamp || sleepStages[sleepStages.length - 1]?.endDate,
 		};
 	}
 
@@ -1127,6 +1154,7 @@ function buildDayFromRows(
 	}
 
 	attachCanonicalMetrics(day, canonicalMetricsFromCsvRows(rows, dictionary));
+	if (authority.androidSleep && day.canonicalMetrics) delete day.canonicalMetrics.sleep_core_hours;
 	return day;
 }
 
@@ -1165,7 +1193,7 @@ export function parseCSV(
 		const day = buildDayFromRows(
 			date,
 			dateRows,
-			metadataRows,
+			metadataRows.filter((row) => !row.date || row.date === date),
 			dictionary,
 			parsedRows.captureCountsByDate.get(date)
 		);

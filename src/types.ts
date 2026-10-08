@@ -108,6 +108,12 @@ export interface WorkoutEntry {
 export type RawCaptureStatus = "complete" | "partial" | "not_requested" | "legacy_unavailable";
 
 export interface HealthMdTimeContext {
+	sleepDayAttribution?: "morning_ends";
+	sleep_day_attribution?: "morning_ends";
+	sleepOwnerDayRule?: "session_end_date";
+	sleep_owner_day_rule?: "session_end_date";
+	sleepIntervalClipping?: "none";
+	sleep_interval_clipping?: "none";
 	calendarTimezone?: string;
 	timestampTimezone?: string;
 	calendar_timezone?: string;
@@ -274,6 +280,8 @@ export interface MindfulnessSession {
 }
 
 export interface HealthDay {
+	schemaProfile?: string;
+	schema_profile?: string;
 	type: string;
 	date: string;
 	/** Health.md export schema identifier, e.g. healthmd.health_data. */
@@ -347,13 +355,14 @@ export interface HealthDay {
 			endDate: string;
 			durationSeconds: number;
 		}>;
-		totalDuration: number;
+		totalDuration?: number;
 		totalDurationFormatted?: string;
-		deepSleep: number;
+		deepSleep?: number;
 		deepSleepFormatted?: string;
-		remSleep: number;
+		remSleep?: number;
 		remSleepFormatted?: string;
-		coreSleep: number;
+		coreSleep?: number;
+		lightSleep?: number;
 		coreSleepFormatted?: string;
 		awakeTime?: number;
 		awakeTimeFormatted?: string;

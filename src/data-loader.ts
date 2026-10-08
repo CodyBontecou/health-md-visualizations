@@ -1,3 +1,4 @@
+import { sleepAuthoritiesAgree } from "./sleep-attribution";
 import { MetadataCache, Vault, TFile, TFolder } from "obsidian";
 import {
 	dataFolderMaxDepth,
@@ -227,12 +228,18 @@ export class DataLoader {
 
 		// Deduplicate by date (prefer the entry with more data)
 		const byDate = new Map<string, HealthDay>();
+		const conflictingDates = new Set<string>();
 		for (const day of days) {
+			if (conflictingDates.has(day.date)) continue;
 			const existing = byDate.get(day.date);
 			if (!existing) {
 				byDate.set(day.date, day);
 			} else {
-				byDate.set(day.date, mergeDays(existing, day));
+				if (!sleepAuthoritiesAgree(existing, day)) {
+					report.warnings.push(`${day.date}: conflicting sleep attribution/profile; ambiguous daily data was omitted.`);
+					conflictingDates.add(day.date);
+					byDate.delete(day.date);
+				} else byDate.set(day.date, mergeDays(existing, day));
 			}
 		}
 

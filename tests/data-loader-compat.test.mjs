@@ -766,3 +766,31 @@ test("DataLoader preserves an unknown WHOOP native version without interpreting 
 	assert.equal(day.providers.whoop.schema_version, 3);
 	assert.equal(day.whoop, undefined);
 });
+
+test("DataLoader retains mixed-date sleep versions but omits conflicting same-date authority", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const context = { calendar_timezone: "America/New_York", timestamp_timezone: "UTC",
+		sleep_day_attribution: "morning_ends", sleep_owner_day_rule: "session_end_date", sleep_interval_clipping: "none" };
+	for (const reverse of [false, true]) {
+		const sources = [
+			["Health/night.json", { date: "2026-08-10", schema_version: 8, sleep: { totalDuration: 100, coreSleep: 80 } }],
+			["Health/morning.json", { date: "2026-08-10", schema_version: 6, schema_profile: "android-sleep-v6", time_context: context,
+				sleep: { totalDuration: 27900, lightSleep: 15300 } }],
+			["Health/historical.json", { date: "2026-08-09", schema_version: 8, activity: { steps: 100 } }],
+			["Health/new.json", { date: "2026-08-11", schema_version: 11, schema_profile: "apple-v11", time_context: context,
+				sleep: { totalDuration: 28000, coreSleep: 15400 } }],
+		];
+		if (reverse) sources.reverse();
+		const contents = new Map(sources.map(([file, data]) => [file, JSON.stringify({ type: "health-data", schema: "healthmd.health_data", ...data })]));
+		const files = sources.map(([file]) => new TFile(file));
+		const folder = new TFolder("Health", files);
+		for (const file of files) file.parent = folder;
+		const loader = new DataLoader({ getAbstractFileByPath: (name) => name === "Health" ? folder : files.find((file) => file.path === name),
+			read: async (file) => contents.get(file.path) }, { dataFolder: "Health", filePattern: "*", dataFormat: "auto",
+			dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" });
+		const days = await loader.load();
+		assert.deepEqual(days.map((day) => day.date), ["2026-08-09", "2026-08-11"]);
+		assert.equal(days[1].timeContext.sleep_day_attribution, "morning_ends");
+		assert.ok(loader.getLastLoadReport().warnings.some((warning) => warning.includes("conflicting sleep attribution/profile")));
+	}
+});

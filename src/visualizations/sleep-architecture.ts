@@ -6,6 +6,8 @@ type SleepStage = NonNullable<HealthDay["sleep"]>["sleepStages"][number];
 /** Build approximate sleep stages from aggregate totals when no stage samples exist. */
 function buildSyntheticStages(night: HealthDay): SleepStage[] {
 	const sleep = night.sleep!;
+	// Summary totals cannot place native stages on a source timeline.
+	if (night.timeContext?.sleep_day_attribution === "morning_ends") return [];
 	if (!sleep.bedtime || !sleep.wakeTime) return [];
 
 	const isTimeOnly = (s: string) => /^\d{1,2}:\d{2}$/.test(s);
@@ -35,15 +37,16 @@ function buildSyntheticStages(night: HealthDay): SleepStage[] {
 
 	// Typical architecture: brief awake → core (first) → deep → rem → core (last) → brief awake
 	const awake = sleep.awakeTime ?? 0;
-	const core = sleep.coreSleep ?? 0;
+	const core = sleep.coreSleep ?? sleep.lightSleep ?? 0;
+	const nativeStage = sleep.lightSleep !== undefined ? "light" : "core";
 	const deep = sleep.deepSleep ?? 0;
 	const rem = sleep.remSleep ?? 0;
 
 	addStage("awake", awake * 0.3);
-	addStage("core", core * 0.45);
+	addStage(nativeStage, core * 0.45);
 	addStage("deep", deep);
 	addStage("rem", rem);
-	addStage("core", core * 0.55);
+	addStage(nativeStage, core * 0.55);
 	addStage("awake", awake * 0.7);
 
 	return stages;
@@ -67,13 +70,14 @@ export const renderSleepArchitecture: RenderFn = (
 ): void => {
 	const canvas = ctx.canvas;
 	const nights = data.filter(
-		(d) => d.sleep && (d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)
+		(d) => d.sleep && getEffectiveStages(d).length > 0
 	);
 	if (!nights.length) {
 		ctx.fillStyle = theme.muted;
 		ctx.font = "12px sans-serif";
 		ctx.textAlign = "center";
-		ctx.fillText("No sleep data", W / 2, H / 2);
+		ctx.fillText(data.some((day) => day.timeContext?.sleep_day_attribution === "morning_ends" && day.sleep)
+			? "No recorded sleep stage timing" : "No sleep data", W / 2, H / 2);
 		return;
 	}
 
@@ -137,10 +141,11 @@ export const renderSleepArchitecture: RenderFn = (
 			h: stripeHeight,
 			title: formatDate(night.date),
 			details: [
-				{ label: "Total", value: formatDuration(nightSleep.totalDuration) },
-				{ label: "Deep", value: formatDuration(nightSleep.deepSleep) },
-				{ label: "REM", value: formatDuration(nightSleep.remSleep) },
-				{ label: "Core", value: formatDuration(nightSleep.coreSleep) },
+				...(nightSleep.totalDuration !== undefined ? [{ label: "Total", value: formatDuration(nightSleep.totalDuration) }] : []),
+				...(nightSleep.deepSleep !== undefined ? [{ label: "Deep", value: formatDuration(nightSleep.deepSleep) }] : []),
+				...(nightSleep.remSleep !== undefined ? [{ label: "REM", value: formatDuration(nightSleep.remSleep) }] : []),
+				...(nightSleep.coreSleep !== undefined ? [{ label: "Core", value: formatDuration(nightSleep.coreSleep) }] : []),
+				...(nightSleep.lightSleep !== undefined ? [{ label: "Light", value: formatDuration(nightSleep.lightSleep) }] : []),
 			],
 			payload: night,
 		});
@@ -157,10 +162,10 @@ export const renderSleepArchitecture: RenderFn = (
 				((stageEnd - stageStart) / maxSpan) * barWidth
 			);
 
-			ctx.shadowColor = theme.colors.sleep[stage.stage as keyof typeof theme.colors.sleep] || "#000";
+			ctx.shadowColor = theme.colors.sleep[(stage.stage === "light" ? "core" : stage.stage) as keyof typeof theme.colors.sleep] || "#000";
 			ctx.shadowBlur = 8;
 
-			ctx.fillStyle = theme.colors.sleep[stage.stage as keyof typeof theme.colors.sleep] || "#333";
+			ctx.fillStyle = theme.colors.sleep[(stage.stage === "light" ? "core" : stage.stage) as keyof typeof theme.colors.sleep] || "#333";
 			ctx.fillRect(x, y + 2, w, stripeHeight - 4);
 
 			ctx.shadowBlur = 0;
@@ -169,6 +174,7 @@ export const renderSleepArchitecture: RenderFn = (
 				new Date(iso).toLocaleTimeString("en-US", {
 					hour: "numeric",
 					minute: "2-digit",
+					...(night.timeContext?.sleep_day_attribution === "morning_ends" ? { timeZone: night.timeContext.calendar_timezone } : {}),
 				});
 			hits.add({
 				shape: "rect",
