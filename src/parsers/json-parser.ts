@@ -1,3 +1,4 @@
+import { attachNativeCorrelationDetails, correlationsFromJSON } from "../native-correlation-details";
 import { attachNativeQuantityDetails, quantityDetailsFromJSON } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority } from "../sleep-attribution";
@@ -383,6 +384,9 @@ export function parseJSON(content: string): HealthDay | null {
             const quantities = quantityDetailsFromJSON(parsed, authority.profile);
             if (!quantities) return null;
             attachNativeQuantityDetails(day, quantities);
+            const correlations = correlationsFromJSON(parsed, authority.profile);
+            if (!correlations) return null;
+            attachNativeCorrelationDetails(day, correlations);
         }
 		attachCanonicalMetrics(day);
 

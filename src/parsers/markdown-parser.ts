@@ -1,3 +1,4 @@
+import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority, sleepDeclaration } from "../sleep-attribution";
@@ -1676,6 +1677,28 @@ export function parseMarkdown(
 		day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
 	}
 
+    if (fm.native_correlation_details !== undefined) {
+        const records = nativeCorrelationDetails(fm.native_correlation_details, authority.profile);
+        if (!records) return null;
+        attachNativeCorrelationDetails(day, records);
+    } else if (successorSleepDetails(authority.profile)) {
+        const values: unknown[] = [];
+        for (const table of parseMarkdownTables(parsed.body)) {
+            if (normalizeLabel(table.context) !== "blood pressure correlation details") continue;
+            const headers = normalizedHeaders(table);
+            const timestamp = headers.indexOf("timestamp (utc)"), end = headers.indexOf("end (utc)"),
+                systolic = headers.indexOf("systolic"), diastolic = headers.indexOf("diastolic"), unit = headers.indexOf("unit");
+            if ([timestamp,end,systolic,diastolic,unit].some(index=>index<0)) return null;
+            for (const row of table.rows) {
+                if (!row[systolic]?.trim() || !row[diastolic]?.trim()) return null;
+                values.push({metric:"blood_pressure",unit:row[unit],sample:{timestamp:row[timestamp],
+                    ...(row[end]?.trim() ? {endDate:row[end]} : {}),systolic:Number(row[systolic]),diastolic:Number(row[diastolic])}});
+            }
+        }
+        const records = nativeCorrelationDetails(values, authority.profile);
+        if (!records) return null;
+        attachNativeCorrelationDetails(day, records);
+    }
     if (fm.native_quantity_details !== undefined) {
         const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);
         if (!records) return null;

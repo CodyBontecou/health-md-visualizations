@@ -1,3 +1,4 @@
+import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority } from "../sleep-attribution";
@@ -1176,6 +1177,14 @@ function buildDayFromRows(
 		day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
 	}
 
+    const correlationRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "blood pressure correlation");
+    if (correlationRows.length) {
+        try {
+            const records = nativeCorrelationDetails(correlationRows.map(row => { const value: unknown = JSON.parse(row.value); return value; }), authority.profile);
+            if (!records || records.some((record,index) => correlationRows[index].unit !== "json" || correlationRows[index].timestamp !== record.sample.timestamp)) return null;
+            attachNativeCorrelationDetails(day, records);
+        } catch { return null; }
+    }
     const quantityRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "quantity sample");
     if (quantityRows.length) {
         try {

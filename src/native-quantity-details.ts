@@ -17,6 +17,20 @@ export const quantityDefinitions = [
 function record(value: unknown): value is Record<string, unknown> {
  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+export function sourceTimestampAgrees(source: Record<string, unknown>): boolean {
+ if (typeof source.timestamp !== 'string' || sleepInterval(source.timestamp,source.timestamp) !== 0) return false;
+ if (source.exactTime !== undefined) {
+   if (!record(source.exactTime)) return false;
+   const {epochSecond,nano} = source.exactTime;
+   if (typeof epochSecond !== 'number' || !Number.isSafeInteger(epochSecond) ||
+    typeof nano !== 'number' || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return false;
+   const [whole,fraction=''] = source.timestamp.slice(0,-1).split('.');
+   const actual = BigInt(Date.parse(`${whole}Z`)) * BigInt(1000000) + BigInt(fraction.padEnd(9,'0'));
+   if (actual !== BigInt(epochSecond) * BigInt(1000000000) + BigInt(nano)) return false;
+  }
+ return true;
+}
+
 export function nativeQuantityDetails(value: unknown, profile: string | undefined): NativeQuantityDetail[] | null {
  if (!successorSleepDetails(profile) || !Array.isArray(value)) return null;
  const details: NativeQuantityDetail[] = [];
@@ -32,15 +46,7 @@ export function nativeQuantityDetails(value: unknown, profile: string | undefine
    (definition.unit === 'ratio_0_1' && (source.value < 0 || source.value > 1))) return null;
   // Keep exact source clocks/identity/metadata as facts, never reconstruct them
   // from a human table or infer a daily summary from a selected sample.
-  if (source.exactTime !== undefined) {
-   if (!record(source.exactTime)) return null;
-   const {epochSecond,nano} = source.exactTime;
-   if (typeof epochSecond !== 'number' || !Number.isSafeInteger(epochSecond) ||
-    typeof nano !== 'number' || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return null;
-   const [whole,fraction=''] = source.timestamp.slice(0,-1).split('.');
-   const actual = BigInt(Date.parse(`${whole}Z`)) * BigInt(1000000) + BigInt(fraction.padEnd(9,'0'));
-   if (actual !== BigInt(epochSecond) * BigInt(1000000000) + BigInt(nano)) return null;
-  }
+  if (!sourceTimestampAgrees(source)) return null;
   details.push({metric:definition.metric,unit:definition.unit,sample:{...source,timestamp:source.timestamp,value:source.value}});
  }
  return details;

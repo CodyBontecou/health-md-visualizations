@@ -1,0 +1,12 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-03-15,Metadata,schema,healthmd.health_data,,
+2026-03-15,Metadata,schema_version,11,,
+2026-03-15,Metadata,schema_profile,apple-v11,,
+2026-03-15,Metadata,unit_system,metric,,
+2026-03-15,Metadata,time_context.calendar_timezone,GMT,,
+2026-03-15,Metadata,time_context.timestamp_timezone,UTC,,
+2026-03-15,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-03-15,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-03-15,Metadata,time_context.sleep_interval_clipping,none,,
+2026-03-15,Raw HealthKit,Raw Capture Status,not_requested,status,
+2026-03-15,Native Detail,Blood Pressure Correlation,"{""metric"":""blood_pressure"",""sample"":{""device"":{""model"":""Synthetic cuff""},""diastolic"":80.875,""endDate"":""2026-03-15T01:00:00.875000000Z"",""id"":""00000000-0000-4000-8000-000000000104"",""metadata"":{""synthetic"":""paired-pressure""},""sourceRevision"":{""bundleIdentifier"":""example.synthetic.bp"",""name"":""Synthetic, \""source\""""},""systolic"":120.125,""timestamp"":""2026-03-15T01:00:00.125000000Z"",""unit"":""mmHg""},""unit"":""mmHg""}",json,2026-03-15T01:00:00.125000000Z

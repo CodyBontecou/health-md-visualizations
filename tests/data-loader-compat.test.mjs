@@ -889,7 +889,7 @@ test('DataLoader merges complementary quantity provenance and rejects conflictin
   for(const [a,b] of [[original,changed],[changed,original]]){
    const {days,report}=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b),'c.json':JSON.stringify(original)},true);
    assert.deepEqual(days,[]);
-   assert.ok(report.warnings.some(warning=>warning.includes('conflicting native quantity source facts')));
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
   }
  }
 });
@@ -907,5 +907,23 @@ test('DataLoader pairs duplicate quantity clocks by compatible identity independ
  const truncated=structuredClone(original);truncated.heart.heartRateSamples.pop();
  for(const [a,b] of [[original,truncated],[truncated,original]]){
   assert.deepEqual(await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)}),[]);
+ }
+});
+
+test('DataLoader retains native paired-pressure objects across all format orders and rejects source conflicts',async()=>{
+ for(const [variant,date] of [['apple-v11-blood-pressure','2026-03-15'],['android-v6-blood-pressure','2026-11-01']]){
+  const base=path.join(process.cwd(),'tests/fixtures/native-blood-pressure',variant,date);
+  const [json,csv,md,bases]=await Promise.all(['.json','.csv','.md','-bases.md'].map(suffix=>readFile(base+suffix,'utf8')));
+  const native=JSON.parse(json);
+  for(const contents of [{'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},{'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},{'a.csv':csv,'b.md':md},{'a.md':md,'b.csv':csv},{'a.md':bases,'b.md':md},{'a.md':md,'b.md':bases}]){
+   const [day]=await loadWhoopVault(contents);assert.ok(day,variant);
+   assert.deepEqual(day.vitals.bloodPressureSamples,native.vitals.bloodPressureSamples,variant);
+   assert.equal(day.canonicalMetrics?.blood_pressure_systolic,undefined);
+  }
+  const changed=structuredClone(native);changed.vitals.bloodPressureSamples[0].metadata.synthetic='another-capture';
+  for(const [a,b] of [[json,JSON.stringify(changed)],[JSON.stringify(changed),json]]){
+   const {days,report}=await loadWhoopVault({'a.json':a,'b.json':b,'c.md':md},true);
+   assert.deepEqual(days,[]);assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+  }
  }
 });

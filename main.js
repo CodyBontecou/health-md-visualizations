@@ -9640,6 +9640,18 @@ var quantityDefinitions = [
 function record2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
+function sourceTimestampAgrees(source) {
+  if (typeof source.timestamp !== "string" || sleepInterval(source.timestamp, source.timestamp) !== 0) return false;
+  if (source.exactTime !== void 0) {
+    if (!record2(source.exactTime)) return false;
+    const { epochSecond, nano } = source.exactTime;
+    if (typeof epochSecond !== "number" || !Number.isSafeInteger(epochSecond) || typeof nano !== "number" || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return false;
+    const [whole, fraction = ""] = source.timestamp.slice(0, -1).split(".");
+    const actual = BigInt(Date.parse(`${whole}Z`)) * BigInt(1e6) + BigInt(fraction.padEnd(9, "0"));
+    if (actual !== BigInt(epochSecond) * BigInt(1e9) + BigInt(nano)) return false;
+  }
+  return true;
+}
 function nativeQuantityDetails(value, profile) {
   if (!successorSleepDetails(profile) || !Array.isArray(value)) return null;
   const details2 = [];
@@ -9649,14 +9661,7 @@ function nativeQuantityDetails(value, profile) {
     if (!definition || item.unit !== definition.unit || item.metric === "hrv_sdnn" && profile !== "apple-v11" || item.metric === "hrv_rmssd" && profile !== "android-sleep-v6") return null;
     const source = item.sample;
     if (typeof source.timestamp !== "string" || sleepInterval(source.timestamp, source.timestamp) !== 0 || typeof source.value !== "number" || !Number.isFinite(source.value) || definition.unit === "ratio_0_1" && (source.value < 0 || source.value > 1)) return null;
-    if (source.exactTime !== void 0) {
-      if (!record2(source.exactTime)) return null;
-      const { epochSecond, nano } = source.exactTime;
-      if (typeof epochSecond !== "number" || !Number.isSafeInteger(epochSecond) || typeof nano !== "number" || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return null;
-      const [whole, fraction = ""] = source.timestamp.slice(0, -1).split(".");
-      const actual = BigInt(Date.parse(`${whole}Z`)) * BigInt(1e6) + BigInt(fraction.padEnd(9, "0"));
-      if (actual !== BigInt(epochSecond) * BigInt(1e9) + BigInt(nano)) return null;
-    }
+    if (!sourceTimestampAgrees(source)) return null;
     details2.push({ metric: definition.metric, unit: definition.unit, sample: { ...source, timestamp: source.timestamp, value: source.value } });
   }
   return details2;
@@ -9693,9 +9698,39 @@ function attachNativeQuantityDetails(day, details2) {
   }
 }
 
+// src/native-correlation-details.ts
+function record3(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function nativeCorrelationDetails(value, profile) {
+  if (!successorSleepDetails(profile) || !Array.isArray(value)) return null;
+  const details2 = [];
+  for (const item of value) {
+    if (!record3(item) || item.metric !== "blood_pressure" || item.unit !== "mmHg" || !record3(item.sample)) return null;
+    const source = item.sample;
+    if (!sourceTimestampAgrees(source) || typeof source.timestamp !== "string" || typeof source.systolic !== "number" || !Number.isFinite(source.systolic) || typeof source.diastolic !== "number" || !Number.isFinite(source.diastolic) || source.unit !== void 0 && source.unit !== "mmHg") return null;
+    if (profile === "apple-v11" || source.endDate !== void 0) {
+      if (typeof source.endDate !== "string" || sleepInterval(source.timestamp, source.endDate) === null) return null;
+    }
+    details2.push({ metric: "blood_pressure", unit: "mmHg", sample: { ...source, timestamp: source.timestamp, systolic: source.systolic, diastolic: source.diastolic } });
+  }
+  return details2;
+}
+function correlationsFromJSON(root, profile) {
+  const vitals = root.vitals;
+  if (!record3(vitals) || vitals.bloodPressureSamples === void 0) return nativeCorrelationDetails([], profile);
+  if (!Array.isArray(vitals.bloodPressureSamples)) return null;
+  return nativeCorrelationDetails(vitals.bloodPressureSamples.map((sample) => ({ metric: "blood_pressure", unit: "mmHg", sample })), profile);
+}
+function attachNativeCorrelationDetails(day, details2) {
+  if (!details2.length) return;
+  day.nativeCorrelationDetails = details2;
+  day.vitals = { ...day.vitals, bloodPressureSamples: details2.map((detail) => detail.sample) };
+}
+
 // src/csv-utils.ts
-function isBlankCsvRecord(record4) {
-  return record4.every((cell) => cell.trim() === "");
+function isBlankCsvRecord(record5) {
+  return record5.every((cell) => cell.trim() === "");
 }
 function* iterateCsvRecords(content, options = {}) {
   var _a;
@@ -9849,7 +9884,7 @@ function topLevelJsonObjectProperties(content) {
 function parseJsonObjectExcluding(content, omittedKeys) {
   const properties = topLevelJsonObjectProperties(content);
   if (!properties) return null;
-  const record4 = {};
+  const record5 = {};
   const omittedValues = {};
   try {
     for (const property of properties) {
@@ -9857,10 +9892,10 @@ function parseJsonObjectExcluding(content, omittedKeys) {
       if (omittedKeys.has(property.key)) {
         omittedValues[property.key] = rawValue;
       } else {
-        record4[property.key] = JSON.parse(rawValue);
+        record5[property.key] = JSON.parse(rawValue);
       }
     }
-    return { record: record4, omittedValues };
+    return { record: record5, omittedValues };
   } catch (e) {
     return null;
   }
@@ -9998,8 +10033,8 @@ function isHealthMetricDataDictionaryValue(value) {
   if (!Array.isArray(value)) return false;
   return value.some((entry) => {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
-    const record4 = entry;
-    return typeof record4.key === "string" && typeof record4.canonicalKey === "string";
+    const record5 = entry;
+    return typeof record5.key === "string" && typeof record5.canonicalKey === "string";
   });
 }
 function detectKnownSchema(format, schema, version) {
@@ -10043,14 +10078,14 @@ function detectJsonSchema(contentOrValue) {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return { kind: "unknown", version: 0, format: "json", reason: "JSON root is not an object" };
     }
-    const record4 = parsed;
-    const schema = typeof record4.schema === "string" ? record4.schema : void 0;
-    const version = schemaVersionOf(record4);
+    const record5 = parsed;
+    const schema = typeof record5.schema === "string" ? record5.schema : void 0;
+    const version = schemaVersionOf(record5);
     if (schema) return detectKnownSchema("json", schema, version);
-    if (record4.type === "health-data" && typeof record4.date === "string") {
+    if (record5.type === "health-data" && typeof record5.date === "string") {
       return { kind: "legacy-health-day", version: 0, format: "json" };
     }
-    if (record4.type === "health_rollup") {
+    if (record5.type === "health_rollup") {
       return { kind: "rollup-summary", version, format: "json", schema: HEALTHMD_ROLLUP_SCHEMA };
     }
     return { kind: "unknown", version, format: "json", reason: "JSON is not a Health.md daily export" };
@@ -10227,7 +10262,7 @@ function normalizeCsvLabel(value) {
 }
 
 // src/sleep-attribution.ts
-function record3(value) {
+function record4(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
 }
 function alias(value, snake, camel) {
@@ -10252,9 +10287,9 @@ function readSleepAuthority(source) {
     const version = schemaVersionOf(source);
     const androidSleep = profile === "android-sleep-v6";
     const successor = androidSleep || profile === "apple-v11" || version === 11;
-    const raw = record3((_a = source.time_context) != null ? _a : source.timeContext);
+    const raw = record4((_a = source.time_context) != null ? _a : source.timeContext);
     if (source.time_context !== void 0 && source.timeContext !== void 0) {
-      const other = record3(source.timeContext);
+      const other = record4(source.timeContext);
       if (!raw || !other) return null;
       for (const [snake, camel] of [
         ["calendar_timezone", "calendarTimezone"],
@@ -11322,9 +11357,9 @@ function canonicalMetricsFromSummaryRoot(root) {
 function isKnownCanonicalMetricKey(key, units) {
   return BUILTIN_KEYS.has(key) || key.startsWith("symptom_") || units !== void 0 && key in units;
 }
-function canonicalMetricsFromFlatRecord(record4, units) {
+function canonicalMetricsFromFlatRecord(record5, units) {
   const metrics = {};
-  for (const [key, value] of Object.entries(record4)) {
+  for (const [key, value] of Object.entries(record5)) {
     if (RESERVED_FLAT_KEYS.has(key)) continue;
     const allowed = isKnownCanonicalMetricKey(key, units);
     if (!allowed) continue;
@@ -11666,7 +11701,7 @@ function parseWhoopCsv(rows) {
   const profile = providerRows.find((row) => label(row.category) === "whoop body" && label(row.metric) === "body snapshot");
   const profileValue = profile ? object(decode(profile)) : void 0;
   if ((profileValue == null ? void 0 : profileValue.source_kind) === "current_profile_snapshot") result.body = body(profileValue);
-  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record4) => record4.projection)) {
+  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record5) => record5.projection)) {
     result.notes = result.notes.filter((note2) => !note2.startsWith("Single-record scalar"));
   }
   return finalize(result);
@@ -11802,17 +11837,17 @@ function stringArrayFromUnknown2(value) {
   }
   return [];
 }
-function firstString2(record4, keys) {
+function firstString2(record5, keys) {
   for (const key of keys) {
-    const value = record4[key];
+    const value = record5[key];
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
   }
   return void 0;
 }
-function firstNumber2(record4, keys) {
+function firstNumber2(record5, keys) {
   for (const key of keys) {
-    const parsed = parseNumber(record4[key]);
+    const parsed = parseNumber(record5[key]);
     if (parsed !== void 0) return parsed;
   }
   return void 0;
@@ -11828,9 +11863,9 @@ function normalizeTimestamp(raw, fallbackDate) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T12:00:00`;
   return value;
 }
-function moodEntryFromRecord(record4, fallbackDate) {
+function moodEntryFromRecord(record5, fallbackDate) {
   var _a, _b, _c, _d;
-  const valenceRaw = firstNumber2(record4, [
+  const valenceRaw = firstNumber2(record5, [
     "valence",
     "moodValence",
     "mood_valence",
@@ -11841,7 +11876,7 @@ function moodEntryFromRecord(record4, fallbackDate) {
     "avgValence",
     "avg_valence"
   ]);
-  const scoreRaw = firstNumber2(record4, [
+  const scoreRaw = firstNumber2(record5, [
     "score",
     "moodScore",
     "mood_score",
@@ -11857,7 +11892,7 @@ function moodEntryFromRecord(record4, fallbackDate) {
     "averageMoodPercent",
     "average_mood_percent"
   ]);
-  const label = firstString2(record4, [
+  const label = firstString2(record5, [
     "label",
     "primaryLabel",
     "primary_label",
@@ -11865,7 +11900,7 @@ function moodEntryFromRecord(record4, fallbackDate) {
     "mood_label",
     "state"
   ]);
-  const valenceDescription = firstString2(record4, [
+  const valenceDescription = firstString2(record5, [
     "classification",
     "valenceClassification",
     "valence_classification",
@@ -11873,16 +11908,16 @@ function moodEntryFromRecord(record4, fallbackDate) {
     "valence_description",
     "feeling"
   ]);
-  const rawMood = record4.mood;
+  const rawMood = record5.mood;
   const moodLabel = typeof rawMood === "string" && rawMood.trim() ? rawMood.trim() : void 0;
   const labels = [
-    ...stringArrayFromUnknown2(record4.labels),
-    ...stringArrayFromUnknown2(record4.emotions),
-    ...stringArrayFromUnknown2(record4.feelings)
+    ...stringArrayFromUnknown2(record5.labels),
+    ...stringArrayFromUnknown2(record5.emotions),
+    ...stringArrayFromUnknown2(record5.feelings)
   ].filter((item, index, all) => all.indexOf(item) === index);
   const primaryLabel2 = (_b = (_a = label != null ? label : moodLabel) != null ? _a : labels[0]) != null ? _b : valenceDescription;
   const valence = (_d = (_c = normalizeMoodValence(valenceRaw, "valence")) != null ? _c : normalizeMoodValence(scoreRaw, "score")) != null ? _d : normalizeMoodValence(primaryLabel2, "label");
-  const timestamp2 = normalizeTimestamp(firstString2(record4, [
+  const timestamp2 = normalizeTimestamp(firstString2(record5, [
     "timestamp",
     "date",
     "recordedAt",
@@ -11893,12 +11928,12 @@ function moodEntryFromRecord(record4, fallbackDate) {
     "start_time",
     "time"
   ]), fallbackDate);
-  const endDate = normalizeTimestamp(firstString2(record4, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
-  const kind = firstString2(record4, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
+  const endDate = normalizeTimestamp(firstString2(record5, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
+  const kind = firstString2(record5, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
   const associations = [
-    ...stringArrayFromUnknown2(record4.associations),
-    ...stringArrayFromUnknown2(record4.contexts),
-    ...stringArrayFromUnknown2(record4.factors)
+    ...stringArrayFromUnknown2(record5.associations),
+    ...stringArrayFromUnknown2(record5.contexts),
+    ...stringArrayFromUnknown2(record5.factors)
   ].filter((item, index, all) => all.indexOf(item) === index);
   if (valence === void 0 && !primaryLabel2 && !labels.length && !kind) return null;
   return {
@@ -12068,11 +12103,11 @@ function parseLargeHealthDataEnvelope(content) {
     return null;
   }
   try {
-    const record4 = JSON.parse(`${head}${content.slice(restStart)}`);
-    if (!isRecord4(record4) || record4.type !== "health-data") return null;
-    if ("healthkit_record_archive" in record4) return null;
+    const record5 = JSON.parse(`${head}${content.slice(restStart)}`);
+    if (!isRecord4(record5) || record5.type !== "health-data") return null;
+    if ("healthkit_record_archive" in record5) return null;
     return {
-      record: record4,
+      record: record5,
       omittedValues: {
         healthkit_record_archive: JSON.stringify(scan.topLevelScalars)
       }
@@ -12306,6 +12341,9 @@ function parseJSON(content) {
       const quantities = quantityDetailsFromJSON(parsed, authority.profile);
       if (!quantities) return null;
       attachNativeQuantityDetails(day, quantities);
+      const correlations = correlationsFromJSON(parsed, authority.profile);
+      if (!correlations) return null;
+      attachNativeCorrelationDetails(day, correlations);
     }
     attachCanonicalMetrics(day);
     const moodSummary2 = getMoodDaySummary(day);
@@ -13288,6 +13326,19 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
   if (headphone !== void 0 || environmentalSound !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
   }
+  const correlationRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "blood pressure correlation");
+  if (correlationRows.length) {
+    try {
+      const records = nativeCorrelationDetails(correlationRows.map((row) => {
+        const value = JSON.parse(row.value);
+        return value;
+      }), authority.profile);
+      if (!records || records.some((record5, index) => correlationRows[index].unit !== "json" || correlationRows[index].timestamp !== record5.sample.timestamp)) return null;
+      attachNativeCorrelationDetails(day, records);
+    } catch (e) {
+      return null;
+    }
+  }
   const quantityRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "quantity sample");
   if (quantityRows.length) {
     try {
@@ -13295,7 +13346,7 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
         const value = JSON.parse(row.value);
         return value;
       }), authority.profile);
-      if (!records || records.some((record4, index) => quantityRows[index].unit !== "json" || quantityRows[index].timestamp !== record4.sample.timestamp)) return null;
+      if (!records || records.some((record5, index) => quantityRows[index].unit !== "json" || quantityRows[index].timestamp !== record5.sample.timestamp)) return null;
       attachNativeQuantityDetails(day, records);
     } catch (e) {
       return null;
@@ -14051,14 +14102,14 @@ function parseGranularMarkdownData(body2, date) {
 function sumStageSeconds2(stages, stageName) {
   return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
-function recordStr(record4, key) {
-  const value = record4[key];
+function recordStr(record5, key) {
+  const value = record5[key];
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return void 0;
 }
-function recordNum(record4, key) {
-  return parseNumberValue2(record4[key], key);
+function recordNum(record5, key) {
+  return parseNumberValue2(record5[key], key);
 }
 function cleanDisplayValue(value) {
   if (!value) return void 0;
@@ -14327,7 +14378,7 @@ function captureSummaryFromFrontmatter(fm) {
   };
 }
 function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K;
   const parsed = parseFrontmatter(content);
   let fm = applyFrontmatterAliases(
     mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter),
@@ -14639,6 +14690,31 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   if (headphone !== void 0 || environmentalSound !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
   }
+  if (fm.native_correlation_details !== void 0) {
+    const records = nativeCorrelationDetails(fm.native_correlation_details, authority.profile);
+    if (!records) return null;
+    attachNativeCorrelationDetails(day, records);
+  } else if (successorSleepDetails(authority.profile)) {
+    const values = [];
+    for (const table of parseMarkdownTables(parsed.body)) {
+      if (normalizeLabel2(table.context) !== "blood pressure correlation details") continue;
+      const headers = normalizedHeaders(table);
+      const timestamp2 = headers.indexOf("timestamp (utc)"), end = headers.indexOf("end (utc)"), systolic = headers.indexOf("systolic"), diastolic = headers.indexOf("diastolic"), unit = headers.indexOf("unit");
+      if ([timestamp2, end, systolic, diastolic, unit].some((index) => index < 0)) return null;
+      for (const row of table.rows) {
+        if (!((_H = row[systolic]) == null ? void 0 : _H.trim()) || !((_I = row[diastolic]) == null ? void 0 : _I.trim())) return null;
+        values.push({ metric: "blood_pressure", unit: row[unit], sample: {
+          timestamp: row[timestamp2],
+          ...((_J = row[end]) == null ? void 0 : _J.trim()) ? { endDate: row[end] } : {},
+          systolic: Number(row[systolic]),
+          diastolic: Number(row[diastolic])
+        } });
+      }
+    }
+    const records = nativeCorrelationDetails(values, authority.profile);
+    if (!records) return null;
+    attachNativeCorrelationDetails(day, records);
+  }
   if (fm.native_quantity_details !== void 0) {
     const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);
     if (!records) return null;
@@ -14653,7 +14729,7 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
       if (timestamp2 < 0 || value < 0 || unit < 0) return null;
       for (const row of table.rows) {
         const number2 = Number(row[value]);
-        if (!((_H = row[value]) == null ? void 0 : _H.trim())) return null;
+        if (!((_K = row[value]) == null ? void 0 : _K.trim())) return null;
         values.push({ metric: definition.metric, unit: row[unit], sample: { timestamp: row[timestamp2], value: number2 } });
       }
     }
@@ -14763,28 +14839,28 @@ function isValidPeriodIdentity(period, periodId, startDateValue, endDateValue) {
   const year = Number(match[1]);
   return startDate.year === year && startDate.month === 1 && startDate.day === 1 && endDate.year === year && endDate.month === 12 && endDate.day === 31;
 }
-function firstString3(record4, ...keys) {
+function firstString3(record5, ...keys) {
   for (const key of keys) {
-    const value = stringValue4(record4[key]);
+    const value = stringValue4(record5[key]);
     if (value !== void 0 && value !== "") return value;
   }
   return void 0;
 }
-function firstNumber3(record4, ...keys) {
+function firstNumber3(record5, ...keys) {
   for (const key of keys) {
-    const value = numberValue2(record4[key]);
+    const value = numberValue2(record5[key]);
     if (value !== void 0) return value;
   }
   return void 0;
 }
-function hasOwn(record4, key) {
-  return Boolean(Object.prototype.hasOwnProperty.call(record4, key));
+function hasOwn(record5, key) {
+  return Boolean(Object.prototype.hasOwnProperty.call(record5, key));
 }
-function readAliasedValue(record4, keys, parse, equals = (left, right) => left === right) {
+function readAliasedValue(record5, keys, parse, equals = (left, right) => left === right) {
   let parsedValue;
   for (const key of keys) {
-    if (!hasOwn(record4, key)) continue;
-    const current = parse(record4[key]);
+    if (!hasOwn(record5, key)) continue;
+    const current = parse(record5[key]);
     if (current === void 0 || parsedValue !== void 0 && !equals(parsedValue, current)) {
       return { valid: false };
     }
@@ -14799,12 +14875,12 @@ function nonBlankString(value) {
 function stringArraysEqual(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
-function validateIdentityField(record4, keys, expected) {
+function validateIdentityField(record5, keys, expected) {
   let present = false;
   for (const key of keys) {
-    if (!hasOwn(record4, key)) continue;
+    if (!hasOwn(record5, key)) continue;
     present = true;
-    if (record4[key] !== expected) return { present, valid: false };
+    if (record5[key] !== expected) return { present, valid: false };
   }
   return { present, valid: true };
 }
@@ -14814,18 +14890,18 @@ function strictSchemaVersion(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : void 0;
 }
-function readOptionalSchemaVersion(record4) {
+function readOptionalSchemaVersion(record5) {
   var _a;
-  const parsed = readAliasedValue(record4, ["schemaVersion", "schema_version"], strictSchemaVersion);
+  const parsed = readAliasedValue(record5, ["schemaVersion", "schema_version"], strictSchemaVersion);
   return { valid: parsed.valid, version: (_a = parsed.value) != null ? _a : 0 };
 }
 function validCalendarTimezone(value) {
   const trimmed = value == null ? void 0 : value.trim();
   return trimmed && trimmed.length <= 64 ? trimmed : void 0;
 }
-function readOptionalCalendarTimezone(record4) {
+function readOptionalCalendarTimezone(record5) {
   return readAliasedValue(
-    record4,
+    record5,
     ["calendarTimezone", "calendar_timezone"],
     (value) => typeof value === "string" ? validCalendarTimezone(value) : void 0
   );
@@ -14881,9 +14957,9 @@ function normalizeMetric(value, fallbackKey) {
     notes: firstString3(value, "notes")
   };
 }
-function normalizeMetrics(record4) {
+function normalizeMetrics(record5) {
   var _a;
-  const raw = (_a = record4.rollup_metrics) != null ? _a : record4.metrics;
+  const raw = (_a = record5.rollup_metrics) != null ? _a : record5.metrics;
   const result = {};
   if (Array.isArray(raw)) {
     for (const item of raw) {
@@ -14898,16 +14974,16 @@ function normalizeMetrics(record4) {
   }
   return Object.keys(result).length ? result : void 0;
 }
-function sleepRangeAuthority(record4, calendar) {
-  const profile = readAliasedValue(record4, ["schema_profile", "schemaProfile"], nonBlankString);
-  const source = readAliasedValue(record4, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
+function sleepRangeAuthority(record5, calendar) {
+  const profile = readAliasedValue(record5, ["schema_profile", "schemaProfile"], nonBlankString);
+  const source = readAliasedValue(record5, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
   if (!profile.valid || profile.value !== "apple-rollup-v11" || !source.valid || source.value !== "apple-v11") return null;
   const clock = readSleepAuthority({
     schema: HEALTHMD_HEALTH_DATA_SCHEMA,
     schema_version: 11,
     schema_profile: "apple-v11",
-    time_context: record4.time_context,
-    timeContext: record4.timeContext
+    time_context: record5.time_context,
+    timeContext: record5.timeContext
   });
   if (!(clock == null ? void 0 : clock.context) || clock.context.calendar_timezone !== calendar) return null;
   return {
@@ -14919,33 +14995,33 @@ function sleepRangeAuthority(record4, calendar) {
     time_context: clock.context
   };
 }
-function buildRollupSummary(record4) {
-  const schemaIdentity = validateIdentityField(record4, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
-  const typeIdentity = validateIdentityField(record4, ["type", "Type"], "health_rollup");
+function buildRollupSummary(record5) {
+  const schemaIdentity = validateIdentityField(record5, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
+  const typeIdentity = validateIdentityField(record5, ["type", "Type"], "health_rollup");
   if (!schemaIdentity.valid || !typeIdentity.valid || !schemaIdentity.present && !typeIdentity.present) return null;
-  const parsedRollupPeriod = readAliasedValue(record4, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
-  const parsedPeriodId = readAliasedValue(record4, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
-  const parsedStartDate = readAliasedValue(record4, ["start_date", "startDate", "Start Date"], nonBlankString);
-  const parsedEndDate = readAliasedValue(record4, ["end_date", "endDate", "End Date"], nonBlankString);
+  const parsedRollupPeriod = readAliasedValue(record5, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
+  const parsedPeriodId = readAliasedValue(record5, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
+  const parsedStartDate = readAliasedValue(record5, ["start_date", "startDate", "Start Date"], nonBlankString);
+  const parsedEndDate = readAliasedValue(record5, ["end_date", "endDate", "End Date"], nonBlankString);
   if (!parsedRollupPeriod.valid || !parsedPeriodId.valid || !parsedStartDate.valid || !parsedEndDate.valid) return null;
   const rollupPeriod = parsedRollupPeriod.value;
   const periodId = parsedPeriodId.value;
   const startDate = parsedStartDate.value;
   const endDate = parsedEndDate.value;
   if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
-  const parsedSchemaVersion = readOptionalSchemaVersion(record4);
+  const parsedSchemaVersion = readOptionalSchemaVersion(record5);
   if (!parsedSchemaVersion.valid) return null;
   const schemaVersion = parsedSchemaVersion.version;
   if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
-  const parsedCalendarTimezone = readOptionalCalendarTimezone(record4);
-  const parsedDaysExpected = readAliasedValue(record4, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
-  const parsedDaysCounted = readAliasedValue(record4, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
-  const parsedCoveragePercent = readAliasedValue(record4, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
-  const parsedSourceSchema = readAliasedValue(record4, ["source_schema", "sourceSchema"], nonBlankString);
-  const parsedSourceSchemaVersion = readAliasedValue(record4, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
-  const parsedRollupRulesVersion = readAliasedValue(record4, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
-  const parsedGeneratedAt = readAliasedValue(record4, ["generated_at", "generatedAt"], nonBlankString);
-  const parsedSourceDates = readAliasedValue(record4, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
+  const parsedCalendarTimezone = readOptionalCalendarTimezone(record5);
+  const parsedDaysExpected = readAliasedValue(record5, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
+  const parsedDaysCounted = readAliasedValue(record5, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
+  const parsedCoveragePercent = readAliasedValue(record5, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
+  const parsedSourceSchema = readAliasedValue(record5, ["source_schema", "sourceSchema"], nonBlankString);
+  const parsedSourceSchemaVersion = readAliasedValue(record5, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
+  const parsedRollupRulesVersion = readAliasedValue(record5, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
+  const parsedGeneratedAt = readAliasedValue(record5, ["generated_at", "generatedAt"], nonBlankString);
+  const parsedSourceDates = readAliasedValue(record5, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
   const contractValues = [
     parsedCalendarTimezone,
     parsedDaysExpected,
@@ -14968,7 +15044,7 @@ function buildRollupSummary(record4) {
   if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION))) return null;
   const generatedAt = parsedGeneratedAt.value;
   const sourceDates = parsedSourceDates.value;
-  const authority = schemaVersion === 11 ? sleepRangeAuthority(record4, calendarTimezone) : {};
+  const authority = schemaVersion === 11 ? sleepRangeAuthority(record5, calendarTimezone) : {};
   if (!authority) return null;
   return {
     ...authority,
@@ -15002,8 +15078,8 @@ function buildRollupSummary(record4) {
     generated_at: generatedAt,
     sourceDates,
     source_dates: sourceDates,
-    units: unitMap(record4.units),
-    metrics: normalizeMetrics(record4)
+    units: unitMap(record5.units),
+    metrics: normalizeMetrics(record5)
   };
 }
 function parseRollupJSON(content) {
@@ -15091,8 +15167,8 @@ function parseRollupMarkdown(content, cachedFrontmatter) {
   var _a;
   const parsed = parseFrontmatter(content);
   const frontmatter = (_a = parsed.frontmatter) != null ? _a : {};
-  const record4 = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
-  const summary = buildRollupSummary(record4);
+  const record5 = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
+  const summary = buildRollupSummary(record5);
   if (!summary) return null;
   if (cachedFrontmatter && (summary.schemaVersion === 11 || readOptionalSchemaVersion(frontmatter).version === 11)) {
     const physical = buildRollupSummary(frontmatter);
@@ -15467,7 +15543,7 @@ var DataLoader = class {
             byDate.set(day.date, mergeDays(existing, day));
           } catch (error) {
             if (!(error instanceof QuantitySourceConflict)) throw error;
-            report.warnings.push(`${day.date}: conflicting native quantity source facts; ambiguous daily data was omitted.`);
+            report.warnings.push(`${day.date}: conflicting native source facts; ambiguous daily data was omitted.`);
             conflictingDates.add(day.date);
             byDate.delete(day.date);
           }
@@ -16123,39 +16199,54 @@ function mergeQuantityFacts(a, b) {
   if (Object.is(a, b)) return a;
   throw new QuantitySourceConflict("conflicting native quantity source facts");
 }
+function mergeNativeSources(a, b, key, merge) {
+  var _a;
+  if (!a.length || !b.length) return b.length ? b : a;
+  const keys = (values) => values.map(key).sort().join("\n");
+  if (a.length !== b.length || keys(a) !== keys(b)) throw new QuantitySourceConflict("conflicting native capture records");
+  const buckets = /* @__PURE__ */ new Map();
+  for (const value of a) {
+    const identity = key(value);
+    const bucket = (_a = buckets.get(identity)) != null ? _a : [];
+    bucket.push(value);
+    buckets.set(identity, bucket);
+  }
+  return b.map((value) => {
+    var _a2;
+    const remaining = (_a2 = buckets.get(key(value))) != null ? _a2 : [];
+    for (let index = 0; index < remaining.length; index++) {
+      try {
+        const result = merge(remaining[index], value);
+        remaining.splice(index, 1);
+        return result;
+      } catch (error) {
+        if (!(error instanceof QuantitySourceConflict)) throw error;
+      }
+    }
+    throw new QuantitySourceConflict("conflicting native source facts");
+  });
+}
 function mergeNativeQuantities(fallback = [], preferred = []) {
   const identities = [...new Set([...fallback, ...preferred].map((value) => value.metric))];
-  const key = (value) => JSON.stringify([value.unit, value.sample.timestamp, value.sample.value]);
-  return identities.flatMap((identity) => {
-    var _a;
-    const a = fallback.filter((value) => value.metric === identity), b = preferred.filter((value) => value.metric === identity);
-    if (!a.length || !b.length) return b.length ? b : a;
-    const keys = (values) => values.map(key).sort().join("\n");
-    if (a.length !== b.length || keys(a) !== keys(b)) throw new QuantitySourceConflict("conflicting native quantity capture records");
-    const buckets = /* @__PURE__ */ new Map();
-    for (const value of a) {
-      const identity2 = key(value);
-      const bucket = (_a = buckets.get(identity2)) != null ? _a : [];
-      bucket.push(value);
-      buckets.set(identity2, bucket);
+  return identities.flatMap((identity) => mergeNativeSources(
+    fallback.filter((value) => value.metric === identity),
+    preferred.filter((value) => value.metric === identity),
+    (value) => JSON.stringify([value.unit, value.sample.timestamp, value.sample.value]),
+    (a, b) => {
+      const source = mergeQuantityFacts(a.sample, b.sample);
+      if (!sourceObject(source)) throw new QuantitySourceConflict();
+      return { ...b, sample: { ...source, timestamp: b.sample.timestamp, value: b.sample.value } };
     }
-    return b.map((value) => {
-      var _a2;
-      const remaining = (_a2 = buckets.get(key(value))) != null ? _a2 : [];
-      for (let index = 0; index < remaining.length; index++) {
-        const candidate = remaining[index];
-        if (key(candidate) !== key(value)) continue;
-        try {
-          const source = mergeQuantityFacts(candidate.sample, value.sample);
-          if (!sourceObject(source)) throw new QuantitySourceConflict();
-          remaining.splice(index, 1);
-          return { ...value, sample: { ...source, timestamp: value.sample.timestamp, value: value.sample.value } };
-        } catch (error) {
-          if (!(error instanceof QuantitySourceConflict)) throw error;
-        }
-      }
-      throw new QuantitySourceConflict("conflicting native quantity source facts");
-    });
+  ));
+}
+function mergeNativeCorrelations(a = [], b = []) {
+  return mergeNativeSources(a, b, (value) => {
+    var _a;
+    return JSON.stringify([value.unit, value.sample.timestamp, (_a = value.sample.endDate) != null ? _a : null, value.sample.systolic, value.sample.diastolic]);
+  }, (a2, b2) => {
+    const source = mergeQuantityFacts(a2.sample, b2.sample);
+    if (!sourceObject(source)) throw new QuantitySourceConflict();
+    return { ...b2, sample: { ...source, timestamp: b2.sample.timestamp, systolic: b2.sample.systolic, diastolic: b2.sample.diastolic } };
   });
 }
 function mergeDays(a, b) {
@@ -16228,6 +16319,7 @@ function mergeDays(a, b) {
   };
   if (successorSleepDetails(result.schema_profile)) {
     attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
+    attachNativeCorrelationDetails(result, mergeNativeCorrelations(fallback.nativeCorrelationDetails, preferred.nativeCorrelationDetails));
   }
   return result;
 }
@@ -17734,8 +17826,8 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
 };
 
 // src/whoop-viz-utils.ts
-function whoopIsScored(record4) {
-  return record4.score_state === void 0 || record4.score_state === "SCORED";
+function whoopIsScored(record5) {
+  return record5.score_state === void 0 || record5.score_state === "SCORED";
 }
 function whoopRecoveryPairs(data) {
   return [...data].sort((a, b) => a.date.localeCompare(b.date)).flatMap((day) => {
@@ -17849,16 +17941,16 @@ function empty2(ctx, W, H, theme, stats, data, message) {
   text2(ctx, message, W / 2, H / 2, theme.muted, "center", W - 24);
   note(stats, data);
 }
-function details(day, record4) {
+function details(day, record5) {
   var _a, _b;
   return [
     { label: "Source", value: "WHOOP" },
     { label: "Capture", value: (_b = (_a = whoopForDay(day)) == null ? void 0 : _a.captureStatus) != null ? _b : "Unavailable" },
-    ...record4.id ? [{ label: "Provider ID", value: record4.id }] : [],
-    ...record4.score_state ? [{ label: "Score state", value: record4.score_state }] : [],
-    ...record4.start_time ? [{ label: "Start", value: record4.start_time }] : [],
-    ...record4.end_time ? [{ label: "End", value: record4.end_time }] : [],
-    ...record4.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
+    ...record5.id ? [{ label: "Provider ID", value: record5.id }] : [],
+    ...record5.score_state ? [{ label: "Score state", value: record5.score_state }] : [],
+    ...record5.start_time ? [{ label: "Start", value: record5.start_time }] : [],
+    ...record5.end_time ? [{ label: "End", value: record5.end_time }] : [],
+    ...record5.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
   ];
 }
 function grid(ctx, W, top, bottom, left, right, max, theme, suffix) {
@@ -24445,9 +24537,9 @@ function safeLabel(value, fallback) {
   if (!normalized) return fallback;
   return normalized.length > MAX_LABEL_LENGTH ? `${normalized.slice(0, MAX_LABEL_LENGTH - 1)}\u2026` : normalized;
 }
-function firstPrimitive(record4, ...keys) {
+function firstPrimitive(record5, ...keys) {
   for (const key of keys) {
-    const value = primitiveText(record4[key]);
+    const value = primitiveText(record5[key]);
     if (value !== void 0 && value.trim()) return value;
   }
   return void 0;
@@ -27810,17 +27902,17 @@ function parseCsvPreview(content) {
   const rows = [];
   let truncatedColumns = false;
   let truncatedRows = false;
-  for (const record4 of iterateCsvRecords(content, {
+  for (const record5 of iterateCsvRecords(content, {
     cellCharacterLimit: () => CSV_PREVIEW_MAX_CELL_CHARACTERS,
     truncationMarker: "\u2026"
   })) {
-    if (isBlankCsvRecord(record4)) continue;
+    if (isBlankCsvRecord(record5)) continue;
     if (rows.length >= CSV_PREVIEW_MAX_ROWS) {
       truncatedRows = true;
       break;
     }
-    if (record4.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
-    rows.push(record4.slice(0, CSV_PREVIEW_MAX_COLUMNS));
+    if (record5.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
+    rows.push(record5.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }
   return { rows, truncatedRows, truncatedColumns };
 }

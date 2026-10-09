@@ -1,0 +1,11 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-11-01,Metadata,schema,healthmd.health_data,,
+2026-11-01,Metadata,schema_version,6,,
+2026-11-01,Metadata,schema_profile,android-sleep-v6,,
+2026-11-01,Metadata,unit_system,metric,,
+2026-11-01,Metadata,time_context.calendar_timezone,UTC,,
+2026-11-01,Metadata,time_context.timestamp_timezone,UTC,,
+2026-11-01,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-11-01,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-11-01,Metadata,time_context.sleep_interval_clipping,none,,
+2026-11-01,Native Detail,Blood Pressure Correlation,"{""metric"":""blood_pressure"",""unit"":""mmHg"",""sample"":{""timestamp"":""2026-11-01T01:30:00.123456789Z"",""systolic"":120.125,""diastolic"":80.875,""measurementLocation"":""left-arm"",""bodyPosition"":""sitting"",""source"":""example.synthetic.bp"",""metadata"":{""synthetic"":""paired-pressure""},""exactTime"":{""iso8601"":""2026-11-01T01:30:00.123456789Z"",""epochSecond"":1793496600,""nano"":123456789,""offset"":""Z""},""identity"":{""nativeId"":""synthetic-bp-correlation"",""isSynthetic"":false}}}",json,2026-11-01T01:30:00.123456789Z
