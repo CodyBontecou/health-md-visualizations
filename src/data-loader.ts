@@ -1,3 +1,8 @@
+import { attachNativeActivityDetails, type NativeActivityDetail } from "./native-activity-details";
+import { attachNativeCorrelationDetails, type NativeCorrelationDetail } from "./native-correlation-details";
+import { attachNativeQuantityDetails, type NativeQuantityDetail } from "./native-quantity-details";
+import { successorSleepDetails } from "./native-sleep-details";
+import { sleepAuthoritiesAgree } from "./sleep-attribution";
 import { MetadataCache, Vault, TFile, TFolder } from "obsidian";
 import {
 	dataFolderMaxDepth,
@@ -227,19 +232,34 @@ export class DataLoader {
 
 		// Deduplicate by date (prefer the entry with more data)
 		const byDate = new Map<string, HealthDay>();
+		const conflictingDates = new Set<string>();
 		for (const day of days) {
+			if (conflictingDates.has(day.date)) continue;
 			const existing = byDate.get(day.date);
 			if (!existing) {
 				byDate.set(day.date, day);
 			} else {
-				byDate.set(day.date, mergeDays(existing, day));
+				if (!sleepAuthoritiesAgree(existing, day)) {
+					report.warnings.push(`${day.date}: conflicting sleep attribution/profile; ambiguous daily data was omitted.`);
+					conflictingDates.add(day.date);
+					byDate.delete(day.date);
+				} else {
+                    try {
+                        byDate.set(day.date, mergeDays(existing, day));
+                    } catch (error) {
+                        if (!(error instanceof QuantitySourceConflict)) throw error;
+                        report.warnings.push(`${day.date}: conflicting native source facts; ambiguous daily data was omitted.`);
+                        conflictingDates.add(day.date);
+                        byDate.delete(day.date);
+                    }
+                }
 			}
 		}
 
 		const cache = Array.from(byDate.values()).sort((a, b) =>
 			a.date.localeCompare(b.date)
 		);
-		const rollupCache = dedupeRollups(rollups);
+		const rollupCache = dedupeRollups(rollups, report.warnings);
 		for (const day of cache) {
 			const capture = day.rawCapture;
 			if (!capture) continue;
@@ -715,12 +735,18 @@ function mergeRollups(a: HealthRollupSummary, b: HealthRollupSummary): HealthRol
 	};
 }
 
-function dedupeRollups(rollups: HealthRollupSummary[]): HealthRollupSummary[] {
+function dedupeRollups(rollups: HealthRollupSummary[], warnings: string[]): HealthRollupSummary[] {
 	const byPeriod = new Map<string, HealthRollupSummary>();
+	const conflictingPeriods = new Set<string>();
 	for (const rollup of rollups) {
 		const key = rollupKey(rollup);
+		if (conflictingPeriods.has(key)) continue;
 		const existing = byPeriod.get(key);
-		byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
+		if (existing && !sleepAuthoritiesAgree(existing, rollup)) {
+			warnings.push(`${rollup.periodId}: conflicting sleep attribution/profile; ambiguous rollup data was omitted.`);
+			conflictingPeriods.add(key);
+			byPeriod.delete(key);
+		} else byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
 	}
 	return Array.from(byPeriod.values()).sort((a, b) => {
 		const startCompare = (a.startDate ?? "").localeCompare(b.startDate ?? "");
@@ -975,6 +1001,99 @@ function mergeSection<T extends object>(
 	return merged as T;
 }
 
+/** A display table must not replace the complete native objects for the same intervals. */
+function mergeNativeSleep(fallback: HealthDay["sleep"], preferred: HealthDay["sleep"]): HealthDay["sleep"] {
+    const merged = mergeSection(fallback, preferred);
+    if (!merged || !fallback || !preferred) return merged;
+    function richer<T extends object>(a: T[] | undefined, b: T[] | undefined, key: (value: T) => string): T[] | undefined {
+        if (!a || !b || a.length !== b.length) return b?.length ? b : a;
+        const keys = (values: T[]) => values.map(key).sort().join("\n");
+        if (a.length !== b.length || keys(a) !== keys(b)) throw new QuantitySourceConflict("conflicting native quantity capture records");
+        return a.reduce((sum, value) => sum + objectDetailScore(value), 0) > b.reduce((sum, value) => sum + objectDetailScore(value), 0) ? a : b;
+    }
+    merged.sleepStages = richer(fallback.sleepStages, preferred.sleepStages,
+        value => JSON.stringify([value.stage,value.startDate,value.endDate,value.durationSeconds])) ?? [];
+    merged.sleepSessions = richer(fallback.sleepSessions, preferred.sleepSessions,
+        value => JSON.stringify([value.startTimeISO,value.endTimeISO]));
+    return merged;
+}
+
+class QuantitySourceConflict extends Error {}
+
+function sourceObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Missing projections may add facts; two recorded values must agree. */
+function mergeQuantityFacts(a: unknown, b: unknown): unknown {
+    if (sourceObject(a) && sourceObject(b)) {
+        return Object.fromEntries([...new Set([...Object.keys(a), ...Object.keys(b)])].map(key => [key,
+            Object.prototype.hasOwnProperty.call(a, key) && Object.prototype.hasOwnProperty.call(b, key) ? mergeQuantityFacts(a[key], b[key])
+                : Object.prototype.hasOwnProperty.call(b, key) ? b[key] : a[key]]));
+    }
+    if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) {
+        return a.map((value: unknown, index) => mergeQuantityFacts(value, b[index]));
+    }
+    if (Object.is(a, b)) return a;
+    throw new QuantitySourceConflict("conflicting native quantity source facts");
+}
+
+function mergeNativeSources<T>(a: T[], b: T[], key: (value: T) => string, merge: (a: T, b: T) => T): T[] {
+    if (!a.length || !b.length) return b.length ? b : a;
+    const keys = (values: T[]) => values.map(key).sort().join("\n");
+    if (a.length !== b.length || keys(a) !== keys(b)) throw new QuantitySourceConflict("conflicting native capture records");
+    const buckets = new Map<string, T[]>();
+    for (const value of a) {
+        const identity = key(value);
+        const bucket = buckets.get(identity) ?? [];
+        bucket.push(value);
+        buckets.set(identity, bucket);
+    }
+    return b.map(value => {
+        const remaining = buckets.get(key(value)) ?? [];
+        for (let index = 0; index < remaining.length; index++) {
+            try {
+                const result = merge(remaining[index], value);
+                remaining.splice(index, 1);
+                return result;
+            } catch (error) {
+                if (!(error instanceof QuantitySourceConflict)) throw error;
+            }
+        }
+        throw new QuantitySourceConflict("conflicting native source facts");
+    });
+}
+
+function mergeNativeQuantities(fallback: NativeQuantityDetail[] = [], preferred: NativeQuantityDetail[] = []): NativeQuantityDetail[] {
+    const identities = [...new Set([...fallback,...preferred].map(value => value.metric))];
+    return identities.flatMap(identity => mergeNativeSources(fallback.filter(value => value.metric === identity), preferred.filter(value => value.metric === identity),
+        value => JSON.stringify([value.unit,value.sample.timestamp,value.sample.value]), (a,b) => {
+            const source = mergeQuantityFacts(a.sample,b.sample);
+            if (!sourceObject(source)) throw new QuantitySourceConflict();
+            return {...b,sample:{...source,timestamp:b.sample.timestamp,value:b.sample.value}};
+        }));
+}
+
+function mergeNativeCorrelations(a: NativeCorrelationDetail[] = [], b: NativeCorrelationDetail[] = []): NativeCorrelationDetail[] {
+    return mergeNativeSources(a,b,value=>JSON.stringify([value.unit,value.sample.timestamp,value.sample.endDate ?? null,value.sample.systolic,value.sample.diastolic]), (a,b)=>{
+        const source = mergeQuantityFacts(a.sample,b.sample);
+        if (!sourceObject(source)) throw new QuantitySourceConflict();
+        return {...b,sample:{...source,timestamp:b.sample.timestamp,systolic:b.sample.systolic,diastolic:b.sample.diastolic}};
+    });
+}
+
+function mergeNativeActivity(a: NativeActivityDetail[] = [], b: NativeActivityDetail[] = []): NativeActivityDetail[] {
+    const metrics = [...new Set([...a, ...b].map(record => record.metric))];
+    return metrics.flatMap(metric => mergeNativeSources(a.filter(record => record.metric === metric), b.filter(record => record.metric === metric),
+        record => JSON.stringify([record.metric, record.unit, record.sample.timestamp ?? record.sample.startTimeISO,
+            sourceObject(record.sample.exactEndTime) ? [record.sample.exactEndTime.epochSecond, record.sample.exactEndTime.nano] : null,
+            record.sample.value ?? record.sample.intensity, record.sample.duration]), (left, right) => {
+            const source = mergeQuantityFacts(left.sample, right.sample);
+            if (!sourceObject(source)) throw new QuantitySourceConflict();
+            return {...right, sample: source};
+        }));
+}
+
 /** Merge two HealthDay objects for the same date, preferring newer schema/richer fields. */
 function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 	const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -998,7 +1117,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		if (owner.providers) providers.whoop = owner.providers.whoop;
 	}
 
-	return {
+	const result: HealthDay = {
 		// Preserve versioned summary sections that do not yet have dedicated
 		// visualizations. Parsers remove canonical archive payloads before merge.
 		...fallback,
@@ -1019,7 +1138,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		activity: mergeSection(fallback.activity, preferred.activity),
 		heart: mergeSection(fallback.heart, preferred.heart),
 		vitals: mergeSection(fallback.vitals, preferred.vitals),
-		sleep: mergeSection(fallback.sleep, preferred.sleep),
+		sleep: successorSleepDetails(preferred.schema_profile) ? mergeNativeSleep(fallback.sleep, preferred.sleep) : mergeSection(fallback.sleep, preferred.sleep),
 		mobility: mergeSection(fallback.mobility, preferred.mobility),
 		workouts: mergeWorkouts(a.workouts, b.workouts),
 		mood: mergeSection(fallback.mood, preferred.mood),
@@ -1046,4 +1165,10 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		providers,
 		whoop,
 	};
+    if (successorSleepDetails(result.schema_profile)) {
+        attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
+        attachNativeCorrelationDetails(result, mergeNativeCorrelations(fallback.nativeCorrelationDetails, preferred.nativeCorrelationDetails));
+        attachNativeActivityDetails(result, mergeNativeActivity(fallback.nativeActivityDetails, preferred.nativeActivityDetails));
+    }
+    return result;
 }

@@ -1,0 +1,37 @@
+{
+    "date": "2026-11-01",
+    "type": "health-data",
+    "heart": {
+        "heartRateSamples": [
+            {
+                "timestamp": "2026-11-01T01:30:00.123456789Z",
+                "value": 72.125,
+                "metadata": {
+                    "synthetic": "quantity-source"
+                },
+                "exactTime": {
+                    "iso8601": "2026-11-01T01:30:00.123456789Z",
+                    "epochSecond": 1793496600,
+                    "nano": 123456789,
+                    "offset": "Z"
+                },
+                "identity": {
+                    "nativeId": "synthetic-quantity",
+                    "isSynthetic": false
+                }
+            }
+        ]
+    },
+    "schema": "healthmd.health_data",
+    "schema_version": 6,
+    "schema_profile": "android-sleep-v6",
+    "time_context": {
+        "calendar_timezone": "UTC",
+        "timestamp_timezone": "UTC",
+        "sleep_day_attribution": "morning_ends",
+        "sleep_owner_day_rule": "session_end_date",
+        "sleep_interval_clipping": "none"
+    },
+    "unit_system": "metric",
+    "units": {}
+}

@@ -199,7 +199,7 @@ export const JSON_SECTION_METRIC_MAP: Record<string, Record<string, string>> = {
 		walkingSpeed: "walking_speed", walkingSteadinessPercent: "walking_steadiness_percent", walkingStepLength: "step_length_cm",
 	},
 	sleep: {
-		awakeTime: "sleep_awake_hours", bedtime: "sleep_bedtime", coreSleep: "sleep_core_hours", deepSleep: "sleep_deep_hours",
+		awakeTime: "sleep_awake_hours", bedtime: "sleep_bedtime", coreSleep: "sleep_core_hours", lightSleep: "sleep_light_hours", deepSleep: "sleep_deep_hours",
 		inBedTime: "sleep_in_bed_hours", remSleep: "sleep_rem_hours", totalDuration: "sleep_total_hours", wakeTime: "sleep_wake",
 	},
 	hearing: { environmentalSoundLevel: "environmental_sound_db", headphoneAudioLevel: "headphone_audio_db" },

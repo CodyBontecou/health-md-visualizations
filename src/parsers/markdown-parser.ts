@@ -1,3 +1,8 @@
+import { attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
+import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
+import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions } from "../native-quantity-details";
+import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
+import { readSleepAuthority, sleepDeclaration } from "../sleep-attribution";
 import {
 	FrontmatterAliasMap,
 	HEALTHMD_HEALTH_DATA_SCHEMA,
@@ -227,6 +232,12 @@ function parseYamlBlock(lines: YamlLine[], start: number, indent: number): { val
 				continue;
 			}
 
+            // Native detail blocks carry complete JSON flow maps, including nested metadata.
+            if (rest.startsWith("{") && rest.endsWith("}")) {
+                try { arr.push(JSON.parse(rest)); } catch { arr.push(rest); }
+                i++;
+                continue;
+            }
 			const keyValue = splitYamlKeyValue(rest);
 			if (keyValue) {
 				const [key, rawValue] = keyValue;
@@ -742,7 +753,7 @@ function normalizeSleepStage(stage: string): string {
 	const normalized = normalizeLabel(stage)
 		.replace(/^asleep[_\s-]*/, "")
 		.replace(/^sleep[_\s-]*/, "");
-	if (normalized === "light") return "core";
+	if (normalized === "light") return "light";
 	if (normalized.includes("deep")) return "deep";
 	if (normalized.includes("rem")) return "rem";
 	if (normalized.includes("awake")) return "awake";
@@ -1274,10 +1285,25 @@ export function parseMarkdown(
 	dictionaryUnits?: HealthMdUnitMap
 ): HealthDay | null {
 	const parsed = parseFrontmatter(content);
-	const fm = applyFrontmatterAliases(
+	let fm = applyFrontmatterAliases(
 		mergeFrontmatter(parsed.frontmatter ?? {}, cachedFrontmatter),
 		frontmatterAliases
 	);
+
+	const declaration = sleepDeclaration(parsed.body);
+	if (declaration === null) return null;
+	if (declaration) {
+		if (Object.keys(fm).some((key) => ["schema", "schema_version", "schema_profile", "time_context"].includes(key))) return null;
+		fm = { ...fm, ...declaration };
+		for (const [label, key] of [["Total Sleep", "sleep_total_hours"], ["Deep Sleep", "sleep_deep_hours"],
+			["REM Sleep", "sleep_rem_hours"], ["Core Sleep", "sleep_core_hours"], ["Light Sleep", "sleep_light_hours"],
+			["Awake Time", "sleep_awake_hours"], ["In Bed", "sleep_in_bed_hours"]]) {
+			const match = new RegExp(`${label}: ([0-9.eE+-]+) (?:hour|hours)`).exec(parsed.body);
+			if (match) fm[key] = Number(match[1]);
+		}
+	}
+	const authority = readSleepAuthority(fm);
+	if (!authority) return null;
 
 	const schema = getFirstStr(fm, "schema", "Schema");
 	const frontmatterType = normalizeLabel(getFirstStr(fm, "type", "Type") ?? "");
@@ -1297,21 +1323,50 @@ export function parseMarkdown(
 	const unitSystem = explicitUnitSystem ?? (schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : undefined);
 
 	const granular = parseGranularMarkdownData(parsed.body, date);
-	const rawTimeContext = isRecord(fm.time_context) ? fm.time_context : undefined;
-	const calendarTimezone = rawTimeContext ? getFirstStr(rawTimeContext, "calendar_timezone", "calendarTimezone") : undefined;
-	const timestampTimezone = rawTimeContext ? getFirstStr(rawTimeContext, "timestamp_timezone", "timestampTimezone") : undefined;
-	const timeContext = calendarTimezone || timestampTimezone ? {
-		calendarTimezone,
-		timestampTimezone,
-		calendar_timezone: calendarTimezone,
-		timestamp_timezone: timestampTimezone,
-	} : undefined;
+    let nativeSessions: NonNullable<HealthDay["sleep"]>["sleepSessions"] = [];
+    if (successorSleepDetails(authority.profile)) {
+        if (fm.sleep_stage_details !== undefined) {
+            const stages = nativeSleepStages(fm.sleep_stage_details);
+            if (!stages) return null;
+            granular.sleepStages = stages;
+        }
+        if (fm.sleep_session_details !== undefined) {
+            const sessions = nativeSleepSessions(fm.sleep_session_details);
+            if (!sessions || !authority.androidSleep) return null;
+            nativeSessions = sessions;
+        }
+        for (const table of parseMarkdownTables(parsed.body)) {
+            const headers = normalizedHeaders(table);
+            const start = headers.indexOf("start (utc)"), end = headers.indexOf("end (utc)");
+            const stage = headers.indexOf("stage");
+            const context = normalizeLabel(table.context);
+            if (start < 0 || end < 0 || !["sleep stage details", "sleep session details"].includes(context)) continue;
+            if (context === "sleep stage details" && fm.sleep_stage_details === undefined) {
+                const stages = [];
+                for (const row of table.rows) {
+                    const duration = sleepInterval(row[start],row[end]);
+                    if (stage < 0 || duration === null || !row[stage]) return null;
+                    stages.push({stage:row[stage],startDate:row[start],endDate:row[end],durationSeconds:duration});
+                }
+                granular.sleepStages.push(...stages);
+            }
+            if (context === "sleep session details" && fm.sleep_session_details === undefined) {
+                const sessions = nativeSleepSessions(table.rows.map(row => ({startTimeISO:row[start],endTimeISO:row[end]})));
+                if (!sessions || !authority.androidSleep) return null;
+                nativeSessions.push(...sessions);
+            }
+        }
+    }
+	if (!authority.androidSleep) granular.sleepStages = granular.sleepStages.map((stage) => stage.stage === "light" ? { ...stage, stage: "core" } : stage);
+	if (authority.androidSleep && granular.sleepStages.some((stage) => stage.stage === "core")) return null;
+	const timeContext = authority.context;
 	const capture = captureSummaryFromFrontmatter(fm);
 
 	const day: HealthDay = {
 		type: "health-data",
 		date,
 		schema,
+		...(authority.profile ? { schemaProfile: authority.profile, schema_profile: authority.profile } : {}),
 		schemaVersion,
 		schema_version: schemaVersion || undefined,
 		units: unitsMap ?? (typeof rawUnits === "string" ? rawUnits : unitSystem),
@@ -1454,12 +1509,14 @@ export function parseMarkdown(
 	const sleepTotal = sleepHours !== undefined
 		? sleepHours * 3600
 		: (sleepSeconds ?? (derivedSleepTotal > 0 ? derivedSleepTotal : undefined));
-	if (sleepTotal !== undefined || granular.sleepStages.length) {
+	if (sleepTotal !== undefined || granular.sleepStages.length || nativeSessions.length) {
 		const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
 		const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
-		const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours");
+		if (authority.androidSleep && getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "coreSleep") !== undefined) return null;
+		const coreH = getFirstNum(fm, ...(authority.androidSleep ? ["sleep_core_hours"] : ["sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours"]));
 		const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
 		day.sleep = {
+            ...(nativeSessions.length ? { sleepSessions: nativeSessions } : {}),
 			sleepStages: granular.sleepStages,
 			totalDuration: sleepTotal ?? derivedSleepTotal,
 			deepSleep: deepH !== undefined
@@ -1468,7 +1525,8 @@ export function parseMarkdown(
 			remSleep: remH !== undefined
 				? remH * 3600
 				: (getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep") ?? sumStageSeconds(granular.sleepStages, "rem")),
-			coreSleep: coreH !== undefined
+			...(authority.androidSleep ? { lightSleep: (getFirstNum(fm, "sleep_light_hours", "sleepLightHours") ?? 0) * 3600 } : {}),
+			coreSleep: authority.androidSleep ? undefined : coreH !== undefined
 				? coreH * 3600
 				: (getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light") ?? sumStageSeconds(granular.sleepStages, "core")),
 			awakeTime: awakeH !== undefined
@@ -1620,6 +1678,72 @@ export function parseMarkdown(
 		day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
 	}
 
+    if (fm.native_correlation_details !== undefined) {
+        const records = nativeCorrelationDetails(fm.native_correlation_details, authority.profile);
+        if (!records) return null;
+        attachNativeCorrelationDetails(day, records);
+    } else if (successorSleepDetails(authority.profile)) {
+        const values: unknown[] = [];
+        for (const table of parseMarkdownTables(parsed.body)) {
+            if (normalizeLabel(table.context) !== "blood pressure correlation details") continue;
+            const headers = normalizedHeaders(table);
+            const timestamp = headers.indexOf("timestamp (utc)"), end = headers.indexOf("end (utc)"),
+                systolic = headers.indexOf("systolic"), diastolic = headers.indexOf("diastolic"), unit = headers.indexOf("unit");
+            if ([timestamp,end,systolic,diastolic,unit].some(index=>index<0)) return null;
+            for (const row of table.rows) {
+                if (!row[systolic]?.trim() || !row[diastolic]?.trim()) return null;
+                values.push({metric:"blood_pressure",unit:row[unit],sample:{timestamp:row[timestamp],
+                    ...(row[end]?.trim() ? {endDate:row[end]} : {}),systolic:Number(row[systolic]),diastolic:Number(row[diastolic])}});
+            }
+        }
+        const records = nativeCorrelationDetails(values, authority.profile);
+        if (!records) return null;
+        attachNativeCorrelationDetails(day, records);
+    }
+    const activityValues: unknown[] = [];
+    if (fm.native_activity_details !== undefined) {
+        const records = nativeActivityDetails(fm.native_activity_details, authority.profile);
+        if (!records) return null;
+        attachNativeActivityDetails(day, records);
+    } else {
+        for (const table of parseMarkdownTables(parsed.body)) {
+            if (normalizeLabel(table.context) !== "activity record details") continue;
+            if (normalizedHeaders(table).join() !== "native record (json)") return null;
+            try {
+                for (const row of table.rows) {
+                    if (row.length !== 1) return null;
+                    activityValues.push(JSON.parse(row[0]));
+                }
+            } catch { return null; }
+        }
+        if (activityValues.length) {
+            const records = nativeActivityDetails(activityValues, authority.profile);
+            if (!records) return null;
+            attachNativeActivityDetails(day, records);
+        }
+    }
+    if (fm.native_quantity_details !== undefined) {
+        const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);
+        if (!records) return null;
+        attachNativeQuantityDetails(day, records);
+    } else if (successorSleepDetails(authority.profile)) {
+        const values: unknown[] = [];
+        for (const table of parseMarkdownTables(parsed.body)) {
+            const definition = quantityDefinitions.find(item => item.heading === normalizeLabel(table.context));
+            if (!definition) continue;
+            const headers = normalizedHeaders(table);
+            const timestamp = headers.indexOf("timestamp (utc)"), value = headers.indexOf("value"), unit = headers.indexOf("unit");
+            if (timestamp < 0 || value < 0 || unit < 0) return null;
+            for (const row of table.rows) {
+                const number = Number(row[value]);
+                if (!row[value]?.trim()) return null;
+                values.push({metric:definition.metric,unit:row[unit],sample:{timestamp:row[timestamp],value:number}});
+            }
+        }
+        const records = nativeQuantityDetails(values, authority.profile);
+        if (!records) return null;
+        attachNativeQuantityDetails(day, records);
+    }
 	attachCanonicalMetrics(day, canonicalMetricsFromFlatRecord(fm, unitsMap));
 
 	// Only return if we found at least some health data beyond just a date

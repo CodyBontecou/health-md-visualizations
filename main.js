@@ -9587,88 +9587,238 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian5 = require("obsidian");
 
-// src/data-loader.ts
-var import_obsidian = require("obsidian");
-
-// src/data-folder-layout.ts
-var SUPPORTED_DATA_EXTENSIONS = ["json", "csv", "md"];
-var DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE = "{year}/{month}/{day}";
-var DATA_FOLDER_PATH_TEMPLATE_VARIABLES = [
-  "year",
-  "month",
-  "week",
-  "day",
-  "date"
-];
-var MAX_CUSTOM_DATA_FOLDER_DEPTH = 8;
-var PREDEFINED_DATA_FOLDER_MAX_DEPTH = {
-  flat: 0,
-  year: 1,
-  month: 2,
-  week: 3,
-  day: 4
-};
-function dataFolderMaxDepth(granularity, customTemplate = DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE) {
-  if (granularity === "custom") {
-    return customDataFolderPathTemplateDepth(customTemplate);
-  }
-  return PREDEFINED_DATA_FOLDER_MAX_DEPTH[granularity];
-}
-function customDataFolderPathTemplateDepth(template) {
-  const normalized = normalizeDataFolderPathTemplate(template);
-  if (!normalized) return 0;
-  return Math.min(normalized.split("/").length, MAX_CUSTOM_DATA_FOLDER_DEPTH);
-}
-function normalizeDataFolderPathTemplate(template) {
-  const normalized = stripPathControlCharacters(
-    template.trim().replace(/\\/g, "/")
-  ).replace(/\/+$/g, "").replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
-  const safeSegments = normalized.split("/").map((segment) => segment.trim()).filter((segment) => segment.length > 0 && segment !== "." && segment !== "..").slice(0, MAX_CUSTOM_DATA_FOLDER_DEPTH);
-  return safeSegments.join("/") || DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE;
-}
-function isSupportedDataExtension(extension) {
-  return SUPPORTED_DATA_EXTENSIONS.includes(extension);
-}
-function matchesGlob(candidate, pattern) {
-  if (!pattern || pattern === "*" || pattern === "*.*") return true;
-  const regex = new RegExp(
-    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
-    "i"
-  );
-  return regex.test(candidate);
-}
-function relativePathFromRoot(rootPath, filePath) {
-  const normalizedRoot = rootPath.replace(/\/+$/g, "");
-  if (!normalizedRoot) return filePath;
-  const prefix = `${normalizedRoot}/`;
-  return filePath.startsWith(prefix) ? filePath.slice(prefix.length) : filePath;
-}
-function matchesDataFilePath({
-  name,
-  extension,
-  path,
-  rootPath,
-  pattern
-}) {
-  if (!isSupportedDataExtension(extension)) return false;
-  if (matchesGlob(name, pattern)) return true;
-  return matchesGlob(relativePathFromRoot(rootPath, path), pattern);
-}
-function stripPathControlCharacters(value) {
+// src/native-source-clock.ts
+var billion = BigInt(1e9);
+function offsetSeconds(value) {
   var _a;
-  let result = "";
-  for (const character of value) {
-    const codePoint = (_a = character.codePointAt(0)) != null ? _a : 0;
-    if (codePoint >= 32 && codePoint !== 127) {
-      result += character;
+  if (value === "Z") return 0;
+  if (typeof value !== "string") return null;
+  const match = /^([+-])(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[2]), minute = Number(match[3]), second = Number((_a = match[4]) != null ? _a : 0);
+  if (hour > 18 || minute > 59 || second > 59 || hour === 18 && (minute !== 0 || second !== 0)) return null;
+  return (match[1] === "-" ? -1 : 1) * (hour * 3600 + minute * 60 + second);
+}
+function isoInstant(value) {
+  var _a, _b;
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}:\d{2}(?::\d{2})?)$/.exec(value);
+  if (!match) return null;
+  const whole = `${match[1]}:${(_a = match[2]) != null ? _a : "00"}`, offset = offsetSeconds(match[4]);
+  const milliseconds = Date.parse(`${whole}Z`);
+  if (offset === null || !Number.isFinite(milliseconds) || new Date(milliseconds).toISOString().slice(0, 19) !== whole) return null;
+  return { instant: BigInt(milliseconds) * BigInt(1e6) + BigInt(((_b = match[3]) != null ? _b : "").padEnd(9, "0")) - BigInt(offset) * billion, offset: match[4] };
+}
+function canonicalSourceInstant(value) {
+  var _a, _b;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value)) return null;
+  return (_b = (_a = isoInstant(value)) == null ? void 0 : _a.instant) != null ? _b : null;
+}
+function exactSourceClockAgrees(timestamp2, exact) {
+  const instant = canonicalSourceInstant(timestamp2);
+  if (instant === null) return false;
+  if (exact === void 0) return true;
+  if (exact === null || typeof exact !== "object" || Array.isArray(exact)) return false;
+  const source = exact, { epochSecond, nano, offset } = source;
+  if (typeof epochSecond !== "number" || !Number.isSafeInteger(epochSecond) || typeof nano !== "number" || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return false;
+  const iso = isoInstant(source.iso8601);
+  if (!iso || iso.instant !== instant || BigInt(epochSecond) * billion + BigInt(nano) !== instant) return false;
+  if (offset === null) return iso.offset === "Z";
+  const supplied = offsetSeconds(offset);
+  return supplied !== null && supplied === offsetSeconds(iso.offset);
+}
+
+// src/native-activity-details.ts
+function object(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function exactPublicClock(value) {
+  if (!object(value) || typeof value.epochSecond !== "number" || !Number.isSafeInteger(value.epochSecond) || typeof value.nano !== "number" || !Number.isInteger(value.nano) || value.nano < 0 || value.nano >= 1e9) return null;
+  try {
+    const whole = new Date(value.epochSecond * 1e3).toISOString().slice(0, 19);
+    const fraction = value.nano ? "." + String(value.nano).padStart(9, "0").replace(/0+$/, "") : "";
+    const clock = whole + fraction + "Z";
+    return exactSourceClockAgrees(clock, value) ? clock : null;
+  } catch (e) {
+    return null;
+  }
+}
+function activityRecordTimestamp(detail) {
+  return String(detail.sample[detail.metric === "steps_interval" ? "timestamp" : "startTimeISO"]);
+}
+function nativeActivityDetails(value, profile) {
+  if (profile !== "android-sleep-v6" || !Array.isArray(value)) return null;
+  const result = [];
+  for (const item of value) {
+    if (!object(item) || !object(item.sample)) return null;
+    const sample = item.sample;
+    const steps = item.metric === "steps_interval";
+    if (!steps && item.metric !== "activity_intensity_interval" || item.unit !== (steps ? "steps" : "seconds")) return null;
+    const start = sample[steps ? "timestamp" : "startTimeISO"];
+    const end = exactPublicClock(sample.exactEndTime);
+    const startInstant = canonicalSourceInstant(start), endInstant = canonicalSourceInstant(end);
+    if (startInstant === null || endInstant === null || endInstant < startInstant || !exactSourceClockAgrees(start, sample[steps ? "exactTime" : "exactStartTime"]) || sample[steps ? "exactTime" : "exactStartTime"] === void 0) return null;
+    if (steps) {
+      if (typeof sample.value !== "number" || !Number.isSafeInteger(sample.value) || sample.value < 0) return null;
+    } else {
+      const elapsed = endInstant - startInstant;
+      const seconds = Number(elapsed / BigInt(1e9)) + Number(elapsed % BigInt(1e9)) / 1e9;
+      if (sample.endTimeISO !== end || typeof sample.intensity !== "string" || !sample.intensity.trim() || typeof sample.duration !== "number" || !Number.isFinite(sample.duration) || sample.duration <= 0 || sample.duration !== seconds) return null;
     }
+    result.push({ metric: steps ? "steps_interval" : "activity_intensity_interval", unit: steps ? "steps" : "seconds", sample: { ...sample } });
   }
   return result;
 }
+function activityDetailsFromJSON(root, profile) {
+  if (!object(root.activity)) return [];
+  if (profile !== "android-sleep-v6") return root.activity.stepSamples !== void 0 || root.activity.activityIntensity !== void 0 ? null : [];
+  const records = [];
+  for (const [field, metric, unit] of [["stepSamples", "steps_interval", "steps"], ["activityIntensity", "activity_intensity_interval", "seconds"]]) {
+    const samples = root.activity[field];
+    if (samples === void 0) continue;
+    if (!Array.isArray(samples)) return null;
+    records.push(...samples.map((sample) => ({ metric, unit, sample })));
+  }
+  return nativeActivityDetails(records, profile);
+}
+function attachNativeActivityDetails(day, records) {
+  if (!records.length) return;
+  day.nativeActivityDetails = records;
+  const steps = records.filter((record5) => record5.metric === "steps_interval").map((record5) => record5.sample);
+  const intensity = records.filter((record5) => record5.metric === "activity_intensity_interval").map((record5) => record5.sample);
+  day.activity = {
+    ...day.activity,
+    ...steps.length ? { stepSamples: steps } : {},
+    ...intensity.length ? { activityIntensity: intensity } : {}
+  };
+}
+
+// src/native-sleep-details.ts
+function record(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function sleepInterval(start, end) {
+  const a = canonicalSourceInstant(start), b = canonicalSourceInstant(end);
+  return a !== null && b !== null && b >= a ? Number(b - a) / 1e9 : null;
+}
+function nativeSleepStages(value) {
+  if (!Array.isArray(value)) return null;
+  const result = [];
+  for (const item of value) {
+    const source = record(item);
+    if (!source || typeof source.stage !== "string" || !source.stage || typeof source.startDate !== "string" || typeof source.endDate !== "string" || sleepInterval(source.startDate, source.endDate) === null || !exactSourceClockAgrees(source.startDate, source.exactStartTime) || !exactSourceClockAgrees(source.endDate, source.exactEndTime) || typeof source.durationSeconds !== "number" || !Number.isFinite(source.durationSeconds) || source.durationSeconds < 0) return null;
+    result.push({ ...source, stage: source.stage, startDate: source.startDate, endDate: source.endDate, durationSeconds: source.durationSeconds });
+  }
+  return result;
+}
+function nativeSleepSessions(value) {
+  if (!Array.isArray(value)) return null;
+  const result = [];
+  for (const item of value) {
+    const source = record(item);
+    if (!source || typeof source.startTimeISO !== "string" || typeof source.endTimeISO !== "string" || sleepInterval(source.startTimeISO, source.endTimeISO) === null || !exactSourceClockAgrees(source.startTimeISO, source.exactStartTime) || !exactSourceClockAgrees(source.endTimeISO, source.exactEndTime)) return null;
+    result.push({ ...source, startTimeISO: source.startTimeISO, endTimeISO: source.endTimeISO });
+  }
+  return result;
+}
+function successorSleepDetails(profile) {
+  return profile === "apple-v11" || profile === "android-sleep-v6";
+}
+
+// src/native-quantity-details.ts
+var quantityDefinitions = [
+  { metric: "heart_rate", category: "heart", field: "heartRateSamples", unit: "bpm", heading: "heart rate sample details" },
+  { metric: "hrv_sdnn", category: "heart", field: "hrvSamples", unit: "ms", heading: "hrv sdnn sample details" },
+  { metric: "hrv_rmssd", category: "heart", field: "hrvSamples", unit: "ms", heading: "hrv rmssd sample details" },
+  { metric: "blood_oxygen", category: "vitals", field: "bloodOxygenSamples", unit: "ratio_0_1", heading: "blood oxygen sample details" },
+  { metric: "blood_glucose", category: "vitals", field: "bloodGlucoseSamples", unit: "mg/dL", heading: "blood glucose sample details" },
+  { metric: "respiratory_rate", category: "vitals", field: "respiratoryRateSamples", unit: "breaths/min", heading: "respiratory rate sample details" }
+];
+function record2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function sourceTimestampAgrees(source) {
+  return exactSourceClockAgrees(source.timestamp, source.exactTime);
+}
+function nativeQuantityDetails(value, profile) {
+  if (!successorSleepDetails(profile) || !Array.isArray(value)) return null;
+  const details2 = [];
+  for (const item of value) {
+    if (!record2(item) || !record2(item.sample)) return null;
+    const definition = quantityDefinitions.find((entry) => entry.metric === item.metric);
+    if (!definition || item.unit !== definition.unit || item.metric === "hrv_sdnn" && profile !== "apple-v11" || item.metric === "hrv_rmssd" && profile !== "android-sleep-v6") return null;
+    const source = item.sample;
+    if (typeof source.timestamp !== "string" || sleepInterval(source.timestamp, source.timestamp) !== 0 || typeof source.value !== "number" || !Number.isFinite(source.value) || definition.unit === "ratio_0_1" && (source.value < 0 || source.value > 1)) return null;
+    if (!sourceTimestampAgrees(source)) return null;
+    details2.push({ metric: definition.metric, unit: definition.unit, sample: { ...source, timestamp: source.timestamp, value: source.value } });
+  }
+  return details2;
+}
+function quantityDetailsFromJSON(root, profile) {
+  const details2 = [];
+  for (const definition of quantityDefinitions) {
+    if (definition.metric === "hrv_sdnn" && profile !== "apple-v11" || definition.metric === "hrv_rmssd" && profile !== "android-sleep-v6") continue;
+    const category = root[definition.category];
+    if (!record2(category) || category[definition.field] === void 0) continue;
+    const samples = category[definition.field];
+    if (!Array.isArray(samples)) return null;
+    details2.push(...samples.map((sample) => ({ metric: definition.metric, unit: definition.unit, sample })));
+  }
+  return nativeQuantityDetails(details2, profile);
+}
+function attachNativeQuantityDetails(day, details2) {
+  var _a, _b;
+  if (!details2.length) return;
+  day.nativeQuantityDetails = details2;
+  for (const definition of quantityDefinitions) {
+    const samples = details2.filter((value) => value.metric === definition.metric).map((value) => value.sample);
+    if (!samples.length) continue;
+    if (definition.category === "heart") {
+      day.heart = { ...day.heart, heartRateSamples: (_b = (_a = day.heart) == null ? void 0 : _a.heartRateSamples) != null ? _b : [] };
+      if (definition.field === "heartRateSamples") day.heart.heartRateSamples = samples;
+      else day.heart.hrvSamples = samples;
+    } else {
+      day.vitals = { ...day.vitals };
+      if (definition.field === "bloodOxygenSamples") day.vitals.bloodOxygenSamples = samples.map((sample) => ({ ...sample, value: sample.value * 100, percent: sample.value * 100 }));
+      else if (definition.field === "bloodGlucoseSamples") day.vitals.bloodGlucoseSamples = samples;
+      else day.vitals.respiratoryRateSamples = samples;
+    }
+  }
+}
+
+// src/native-correlation-details.ts
+function record3(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function nativeCorrelationDetails(value, profile) {
+  if (!successorSleepDetails(profile) || !Array.isArray(value)) return null;
+  const details2 = [];
+  for (const item of value) {
+    if (!record3(item) || item.metric !== "blood_pressure" || item.unit !== "mmHg" || !record3(item.sample)) return null;
+    const source = item.sample;
+    if (!sourceTimestampAgrees(source) || typeof source.timestamp !== "string" || typeof source.systolic !== "number" || !Number.isFinite(source.systolic) || typeof source.diastolic !== "number" || !Number.isFinite(source.diastolic) || source.unit !== void 0 && source.unit !== "mmHg") return null;
+    if (profile === "apple-v11" || source.endDate !== void 0) {
+      if (typeof source.endDate !== "string" || sleepInterval(source.timestamp, source.endDate) === null) return null;
+    }
+    details2.push({ metric: "blood_pressure", unit: "mmHg", sample: { ...source, timestamp: source.timestamp, systolic: source.systolic, diastolic: source.diastolic } });
+  }
+  return details2;
+}
+function correlationsFromJSON(root, profile) {
+  const vitals = root.vitals;
+  if (!record3(vitals) || vitals.bloodPressureSamples === void 0) return nativeCorrelationDetails([], profile);
+  if (!Array.isArray(vitals.bloodPressureSamples)) return null;
+  return nativeCorrelationDetails(vitals.bloodPressureSamples.map((sample) => ({ metric: "blood_pressure", unit: "mmHg", sample })), profile);
+}
+function attachNativeCorrelationDetails(day, details2) {
+  if (!details2.length) return;
+  day.nativeCorrelationDetails = details2;
+  day.vitals = { ...day.vitals, bloodPressureSamples: details2.map((detail) => detail.sample) };
+}
 
 // src/csv-utils.ts
-function isBlankCsvRecord(record) {
-  return record.every((cell) => cell.trim() === "");
+function isBlankCsvRecord(record5) {
+  return record5.every((cell) => cell.trim() === "");
 }
 function* iterateCsvRecords(content, options = {}) {
   var _a;
@@ -9822,7 +9972,7 @@ function topLevelJsonObjectProperties(content) {
 function parseJsonObjectExcluding(content, omittedKeys) {
   const properties = topLevelJsonObjectProperties(content);
   if (!properties) return null;
-  const record = {};
+  const record5 = {};
   const omittedValues = {};
   try {
     for (const property of properties) {
@@ -9830,10 +9980,10 @@ function parseJsonObjectExcluding(content, omittedKeys) {
       if (omittedKeys.has(property.key)) {
         omittedValues[property.key] = rawValue;
       } else {
-        record[property.key] = JSON.parse(rawValue);
+        record5[property.key] = JSON.parse(rawValue);
       }
     }
-    return { record, omittedValues };
+    return { record: record5, omittedValues };
   } catch (e) {
     return null;
   }
@@ -9951,8 +10101,8 @@ var HEALTHMD_DATA_DICTIONARY_FILENAME = "_healthmd_data_dictionary.json";
 var HEALTHMD_HEALTH_DATA_SCHEMA = "healthmd.health_data";
 var HEALTHMD_ROLLUP_SCHEMA = "healthmd.rollup_summary";
 var HEALTHMD_RECORD_ARCHIVE_SCHEMA = "healthmd.healthkit_records";
-var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 10;
-var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 10;
+var SUPPORTED_HEALTHMD_SCHEMA_VERSION = 11;
+var SUPPORTED_HEALTHMD_ROLLUP_SCHEMA_VERSION = 11;
 var SUPPORTED_HEALTHMD_RECORD_ARCHIVE_VERSION = 1;
 function schemaVersionOf(value) {
   var _a;
@@ -9971,8 +10121,8 @@ function isHealthMetricDataDictionaryValue(value) {
   if (!Array.isArray(value)) return false;
   return value.some((entry) => {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
-    const record = entry;
-    return typeof record.key === "string" && typeof record.canonicalKey === "string";
+    const record5 = entry;
+    return typeof record5.key === "string" && typeof record5.canonicalKey === "string";
   });
 }
 function detectKnownSchema(format, schema, version) {
@@ -10016,14 +10166,14 @@ function detectJsonSchema(contentOrValue) {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return { kind: "unknown", version: 0, format: "json", reason: "JSON root is not an object" };
     }
-    const record = parsed;
-    const schema = typeof record.schema === "string" ? record.schema : void 0;
-    const version = schemaVersionOf(record);
+    const record5 = parsed;
+    const schema = typeof record5.schema === "string" ? record5.schema : void 0;
+    const version = schemaVersionOf(record5);
     if (schema) return detectKnownSchema("json", schema, version);
-    if (record.type === "health-data" && typeof record.date === "string") {
+    if (record5.type === "health-data" && typeof record5.date === "string") {
       return { kind: "legacy-health-day", version: 0, format: "json" };
     }
-    if (record.type === "health_rollup") {
+    if (record5.type === "health_rollup") {
       return { kind: "rollup-summary", version, format: "json", schema: HEALTHMD_ROLLUP_SCHEMA };
     }
     return { kind: "unknown", version, format: "json", reason: "JSON is not a Health.md daily export" };
@@ -10199,6 +10349,185 @@ function normalizeCsvLabel(value) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+// src/sleep-attribution.ts
+function record4(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function alias(value, snake, camel) {
+  const a = value[snake];
+  const b = value[camel];
+  if (a !== void 0 && typeof a !== "string" || b !== void 0 && typeof b !== "string" || a !== void 0 && b !== void 0 && a !== b) throw new Error("Invalid sleep authority");
+  return a != null ? a : b;
+}
+function timezone(value) {
+  if (!value || value.length > 128 || /^[+-]/.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format(0);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function readSleepAuthority(source) {
+  var _a;
+  try {
+    const profile = alias(source, "schema_profile", "schemaProfile");
+    const version = schemaVersionOf(source);
+    const androidSleep = profile === "android-sleep-v6";
+    const successor = androidSleep || profile === "apple-v11" || version === 11;
+    const raw = record4((_a = source.time_context) != null ? _a : source.timeContext);
+    if (source.time_context !== void 0 && source.timeContext !== void 0) {
+      const other = record4(source.timeContext);
+      if (!raw || !other) return null;
+      for (const [snake, camel] of [
+        ["calendar_timezone", "calendarTimezone"],
+        ["timestamp_timezone", "timestampTimezone"],
+        ["sleep_day_attribution", "sleepDayAttribution"],
+        ["sleep_owner_day_rule", "sleepOwnerDayRule"],
+        ["sleep_interval_clipping", "sleepIntervalClipping"]
+      ]) {
+        if (alias(raw, snake, camel) !== alias(other, snake, camel)) return null;
+      }
+    }
+    const context = raw != null ? raw : {};
+    const calendar = alias(context, "calendar_timezone", "calendarTimezone");
+    const timestamp2 = alias(context, "timestamp_timezone", "timestampTimezone");
+    const attribution = alias(context, "sleep_day_attribution", "sleepDayAttribution");
+    const owner = alias(context, "sleep_owner_day_rule", "sleepOwnerDayRule");
+    const clipping = alias(context, "sleep_interval_clipping", "sleepIntervalClipping");
+    if (successor) {
+      if (source.schema !== "healthmd.health_data" || version !== (androidSleep ? 6 : 11) || profile !== (androidSleep ? "android-sleep-v6" : "apple-v11") || source.schemaVersion !== void 0 && Number(source.schemaVersion) !== version || source.schema_version !== void 0 && Number(source.schema_version) !== version || attribution !== "morning_ends" || owner !== "session_end_date" || clipping !== "none" || !timezone(calendar) || timestamp2 !== "UTC" && (!androidSleep || timestamp2 !== calendar)) return null;
+    } else if (attribution !== void 0 || owner !== void 0 || clipping !== void 0) return null;
+    return {
+      profile,
+      androidSleep,
+      context: calendar || timestamp2 ? {
+        calendarTimezone: calendar,
+        calendar_timezone: calendar,
+        timestampTimezone: timestamp2,
+        timestamp_timezone: timestamp2,
+        ...successor ? {
+          sleepDayAttribution: "morning_ends",
+          sleep_day_attribution: "morning_ends",
+          sleepOwnerDayRule: "session_end_date",
+          sleep_owner_day_rule: "session_end_date",
+          sleepIntervalClipping: "none",
+          sleep_interval_clipping: "none"
+        } : {}
+      } : void 0
+    };
+  } catch (e) {
+    return null;
+  }
+}
+function sleepAuthoritiesAgree(a, b) {
+  const context = (day) => {
+    var _a, _b;
+    const time = (_a = day.timeContext) != null ? _a : day.time_context;
+    const attribution = (_b = time == null ? void 0 : time.sleep_day_attribution) != null ? _b : "night_begins";
+    return attribution === "morning_ends" ? [attribution, day.schema_profile, time == null ? void 0 : time.calendar_timezone, time == null ? void 0 : time.timestamp_timezone].join("|") : attribution;
+  };
+  return context(a) === context(b);
+}
+function sleepDeclaration(body2) {
+  if (!body2.includes("Health.md sleep attribution:")) return void 0;
+  const lines = body2.split("\n").filter((line) => line.includes("Health.md sleep attribution:") || line.startsWith("> Profile:"));
+  if (lines.length !== 2 || lines[0] !== "> Health.md sleep attribution: `morning_ends` (Morning ends); whole sessions by wake-up date.") return null;
+  const match = /^> Profile: `(apple-v11|android-sleep-v6)`; calendar timezone: `([^`]+)`; timestamp timezone: `([^`]+)`; owner rule: `session_end_date`; clipping: `none`\.$/.exec(lines[1]);
+  if (!match) return null;
+  return {
+    schema: "healthmd.health_data",
+    schema_version: match[1] === "apple-v11" ? 11 : 6,
+    schema_profile: match[1],
+    time_context: {
+      calendar_timezone: match[2],
+      timestamp_timezone: match[3],
+      sleep_day_attribution: "morning_ends",
+      sleep_owner_day_rule: "session_end_date",
+      sleep_interval_clipping: "none"
+    }
+  };
+}
+
+// src/data-loader.ts
+var import_obsidian = require("obsidian");
+
+// src/data-folder-layout.ts
+var SUPPORTED_DATA_EXTENSIONS = ["json", "csv", "md"];
+var DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE = "{year}/{month}/{day}";
+var DATA_FOLDER_PATH_TEMPLATE_VARIABLES = [
+  "year",
+  "month",
+  "week",
+  "day",
+  "date"
+];
+var MAX_CUSTOM_DATA_FOLDER_DEPTH = 8;
+var PREDEFINED_DATA_FOLDER_MAX_DEPTH = {
+  flat: 0,
+  year: 1,
+  month: 2,
+  week: 3,
+  day: 4
+};
+function dataFolderMaxDepth(granularity, customTemplate = DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE) {
+  if (granularity === "custom") {
+    return customDataFolderPathTemplateDepth(customTemplate);
+  }
+  return PREDEFINED_DATA_FOLDER_MAX_DEPTH[granularity];
+}
+function customDataFolderPathTemplateDepth(template) {
+  const normalized = normalizeDataFolderPathTemplate(template);
+  if (!normalized) return 0;
+  return Math.min(normalized.split("/").length, MAX_CUSTOM_DATA_FOLDER_DEPTH);
+}
+function normalizeDataFolderPathTemplate(template) {
+  const normalized = stripPathControlCharacters(
+    template.trim().replace(/\\/g, "/")
+  ).replace(/\/+$/g, "").replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+  const safeSegments = normalized.split("/").map((segment) => segment.trim()).filter((segment) => segment.length > 0 && segment !== "." && segment !== "..").slice(0, MAX_CUSTOM_DATA_FOLDER_DEPTH);
+  return safeSegments.join("/") || DEFAULT_CUSTOM_DATA_FOLDER_PATH_TEMPLATE;
+}
+function isSupportedDataExtension(extension) {
+  return SUPPORTED_DATA_EXTENSIONS.includes(extension);
+}
+function matchesGlob(candidate, pattern) {
+  if (!pattern || pattern === "*" || pattern === "*.*") return true;
+  const regex = new RegExp(
+    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+    "i"
+  );
+  return regex.test(candidate);
+}
+function relativePathFromRoot(rootPath, filePath) {
+  const normalizedRoot = rootPath.replace(/\/+$/g, "");
+  if (!normalizedRoot) return filePath;
+  const prefix = `${normalizedRoot}/`;
+  return filePath.startsWith(prefix) ? filePath.slice(prefix.length) : filePath;
+}
+function matchesDataFilePath({
+  name,
+  extension,
+  path,
+  rootPath,
+  pattern
+}) {
+  if (!isSupportedDataExtension(extension)) return false;
+  if (matchesGlob(name, pattern)) return true;
+  return matchesGlob(relativePathFromRoot(rootPath, path), pattern);
+}
+function stripPathControlCharacters(value) {
+  var _a;
+  let result = "";
+  for (const character of value) {
+    const codePoint = (_a = character.codePointAt(0)) != null ? _a : 0;
+    if (codePoint >= 32 && codePoint !== 127) {
+      result += character;
+    }
+  }
+  return result;
+}
+
 // src/medication-utils.ts
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -10324,15 +10653,15 @@ function parseYamlishList(value) {
   }).filter((line) => line.text && !line.text.startsWith("#"));
   if (!lines.length) return void 0;
   if (!lines.some((line) => line.text.startsWith("- "))) {
-    const object2 = {};
+    const object3 = {};
     let hasKeys = false;
     for (const line of lines) {
       const pair = splitYamlKeyValue(line.text);
       if (!pair) return void 0;
-      object2[pair[0]] = parseScalar(pair[1]);
+      object3[pair[0]] = parseScalar(pair[1]);
       hasKeys = true;
     }
-    return hasKeys ? [object2] : void 0;
+    return hasKeys ? [object3] : void 0;
   }
   const result = [];
   let current = null;
@@ -10799,8 +11128,8 @@ var CSV_ALIASES = {
 function canonicalMetricKeyFromCsvLabel(category, metric, unit) {
   const normalizedCategory = normalizeCsvText(category);
   const normalizedMetric = normalizeCsvText(metric);
-  const alias = CSV_ALIASES[`${normalizedCategory}|${normalizedMetric}`];
-  if (alias) return alias;
+  const alias2 = CSV_ALIASES[`${normalizedCategory}|${normalizedMetric}`];
+  if (alias2) return alias2;
   if (normalizedCategory === "symptoms") return `symptom_${normalizedMetric}`;
   if (normalizedCategory === "vitamins" || normalizedCategory === "minerals") {
     const base = normalizedMetric.replace(/_b\d+$/, "");
@@ -10958,6 +11287,7 @@ var JSON_SECTION_METRIC_MAP = {
     awakeTime: "sleep_awake_hours",
     bedtime: "sleep_bedtime",
     coreSleep: "sleep_core_hours",
+    lightSleep: "sleep_light_hours",
     deepSleep: "sleep_deep_hours",
     inBedTime: "sleep_in_bed_hours",
     remSleep: "sleep_rem_hours",
@@ -11115,9 +11445,9 @@ function canonicalMetricsFromSummaryRoot(root) {
 function isKnownCanonicalMetricKey(key, units) {
   return BUILTIN_KEYS.has(key) || key.startsWith("symptom_") || units !== void 0 && key in units;
 }
-function canonicalMetricsFromFlatRecord(record, units) {
+function canonicalMetricsFromFlatRecord(record5, units) {
   const metrics = {};
-  for (const [key, value] of Object.entries(record)) {
+  for (const [key, value] of Object.entries(record5)) {
     if (RESERVED_FLAT_KEYS.has(key)) continue;
     const allowed = isKnownCanonicalMetricKey(key, units);
     if (!allowed) continue;
@@ -11185,7 +11515,7 @@ var WHOOP_ZONE_KEYS = [
 ];
 
 // src/whoop-data.ts
-function object(value) {
+function object2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
 }
 function text(value, limit2 = 256) {
@@ -11285,7 +11615,7 @@ function workout(raw) {
     altitude_change_meters: number(raw.altitude_change_meters, -Number.MAX_VALUE),
     percent_recorded: percent(raw.percent_recorded)
   }) };
-  const zones = object(raw.zone_durations);
+  const zones = object2(raw.zone_durations);
   if (zones) {
     const values = defined(Object.fromEntries(WHOOP_ZONE_KEYS.map((key) => [key, duration(zones[key])])));
     if (Object.keys(values).length) result.zone_durations = values;
@@ -11309,7 +11639,7 @@ function empty(source, status) {
   return { source, captureStatus: status, cycles: [], recoveries: [], sleep: [], workouts: [], resources: [], notes: [] };
 }
 function resource(value) {
-  const raw = object(value);
+  const raw = object2(value);
   if (!raw || !["cycles", "recovery", "sleep", "workouts", "body"].includes(String(raw.resource)) || !["success", "failure", "cancelled", "skipped", "unsupported"].includes(String(raw.status)) || duration(raw.record_count) === void 0) return void 0;
   return { resource: raw.resource, status: raw.status, record_count: raw.record_count };
 }
@@ -11324,7 +11654,7 @@ function validRecord(key, raw) {
 function setRecords(result, key, values, cycleSteps = true) {
   const mapped = [];
   for (const value of values.slice(0, 1e4)) {
-    const raw = object(value);
+    const raw = object2(value);
     if (!raw || !validRecord(key, raw)) {
       result.notes.push(`Invalid WHOOP ${key} record omitted.`);
       continue;
@@ -11348,7 +11678,7 @@ function finalize(result) {
   return result;
 }
 function parseWhoopSection(value) {
-  const raw = object(value);
+  const raw = object2(value);
   if (!raw || raw.schema !== "healthmd.provider.whoop_daily" || raw.schema_version !== 1 && raw.schema_version !== 2 || !capture(raw.capture_status)) return void 0;
   const result = empty("typed", capture(raw.capture_status));
   if (result.captureStatus === "not_requested") return result;
@@ -11358,7 +11688,7 @@ function parseWhoopSection(value) {
     else result.notes.push(`WHOOP ${key} collection unavailable.`);
   }
   if (Array.isArray(raw.resources)) result.resources = raw.resources.map(resource).filter((row) => !!row);
-  const profile = object(raw.body);
+  const profile = object2(raw.body);
   if ((profile == null ? void 0 : profile.source_kind) === "current_profile_snapshot") result.body = body(profile);
   if (Array.isArray(raw.warnings) && raw.warnings.length) result.notes.push("WHOOP producer reported capture warnings.");
   return finalize(result);
@@ -11457,9 +11787,9 @@ function parseWhoopCsv(rows) {
   }
   result.resources = providerRows.filter((row) => label(row.category) === "whoop capture" && label(row.metric) === "resource result").map((row) => resource(decode(row))).filter((row) => !!row);
   const profile = providerRows.find((row) => label(row.category) === "whoop body" && label(row.metric) === "body snapshot");
-  const profileValue = profile ? object(decode(profile)) : void 0;
+  const profileValue = profile ? object2(decode(profile)) : void 0;
   if ((profileValue == null ? void 0 : profileValue.source_kind) === "current_profile_snapshot") result.body = body(profileValue);
-  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record) => record.projection)) {
+  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record5) => record5.projection)) {
     result.notes = result.notes.filter((note2) => !note2.startsWith("Single-record scalar"));
   }
   return finalize(result);
@@ -11595,17 +11925,17 @@ function stringArrayFromUnknown2(value) {
   }
   return [];
 }
-function firstString2(record, keys) {
+function firstString2(record5, keys) {
   for (const key of keys) {
-    const value = record[key];
+    const value = record5[key];
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
   }
   return void 0;
 }
-function firstNumber2(record, keys) {
+function firstNumber2(record5, keys) {
   for (const key of keys) {
-    const parsed = parseNumber(record[key]);
+    const parsed = parseNumber(record5[key]);
     if (parsed !== void 0) return parsed;
   }
   return void 0;
@@ -11621,9 +11951,9 @@ function normalizeTimestamp(raw, fallbackDate) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T12:00:00`;
   return value;
 }
-function moodEntryFromRecord(record, fallbackDate) {
+function moodEntryFromRecord(record5, fallbackDate) {
   var _a, _b, _c, _d;
-  const valenceRaw = firstNumber2(record, [
+  const valenceRaw = firstNumber2(record5, [
     "valence",
     "moodValence",
     "mood_valence",
@@ -11634,7 +11964,7 @@ function moodEntryFromRecord(record, fallbackDate) {
     "avgValence",
     "avg_valence"
   ]);
-  const scoreRaw = firstNumber2(record, [
+  const scoreRaw = firstNumber2(record5, [
     "score",
     "moodScore",
     "mood_score",
@@ -11650,7 +11980,7 @@ function moodEntryFromRecord(record, fallbackDate) {
     "averageMoodPercent",
     "average_mood_percent"
   ]);
-  const label = firstString2(record, [
+  const label = firstString2(record5, [
     "label",
     "primaryLabel",
     "primary_label",
@@ -11658,7 +11988,7 @@ function moodEntryFromRecord(record, fallbackDate) {
     "mood_label",
     "state"
   ]);
-  const valenceDescription = firstString2(record, [
+  const valenceDescription = firstString2(record5, [
     "classification",
     "valenceClassification",
     "valence_classification",
@@ -11666,16 +11996,16 @@ function moodEntryFromRecord(record, fallbackDate) {
     "valence_description",
     "feeling"
   ]);
-  const rawMood = record.mood;
+  const rawMood = record5.mood;
   const moodLabel = typeof rawMood === "string" && rawMood.trim() ? rawMood.trim() : void 0;
   const labels = [
-    ...stringArrayFromUnknown2(record.labels),
-    ...stringArrayFromUnknown2(record.emotions),
-    ...stringArrayFromUnknown2(record.feelings)
+    ...stringArrayFromUnknown2(record5.labels),
+    ...stringArrayFromUnknown2(record5.emotions),
+    ...stringArrayFromUnknown2(record5.feelings)
   ].filter((item, index, all) => all.indexOf(item) === index);
   const primaryLabel2 = (_b = (_a = label != null ? label : moodLabel) != null ? _a : labels[0]) != null ? _b : valenceDescription;
   const valence = (_d = (_c = normalizeMoodValence(valenceRaw, "valence")) != null ? _c : normalizeMoodValence(scoreRaw, "score")) != null ? _d : normalizeMoodValence(primaryLabel2, "label");
-  const timestamp2 = normalizeTimestamp(firstString2(record, [
+  const timestamp2 = normalizeTimestamp(firstString2(record5, [
     "timestamp",
     "date",
     "recordedAt",
@@ -11686,12 +12016,12 @@ function moodEntryFromRecord(record, fallbackDate) {
     "start_time",
     "time"
   ]), fallbackDate);
-  const endDate = normalizeTimestamp(firstString2(record, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
-  const kind = firstString2(record, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
+  const endDate = normalizeTimestamp(firstString2(record5, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
+  const kind = firstString2(record5, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
   const associations = [
-    ...stringArrayFromUnknown2(record.associations),
-    ...stringArrayFromUnknown2(record.contexts),
-    ...stringArrayFromUnknown2(record.factors)
+    ...stringArrayFromUnknown2(record5.associations),
+    ...stringArrayFromUnknown2(record5.contexts),
+    ...stringArrayFromUnknown2(record5.factors)
   ].filter((item, index, all) => all.indexOf(item) === index);
   if (valence === void 0 && !primaryLabel2 && !labels.length && !kind) return null;
   return {
@@ -11861,11 +12191,11 @@ function parseLargeHealthDataEnvelope(content) {
     return null;
   }
   try {
-    const record = JSON.parse(`${head}${content.slice(restStart)}`);
-    if (!isRecord4(record) || record.type !== "health-data") return null;
-    if ("healthkit_record_archive" in record) return null;
+    const record5 = JSON.parse(`${head}${content.slice(restStart)}`);
+    if (!isRecord4(record5) || record5.type !== "health-data") return null;
+    if ("healthkit_record_archive" in record5) return null;
     return {
-      record,
+      record: record5,
       omittedValues: {
         healthkit_record_archive: JSON.stringify(scan.topLevelScalars)
       }
@@ -11945,19 +12275,6 @@ function buildCaptureSummary(topLevelStatusValue, archiveRaw, diagnostics) {
     partialFailureCount,
     queryStatusCounts: statusCounts,
     validationIssues: validationIssues.length ? validationIssues : void 0
-  };
-}
-function normalizedTimeContext(value) {
-  var _a, _b;
-  if (!isRecord4(value)) return void 0;
-  const calendarTimezone = stringValue3((_a = value.calendar_timezone) != null ? _a : value.calendarTimezone);
-  const timestampTimezone = stringValue3((_b = value.timestamp_timezone) != null ? _b : value.timestampTimezone);
-  if (!calendarTimezone && !timestampTimezone) return void 0;
-  return {
-    calendarTimezone,
-    timestampTimezone,
-    calendar_timezone: calendarTimezone,
-    timestamp_timezone: timestampTimezone
   };
 }
 function normalizePercent(value) {
@@ -12053,11 +12370,25 @@ function parseJSON(content) {
     if (parsed.schema === HEALTHMD_ROLLUP_SCHEMA || parsed.type === "health_rollup") return null;
     if (parsed.type !== "health-data" || typeof parsed.date !== "string" || !parsed.date) return null;
     if (typeof parsed.schema === "string" && parsed.schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
+    const authority = readSleepAuthority(parsed);
+    if (!authority) return null;
+    if (authority.androidSleep && isRecord4(parsed.sleep) && (parsed.sleep.coreSleep !== void 0 || parsed.sleep.coreSleepFormatted !== void 0 || parsed.sleep.sleep_core_hours !== void 0 || Array.isArray(parsed.sleep.sleepStages) && parsed.sleep.sleepStages.some((stage) => isRecord4(stage) && stage.stage === "core"))) return null;
     const diagnostics = parsed.diagnostics;
     const summaryRoot = { ...parsed };
     delete summaryRoot.diagnostics;
     delete summaryRoot.medications;
     const day = summaryRoot;
+    if (isRecord4(parsed.sleep)) {
+      if (successorSleepDetails(authority.profile)) {
+        if (parsed.sleep.sleepStages !== void 0 && !nativeSleepStages(parsed.sleep.sleepStages)) return null;
+        if (parsed.sleep.sleepSessions !== void 0) {
+          const sessions = nativeSleepSessions(parsed.sleep.sleepSessions);
+          if (!sessions || !authority.androidSleep && sessions.length) return null;
+        }
+      }
+      const stages = parsed.sleep.sleepStages;
+      day.sleep = { ...parsed.sleep, sleepStages: Array.isArray(stages) ? stages : [] };
+    }
     delete day.whoop;
     const whoop = parseWhoopSection(isRecord4(parsed.providers) ? parsed.providers.whoop : void 0);
     if (whoop) day.whoop = whoop;
@@ -12074,7 +12405,11 @@ function parseJSON(content) {
       day.unit_system = "metric";
     }
     if (isUnitMap(parsed.units)) day.units = parsed.units;
-    const timeContext = normalizedTimeContext(parsed.time_context);
+    if (authority.profile) {
+      day.schemaProfile = authority.profile;
+      day.schema_profile = authority.profile;
+    }
+    const timeContext = authority.context;
     if (timeContext) {
       day.timeContext = timeContext;
       day.time_context = timeContext;
@@ -12090,6 +12425,17 @@ function parseJSON(content) {
     }
     Object.assign(day, normalizeMedicationFields(normalizedMedicationSource(parsed)));
     normalizePercentageSections(day, schemaVersion);
+    if (successorSleepDetails(authority.profile)) {
+      const quantities = quantityDetailsFromJSON(parsed, authority.profile);
+      if (!quantities) return null;
+      attachNativeQuantityDetails(day, quantities);
+      const correlations = correlationsFromJSON(parsed, authority.profile);
+      if (!correlations) return null;
+      attachNativeCorrelationDetails(day, correlations);
+      const activity = activityDetailsFromJSON(parsed, authority.profile);
+      if (!activity) return null;
+      attachNativeActivityDetails(day, activity);
+    }
     attachCanonicalMetrics(day);
     const moodSummary2 = getMoodDaySummary(day);
     if (moodSummary2.entries.length) {
@@ -12357,7 +12703,7 @@ function parseMoodEntries(rows) {
 }
 function normalizeSleepStage(stage) {
   const normalized = normalizeLabel(stage).replace(/^asleep[_\s-]*/, "").replace(/^sleep[_\s-]*/, "");
-  if (normalized === "light") return "core";
+  if (normalized === "light") return "light";
   if (normalized.includes("deep")) return "deep";
   if (normalized.includes("rem")) return "rem";
   if (normalized.includes("awake")) return "awake";
@@ -12830,7 +13176,7 @@ function parseWorkoutRows(rows) {
   return workouts;
 }
 function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCounts) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K;
   const rowsWithMetadata = [...metadataRows, ...rows];
   const schema = getString(rowsWithMetadata, "Metadata", "schema");
   if (schema === HEALTHMD_ROLLUP_SCHEMA) return null;
@@ -12838,19 +13184,39 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
   const schemaVersion = schemaVersionOf({ schema_version: getNum(rowsWithMetadata, "Metadata", "schema_version") });
   const unitSystem = (_a = getString(rowsWithMetadata, "Metadata", "unit_system")) != null ? _a : schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : void 0;
   const units = unitMapFromRows(rows, dictionary);
-  const calendarTimezone = getString(rowsWithMetadata, "Metadata", "time_context.calendar_timezone");
-  const timestampTimezone = getString(rowsWithMetadata, "Metadata", "time_context.timestamp_timezone");
-  const timeContext = calendarTimezone || timestampTimezone ? {
-    calendarTimezone,
-    timestampTimezone,
-    calendar_timezone: calendarTimezone,
-    timestamp_timezone: timestampTimezone
-  } : void 0;
+  const context = {};
+  let profile;
+  for (const row of rowsWithMetadata.filter((row2) => normalizeLabel(row2.category) === "metadata")) {
+    const key = row.metric.startsWith("time_context.") ? row.metric.slice(13) : void 0;
+    if (key) {
+      if (context[key] !== void 0 && context[key] !== row.value) return null;
+      context[key] = row.value;
+    }
+    if (row.metric === "schema_profile") {
+      if (profile !== void 0 && profile !== row.value) return null;
+      profile = row.value;
+    }
+  }
+  const identity = {};
+  for (const row of rowsWithMetadata.filter((row2) => normalizeLabel(row2.category) === "metadata")) {
+    if (["schema", "schema_version", "schemaVersion", "schema_profile", "schemaProfile"].includes(row.metric)) {
+      if (identity[row.metric] !== void 0 && identity[row.metric] !== row.value) return null;
+      identity[row.metric] = row.value;
+    }
+  }
+  const authority = readSleepAuthority({ ...identity, schema, schema_version: schemaVersion, schema_profile: profile, time_context: context });
+  if ((authority == null ? void 0 : authority.androidSleep) && (units == null ? void 0 : units.sleep_core_hours)) {
+    units.sleep_light_hours = units.sleep_core_hours;
+    delete units.sleep_core_hours;
+  }
+  if (!authority) return null;
+  const timeContext = authority.context;
   const capture2 = buildCaptureSummary2(rowsWithMetadata, captureCounts);
   const day = {
     type: "health-data",
     date,
     schema,
+    ...authority.profile ? { schemaProfile: authority.profile, schema_profile: authority.profile } : {},
     schemaVersion: schemaVersion || void 0,
     schema_version: schemaVersion || void 0,
     units,
@@ -12919,36 +13285,65 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
       hrv: (_j = getNum(rows, "Heart", "HRV")) != null ? _j : average(hrvSamples.map((sample) => sample.value))
     };
   }
-  const sleepStages = parseSleepStages(rows);
-  const sleepTotal = (_k = getNum(rows, "Sleep", "Total Duration")) != null ? _k : sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
-  const deepSleep = (_l = getNum(rows, "Sleep", "Deep Sleep")) != null ? _l : sumStageSeconds(sleepStages, "deep");
-  const remSleep = (_m = getNum(rows, "Sleep", "REM Sleep")) != null ? _m : sumStageSeconds(sleepStages, "rem");
-  const coreSleep = (_n = getNumFromLookups(rows, [
-    lookup("Sleep", "Core Sleep"),
-    lookup("Sleep", "Light Sleep")
-  ])) != null ? _n : sumStageSeconds(sleepStages, "core");
-  const awakeTime = (_o = getNum(rows, "Sleep", "Awake Time")) != null ? _o : sumStageSeconds(sleepStages, "awake");
-  if (sleepTotal > 0 || sleepStages.length) {
+  let nativeStages = [];
+  let nativeSessions = [];
+  if (successorSleepDetails(authority.profile)) {
+    for (const row of rows.filter((row2) => normalizeLabel(row2.category) === "sleep detail")) {
+      const metric = normalizeLabel(row.metric);
+      if (metric !== "sleep stage" && metric !== "sleep session") continue;
+      try {
+        const source = JSON.parse(row.value);
+        if (metric === "sleep stage") {
+          const parsed = nativeSleepStages([source]);
+          if (!parsed || row.unit !== "seconds" || parsed[0].startDate !== row.timestamp) return null;
+          nativeStages.push(...parsed);
+        } else {
+          const parsed = nativeSleepSessions([source]);
+          if (!parsed || !authority.androidSleep || row.unit !== "json" || parsed[0].startTimeISO !== row.timestamp) return null;
+          nativeSessions.push(...parsed);
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+  const sleepStages = [...nativeStages, ...parseSleepStages(rows)].map((stage) => !authority.androidSleep && stage.stage === "light" ? { ...stage, stage: "core" } : stage);
+  const sleepSeconds = (metric) => {
+    const row = findRow(rows, [lookup("Sleep", metric)]);
+    if (!row) return void 0;
+    const value = Number(row.value);
+    return Number.isFinite(value) ? value * (row.unit.startsWith("hour") ? 3600 : 1) : void 0;
+  };
+  const sleepTotal = (_l = (_k = sleepSeconds("Total Duration")) != null ? _k : sleepSeconds("Total Sleep")) != null ? _l : sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
+  const deepSleep = (_m = sleepSeconds("Deep Sleep")) != null ? _m : sumStageSeconds(sleepStages, "deep");
+  const remSleep = (_n = sleepSeconds("REM Sleep")) != null ? _n : sumStageSeconds(sleepStages, "rem");
+  if (authority.androidSleep && (sleepSeconds("Core Sleep") !== void 0 || sleepStages.some((stage) => stage.stage === "core"))) return null;
+  const coreSleep = authority.androidSleep ? void 0 : (_p = (_o = sleepSeconds("Core Sleep")) != null ? _o : sleepSeconds("Light Sleep")) != null ? _p : sumStageSeconds(sleepStages, "core");
+  const lightSleep = authority.androidSleep ? (_q = sleepSeconds("Light Sleep")) != null ? _q : sumStageSeconds(sleepStages, "light") : void 0;
+  const awakeTime = (_r = getNum(rows, "Sleep", "Awake Time")) != null ? _r : sumStageSeconds(sleepStages, "awake");
+  if (sleepTotal > 0 || sleepStages.length || nativeSessions.length) {
     day.sleep = {
+      ...nativeSessions.length ? { sleepSessions: nativeSessions } : {},
       sleepStages,
       totalDuration: sleepTotal,
       deepSleep,
       remSleep,
       coreSleep,
+      ...authority.androidSleep ? { lightSleep } : {},
       awakeTime,
-      bedtime: (_r = (_q = getString(rows, "Sleep", "Bedtime")) != null ? _q : (_p = sleepStages[0]) == null ? void 0 : _p.startDate) != null ? _r : "",
-      bedtimeISO: (_s = sleepStages[0]) == null ? void 0 : _s.startDate,
-      wakeTime: (_v = (_u = getString(rows, "Sleep", "Wake Time")) != null ? _u : (_t = sleepStages[sleepStages.length - 1]) == null ? void 0 : _t.endDate) != null ? _v : "",
-      wakeTimeISO: (_w = sleepStages[sleepStages.length - 1]) == null ? void 0 : _w.endDate
+      bedtime: (_u = (_t = getString(rows, "Sleep", "Bedtime")) != null ? _t : (_s = sleepStages[0]) == null ? void 0 : _s.startDate) != null ? _u : "",
+      bedtimeISO: ((_v = findRow(rows, [lookup("Sleep", "Bedtime")])) == null ? void 0 : _v.timestamp) || ((_w = sleepStages[0]) == null ? void 0 : _w.startDate),
+      wakeTime: (_z = (_y = getString(rows, "Sleep", "Wake Time")) != null ? _y : (_x = sleepStages[sleepStages.length - 1]) == null ? void 0 : _x.endDate) != null ? _z : "",
+      wakeTimeISO: ((_A = findRow(rows, [lookup("Sleep", "Wake Time")])) == null ? void 0 : _A.timestamp) || ((_B = sleepStages[sleepStages.length - 1]) == null ? void 0 : _B.endDate)
     };
   }
   const normalizeBloodOxygenCsv = schemaVersion >= 7 ? (value) => value : normalizePercent2;
   const respiratorySamples = samplesFromRows(rows, [lookup("Vitals", "Respiratory Rate Sample")]);
   const respiratoryValues = respiratorySamples.map((sample) => sample.value);
-  const respRateAvg = (_x = getNumFromLookups(rows, [
+  const respRateAvg = (_C = getNumFromLookups(rows, [
     lookup("Vitals", "Respiratory Rate"),
     lookup("Vitals", "Respiratory Rate Avg")
-  ])) != null ? _x : average(respiratoryValues);
+  ])) != null ? _C : average(respiratoryValues);
   const bloodOxygenSamples = samplesFromRows(
     rows,
     [
@@ -12959,30 +13354,30 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
     normalizeBloodOxygenCsv
   ).map((sample) => ({ ...sample, percent: sample.value }));
   const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
-  const bloodOxAvg = (_y = normalizeBloodOxygenCsv(getNumFromLookups(rows, [
+  const bloodOxAvg = (_D = normalizeBloodOxygenCsv(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen"),
     lookup("Vitals", "Blood Oxygen Avg"),
     lookup("Vitals", "SpO2"),
     lookup("Vitals", "SpO2 Avg"),
     lookup("Vitals", "SpO\u2082"),
     lookup("Vitals", "SpO\u2082 Avg")
-  ]))) != null ? _y : average(bloodOxygenValues);
-  const bloodOxMin = (_z = normalizeBloodOxygenCsv(getNumFromLookups(rows, [
+  ]))) != null ? _D : average(bloodOxygenValues);
+  const bloodOxMin = (_E = normalizeBloodOxygenCsv(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen Min"),
     lookup("Vitals", "SpO2 Min"),
     lookup("Vitals", "SpO\u2082 Min")
-  ]))) != null ? _z : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
-  const bloodOxMax = (_A = normalizeBloodOxygenCsv(getNumFromLookups(rows, [
+  ]))) != null ? _E : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_F = normalizeBloodOxygenCsv(getNumFromLookups(rows, [
     lookup("Vitals", "Blood Oxygen Max"),
     lookup("Vitals", "SpO2 Max"),
     lookup("Vitals", "SpO\u2082 Max")
-  ]))) != null ? _A : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  ]))) != null ? _F : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
   if (respRateAvg !== void 0 || respiratorySamples.length || bloodOxAvg !== void 0 || bloodOxygenSamples.length) {
     day.vitals = {
       respiratoryRate: respRateAvg,
       respiratoryRateAvg: respRateAvg,
-      respiratoryRateMin: (_B = getNum(rows, "Vitals", "Respiratory Rate Min")) != null ? _B : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0,
-      respiratoryRateMax: (_C = getNum(rows, "Vitals", "Respiratory Rate Max")) != null ? _C : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0,
+      respiratoryRateMin: (_G = getNum(rows, "Vitals", "Respiratory Rate Min")) != null ? _G : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0,
+      respiratoryRateMax: (_H = getNum(rows, "Vitals", "Respiratory Rate Max")) != null ? _H : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0,
       respiratoryRateSamples: respiratorySamples.length ? respiratorySamples : void 0,
       bloodOxygenPercent: bloodOxAvg,
       bloodOxygenAvg: bloodOxAvg,
@@ -12992,8 +13387,8 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
     };
   }
   const walkSpeed = getNum(rows, "Mobility", "Walking Speed");
-  const walkingAsymmetry = (_E = (_D = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _D : getNum(rows, "Mobility", "Walking Asymmetry Percent")) != null ? _E : getNum(rows, "Mobility", "Walking Asymmetry");
-  const walkingDoubleSupport = (_F = getNum(rows, "Mobility", "Walking Double Support Percentage")) != null ? _F : getNum(rows, "Mobility", "Walking Double Support Percent");
+  const walkingAsymmetry = (_J = (_I = getNum(rows, "Mobility", "Walking Asymmetry Percentage")) != null ? _I : getNum(rows, "Mobility", "Walking Asymmetry Percent")) != null ? _J : getNum(rows, "Mobility", "Walking Asymmetry");
+  const walkingDoubleSupport = (_K = getNum(rows, "Mobility", "Walking Double Support Percentage")) != null ? _K : getNum(rows, "Mobility", "Walking Double Support Percent");
   if (walkSpeed !== void 0 || walkingAsymmetry !== void 0 || walkingDoubleSupport !== void 0) {
     day.mobility = {
       walkingSpeed: walkSpeed,
@@ -13022,7 +13417,44 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
   if (headphone !== void 0 || environmentalSound !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
   }
+  const activityRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "activity record");
+  if (activityRows.length) {
+    try {
+      const records = nativeActivityDetails(activityRows.map((row) => JSON.parse(row.value)), authority.profile);
+      if (!records || records.some((record5, index) => activityRows[index].unit !== "json" || activityRows[index].timestamp !== activityRecordTimestamp(record5))) return null;
+      attachNativeActivityDetails(day, records);
+    } catch (e) {
+      return null;
+    }
+  }
+  const correlationRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "blood pressure correlation");
+  if (correlationRows.length) {
+    try {
+      const records = nativeCorrelationDetails(correlationRows.map((row) => {
+        const value = JSON.parse(row.value);
+        return value;
+      }), authority.profile);
+      if (!records || records.some((record5, index) => correlationRows[index].unit !== "json" || correlationRows[index].timestamp !== record5.sample.timestamp)) return null;
+      attachNativeCorrelationDetails(day, records);
+    } catch (e) {
+      return null;
+    }
+  }
+  const quantityRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "quantity sample");
+  if (quantityRows.length) {
+    try {
+      const records = nativeQuantityDetails(quantityRows.map((row) => {
+        const value = JSON.parse(row.value);
+        return value;
+      }), authority.profile);
+      if (!records || records.some((record5, index) => quantityRows[index].unit !== "json" || quantityRows[index].timestamp !== record5.sample.timestamp)) return null;
+      attachNativeQuantityDetails(day, records);
+    } catch (e) {
+      return null;
+    }
+  }
   attachCanonicalMetrics(day, canonicalMetricsFromCsvRows(rows, dictionary));
+  if (authority.androidSleep && day.canonicalMetrics) delete day.canonicalMetrics.sleep_core_hours;
   return day;
 }
 function parseCSV(content, dictionary) {
@@ -13047,7 +13479,7 @@ function parseCSV(content, dictionary) {
     const day = buildDayFromRows(
       date,
       dateRows,
-      metadataRows,
+      metadataRows.filter((row) => !row.date || row.date === date),
       dictionary,
       parsedRows.captureCountsByDate.get(date)
     );
@@ -13194,6 +13626,15 @@ function parseYamlBlock(lines, start, indent) {
         const parsed = parseYamlBlock(lines, i2 + 1, indent + 2);
         arr.push(parsed.value);
         i2 = parsed.index;
+        continue;
+      }
+      if (rest.startsWith("{") && rest.endsWith("}")) {
+        try {
+          arr.push(JSON.parse(rest));
+        } catch (e) {
+          arr.push(rest);
+        }
+        i2++;
         continue;
       }
       const keyValue = splitYamlKeyValue2(rest);
@@ -13609,7 +14050,7 @@ function samplesFromTimeValueTable(table, date, timeIndex, valueIndex, transform
 }
 function normalizeSleepStage2(stage) {
   const normalized = normalizeLabel2(stage).replace(/^asleep[_\s-]*/, "").replace(/^sleep[_\s-]*/, "");
-  if (normalized === "light") return "core";
+  if (normalized === "light") return "light";
   if (normalized.includes("deep")) return "deep";
   if (normalized.includes("rem")) return "rem";
   if (normalized.includes("awake")) return "awake";
@@ -13762,14 +14203,14 @@ function parseGranularMarkdownData(body2, date) {
 function sumStageSeconds2(stages, stageName) {
   return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
-function recordStr(record, key) {
-  const value = record[key];
+function recordStr(record5, key) {
+  const value = record5[key];
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return void 0;
 }
-function recordNum(record, key) {
-  return parseNumberValue2(record[key], key);
+function recordNum(record5, key) {
+  return parseNumberValue2(record5[key], key);
 }
 function cleanDisplayValue(value) {
   if (!value) return void 0;
@@ -14038,12 +14479,32 @@ function captureSummaryFromFrontmatter(fm) {
   };
 }
 function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K;
   const parsed = parseFrontmatter(content);
-  const fm = applyFrontmatterAliases(
+  let fm = applyFrontmatterAliases(
     mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter),
     frontmatterAliases
   );
+  const declaration = sleepDeclaration(parsed.body);
+  if (declaration === null) return null;
+  if (declaration) {
+    if (Object.keys(fm).some((key) => ["schema", "schema_version", "schema_profile", "time_context"].includes(key))) return null;
+    fm = { ...fm, ...declaration };
+    for (const [label, key] of [
+      ["Total Sleep", "sleep_total_hours"],
+      ["Deep Sleep", "sleep_deep_hours"],
+      ["REM Sleep", "sleep_rem_hours"],
+      ["Core Sleep", "sleep_core_hours"],
+      ["Light Sleep", "sleep_light_hours"],
+      ["Awake Time", "sleep_awake_hours"],
+      ["In Bed", "sleep_in_bed_hours"]
+    ]) {
+      const match = new RegExp(`${label}: ([0-9.eE+-]+) (?:hour|hours)`).exec(parsed.body);
+      if (match) fm[key] = Number(match[1]);
+    }
+  }
+  const authority = readSleepAuthority(fm);
+  if (!authority) return null;
   const schema = getFirstStr(fm, "schema", "Schema");
   const frontmatterType = normalizeLabel2((_b = getFirstStr(fm, "type", "Type")) != null ? _b : "");
   if (schema === HEALTHMD_ROLLUP_SCHEMA || frontmatterType === "health_rollup") return null;
@@ -14057,20 +14518,49 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   const explicitUnitSystem = getFirstStr(fm, "unit_system", "unitSystem");
   const unitSystem = explicitUnitSystem != null ? explicitUnitSystem : schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : void 0;
   const granular = parseGranularMarkdownData(parsed.body, date);
-  const rawTimeContext = isRecord5(fm.time_context) ? fm.time_context : void 0;
-  const calendarTimezone = rawTimeContext ? getFirstStr(rawTimeContext, "calendar_timezone", "calendarTimezone") : void 0;
-  const timestampTimezone = rawTimeContext ? getFirstStr(rawTimeContext, "timestamp_timezone", "timestampTimezone") : void 0;
-  const timeContext = calendarTimezone || timestampTimezone ? {
-    calendarTimezone,
-    timestampTimezone,
-    calendar_timezone: calendarTimezone,
-    timestamp_timezone: timestampTimezone
-  } : void 0;
+  let nativeSessions = [];
+  if (successorSleepDetails(authority.profile)) {
+    if (fm.sleep_stage_details !== void 0) {
+      const stages = nativeSleepStages(fm.sleep_stage_details);
+      if (!stages) return null;
+      granular.sleepStages = stages;
+    }
+    if (fm.sleep_session_details !== void 0) {
+      const sessions = nativeSleepSessions(fm.sleep_session_details);
+      if (!sessions || !authority.androidSleep) return null;
+      nativeSessions = sessions;
+    }
+    for (const table of parseMarkdownTables(parsed.body)) {
+      const headers = normalizedHeaders(table);
+      const start = headers.indexOf("start (utc)"), end = headers.indexOf("end (utc)");
+      const stage = headers.indexOf("stage");
+      const context = normalizeLabel2(table.context);
+      if (start < 0 || end < 0 || !["sleep stage details", "sleep session details"].includes(context)) continue;
+      if (context === "sleep stage details" && fm.sleep_stage_details === void 0) {
+        const stages = [];
+        for (const row of table.rows) {
+          const duration2 = sleepInterval(row[start], row[end]);
+          if (stage < 0 || duration2 === null || !row[stage]) return null;
+          stages.push({ stage: row[stage], startDate: row[start], endDate: row[end], durationSeconds: duration2 });
+        }
+        granular.sleepStages.push(...stages);
+      }
+      if (context === "sleep session details" && fm.sleep_session_details === void 0) {
+        const sessions = nativeSleepSessions(table.rows.map((row) => ({ startTimeISO: row[start], endTimeISO: row[end] })));
+        if (!sessions || !authority.androidSleep) return null;
+        nativeSessions.push(...sessions);
+      }
+    }
+  }
+  if (!authority.androidSleep) granular.sleepStages = granular.sleepStages.map((stage) => stage.stage === "light" ? { ...stage, stage: "core" } : stage);
+  if (authority.androidSleep && granular.sleepStages.some((stage) => stage.stage === "core")) return null;
+  const timeContext = authority.context;
   const capture2 = captureSummaryFromFrontmatter(fm);
   const day = {
     type: "health-data",
     date,
     schema,
+    ...authority.profile ? { schemaProfile: authority.profile, schema_profile: authority.profile } : {},
     schemaVersion,
     schema_version: schemaVersion || void 0,
     units: unitsMap != null ? unitsMap : typeof rawUnits === "string" ? rawUnits : unitSystem,
@@ -14173,19 +14663,22 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   );
   const derivedSleepTotal = granular.sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
   const sleepTotal = sleepHours !== void 0 ? sleepHours * 3600 : sleepSeconds != null ? sleepSeconds : derivedSleepTotal > 0 ? derivedSleepTotal : void 0;
-  if (sleepTotal !== void 0 || granular.sleepStages.length) {
+  if (sleepTotal !== void 0 || granular.sleepStages.length || nativeSessions.length) {
     const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
     const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
-    const coreH = getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours");
+    if (authority.androidSleep && getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "coreSleep") !== void 0) return null;
+    const coreH = getFirstNum(fm, ...authority.androidSleep ? ["sleep_core_hours"] : ["sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours"]);
     const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
     day.sleep = {
+      ...nativeSessions.length ? { sleepSessions: nativeSessions } : {},
       sleepStages: granular.sleepStages,
       totalDuration: sleepTotal != null ? sleepTotal : derivedSleepTotal,
       deepSleep: deepH !== void 0 ? deepH * 3600 : (_m = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _m : sumStageSeconds2(granular.sleepStages, "deep"),
       remSleep: remH !== void 0 ? remH * 3600 : (_n = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _n : sumStageSeconds2(granular.sleepStages, "rem"),
-      coreSleep: coreH !== void 0 ? coreH * 3600 : (_o = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light")) != null ? _o : sumStageSeconds2(granular.sleepStages, "core"),
-      awakeTime: awakeH !== void 0 ? awakeH * 3600 : (_p = getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time")) != null ? _p : sumStageSeconds2(granular.sleepStages, "awake"),
-      bedtime: (_s = (_r = getFirstStr(
+      ...authority.androidSleep ? { lightSleep: ((_o = getFirstNum(fm, "sleep_light_hours", "sleepLightHours")) != null ? _o : 0) * 3600 } : {},
+      coreSleep: authority.androidSleep ? void 0 : coreH !== void 0 ? coreH * 3600 : (_p = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light")) != null ? _p : sumStageSeconds2(granular.sleepStages, "core"),
+      awakeTime: awakeH !== void 0 ? awakeH * 3600 : (_q = getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time")) != null ? _q : sumStageSeconds2(granular.sleepStages, "awake"),
+      bedtime: (_t = (_s = getFirstStr(
         fm,
         "sleep_bedtime",
         "sleepBedtime",
@@ -14194,8 +14687,8 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
         "sleep_start",
         "sleep_start_time",
         "sleep_session_start"
-      )) != null ? _r : (_q = granular.sleepStages[0]) == null ? void 0 : _q.startDate) != null ? _s : "",
-      bedtimeISO: (_u = getFirstStr(
+      )) != null ? _s : (_r = granular.sleepStages[0]) == null ? void 0 : _r.startDate) != null ? _t : "",
+      bedtimeISO: (_v = getFirstStr(
         fm,
         "sleep_bedtime_iso",
         "sleepBedtimeISO",
@@ -14203,8 +14696,8 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
         "bed_time_iso",
         "sleep_start_iso",
         "sleep_session_start_iso"
-      )) != null ? _u : (_t = granular.sleepStages[0]) == null ? void 0 : _t.startDate,
-      wakeTime: (_x = (_w = getFirstStr(
+      )) != null ? _v : (_u = granular.sleepStages[0]) == null ? void 0 : _u.startDate,
+      wakeTime: (_y = (_x = getFirstStr(
         fm,
         "sleep_wake",
         "sleepWake",
@@ -14215,8 +14708,8 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
         "sleep_end",
         "sleep_end_time",
         "sleep_session_end"
-      )) != null ? _w : (_v = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _v.endDate) != null ? _x : "",
-      wakeTimeISO: (_z = getFirstStr(
+      )) != null ? _x : (_w = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _w.endDate) != null ? _y : "",
+      wakeTimeISO: (_A = getFirstStr(
         fm,
         "sleep_wake_iso",
         "sleepWakeISO",
@@ -14226,29 +14719,29 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
         "wake_iso",
         "sleep_end_iso",
         "sleep_session_end_iso"
-      )) != null ? _z : (_y = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _y.endDate
+      )) != null ? _A : (_z = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _z.endDate
     };
   }
   const respiratoryValues = granular.respiratoryRateSamples.map((sample) => sample.value);
-  const respRateAvg = (_A = getFirstNum(fm, "respiratory_rate", "respiratory_rate_avg", "vitals_respiratory_rate", "respiratoryRateAvg")) != null ? _A : average2(respiratoryValues);
-  const respRateMin = (_B = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin")) != null ? _B : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0;
-  const respRateMax = (_C = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax")) != null ? _C : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0;
+  const respRateAvg = (_B = getFirstNum(fm, "respiratory_rate", "respiratory_rate_avg", "vitals_respiratory_rate", "respiratoryRateAvg")) != null ? _B : average2(respiratoryValues);
+  const respRateMin = (_C = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin")) != null ? _C : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0;
+  const respRateMax = (_D = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax")) != null ? _D : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0;
   const bloodOxygenSamples = granular.bloodOxygenSamples.map((sample) => ({
     timestamp: sample.timestamp,
     value: sample.value,
     percent: sample.value
   }));
   const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
-  const bloodOxAvg = (_D = normalizePercent3(getFirstNum(
+  const bloodOxAvg = (_E = normalizePercent3(getFirstNum(
     fm,
     "blood_oxygen",
     "blood_oxygen_avg",
     "vitals_blood_oxygen",
     "bloodOxygenAvg",
     "bloodOxygenPercent"
-  ))) != null ? _D : average2(bloodOxygenValues);
-  const bloodOxMin = (_E = normalizePercent3(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"))) != null ? _E : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
-  const bloodOxMax = (_F = normalizePercent3(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"))) != null ? _F : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  ))) != null ? _E : average2(bloodOxygenValues);
+  const bloodOxMin = (_F = normalizePercent3(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"))) != null ? _F : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_G = normalizePercent3(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"))) != null ? _G : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
   if (respRateAvg !== void 0 || respRateMin !== void 0 || respRateMax !== void 0 || bloodOxAvg !== void 0 || bloodOxMin !== void 0 || bloodOxMax !== void 0 || granular.respiratoryRateSamples.length || bloodOxygenSamples.length) {
     day.vitals = {
       respiratoryRate: respRateAvg,
@@ -14298,6 +14791,77 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   if (headphone !== void 0 || environmentalSound !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
   }
+  if (fm.native_correlation_details !== void 0) {
+    const records = nativeCorrelationDetails(fm.native_correlation_details, authority.profile);
+    if (!records) return null;
+    attachNativeCorrelationDetails(day, records);
+  } else if (successorSleepDetails(authority.profile)) {
+    const values = [];
+    for (const table of parseMarkdownTables(parsed.body)) {
+      if (normalizeLabel2(table.context) !== "blood pressure correlation details") continue;
+      const headers = normalizedHeaders(table);
+      const timestamp2 = headers.indexOf("timestamp (utc)"), end = headers.indexOf("end (utc)"), systolic = headers.indexOf("systolic"), diastolic = headers.indexOf("diastolic"), unit = headers.indexOf("unit");
+      if ([timestamp2, end, systolic, diastolic, unit].some((index) => index < 0)) return null;
+      for (const row of table.rows) {
+        if (!((_H = row[systolic]) == null ? void 0 : _H.trim()) || !((_I = row[diastolic]) == null ? void 0 : _I.trim())) return null;
+        values.push({ metric: "blood_pressure", unit: row[unit], sample: {
+          timestamp: row[timestamp2],
+          ...((_J = row[end]) == null ? void 0 : _J.trim()) ? { endDate: row[end] } : {},
+          systolic: Number(row[systolic]),
+          diastolic: Number(row[diastolic])
+        } });
+      }
+    }
+    const records = nativeCorrelationDetails(values, authority.profile);
+    if (!records) return null;
+    attachNativeCorrelationDetails(day, records);
+  }
+  const activityValues = [];
+  if (fm.native_activity_details !== void 0) {
+    const records = nativeActivityDetails(fm.native_activity_details, authority.profile);
+    if (!records) return null;
+    attachNativeActivityDetails(day, records);
+  } else {
+    for (const table of parseMarkdownTables(parsed.body)) {
+      if (normalizeLabel2(table.context) !== "activity record details") continue;
+      if (normalizedHeaders(table).join() !== "native record (json)") return null;
+      try {
+        for (const row of table.rows) {
+          if (row.length !== 1) return null;
+          activityValues.push(JSON.parse(row[0]));
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+    if (activityValues.length) {
+      const records = nativeActivityDetails(activityValues, authority.profile);
+      if (!records) return null;
+      attachNativeActivityDetails(day, records);
+    }
+  }
+  if (fm.native_quantity_details !== void 0) {
+    const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);
+    if (!records) return null;
+    attachNativeQuantityDetails(day, records);
+  } else if (successorSleepDetails(authority.profile)) {
+    const values = [];
+    for (const table of parseMarkdownTables(parsed.body)) {
+      const definition = quantityDefinitions.find((item) => item.heading === normalizeLabel2(table.context));
+      if (!definition) continue;
+      const headers = normalizedHeaders(table);
+      const timestamp2 = headers.indexOf("timestamp (utc)"), value = headers.indexOf("value"), unit = headers.indexOf("unit");
+      if (timestamp2 < 0 || value < 0 || unit < 0) return null;
+      for (const row of table.rows) {
+        const number2 = Number(row[value]);
+        if (!((_K = row[value]) == null ? void 0 : _K.trim())) return null;
+        values.push({ metric: definition.metric, unit: row[unit], sample: { timestamp: row[timestamp2], value: number2 } });
+      }
+    }
+    const records = nativeQuantityDetails(values, authority.profile);
+    if (!records) return null;
+    attachNativeQuantityDetails(day, records);
+  }
   attachCanonicalMetrics(day, canonicalMetricsFromFlatRecord(fm, unitsMap));
   const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop;
   return hasData ? day : null;
@@ -14339,7 +14903,8 @@ function normalizePeriod(value) {
   return period && SUPPORTED_ROLLUP_PERIODS.has(period) ? period : void 0;
 }
 function isValidVersionPeriod(version, period) {
-  if (!Number.isInteger(version) || version < 0 || version > 10) return false;
+  if (!Number.isInteger(version) || version < 0 || version > 11) return false;
+  if (version === 11) return period === "range";
   if (version === 10) return SUPPORTED_ROLLUP_PERIODS.has(period);
   if (version === 9) return period === "range";
   if (version === 0) return CALENDAR_ROLLUP_PERIODS.has(period);
@@ -14399,28 +14964,28 @@ function isValidPeriodIdentity(period, periodId, startDateValue, endDateValue) {
   const year = Number(match[1]);
   return startDate.year === year && startDate.month === 1 && startDate.day === 1 && endDate.year === year && endDate.month === 12 && endDate.day === 31;
 }
-function firstString3(record, ...keys) {
+function firstString3(record5, ...keys) {
   for (const key of keys) {
-    const value = stringValue4(record[key]);
+    const value = stringValue4(record5[key]);
     if (value !== void 0 && value !== "") return value;
   }
   return void 0;
 }
-function firstNumber3(record, ...keys) {
+function firstNumber3(record5, ...keys) {
   for (const key of keys) {
-    const value = numberValue2(record[key]);
+    const value = numberValue2(record5[key]);
     if (value !== void 0) return value;
   }
   return void 0;
 }
-function hasOwn(record, key) {
-  return Boolean(Object.prototype.hasOwnProperty.call(record, key));
+function hasOwn(record5, key) {
+  return Boolean(Object.prototype.hasOwnProperty.call(record5, key));
 }
-function readAliasedValue(record, keys, parse, equals = (left, right) => left === right) {
+function readAliasedValue(record5, keys, parse, equals = (left, right) => left === right) {
   let parsedValue;
   for (const key of keys) {
-    if (!hasOwn(record, key)) continue;
-    const current = parse(record[key]);
+    if (!hasOwn(record5, key)) continue;
+    const current = parse(record5[key]);
     if (current === void 0 || parsedValue !== void 0 && !equals(parsedValue, current)) {
       return { valid: false };
     }
@@ -14435,12 +15000,12 @@ function nonBlankString(value) {
 function stringArraysEqual(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
-function validateIdentityField(record, keys, expected) {
+function validateIdentityField(record5, keys, expected) {
   let present = false;
   for (const key of keys) {
-    if (!hasOwn(record, key)) continue;
+    if (!hasOwn(record5, key)) continue;
     present = true;
-    if (record[key] !== expected) return { present, valid: false };
+    if (record5[key] !== expected) return { present, valid: false };
   }
   return { present, valid: true };
 }
@@ -14450,18 +15015,18 @@ function strictSchemaVersion(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : void 0;
 }
-function readOptionalSchemaVersion(record) {
+function readOptionalSchemaVersion(record5) {
   var _a;
-  const parsed = readAliasedValue(record, ["schemaVersion", "schema_version"], strictSchemaVersion);
+  const parsed = readAliasedValue(record5, ["schemaVersion", "schema_version"], strictSchemaVersion);
   return { valid: parsed.valid, version: (_a = parsed.value) != null ? _a : 0 };
 }
 function validCalendarTimezone(value) {
   const trimmed = value == null ? void 0 : value.trim();
   return trimmed && trimmed.length <= 64 ? trimmed : void 0;
 }
-function readOptionalCalendarTimezone(record) {
+function readOptionalCalendarTimezone(record5) {
   return readAliasedValue(
-    record,
+    record5,
     ["calendarTimezone", "calendar_timezone"],
     (value) => typeof value === "string" ? validCalendarTimezone(value) : void 0
   );
@@ -14517,9 +15082,9 @@ function normalizeMetric(value, fallbackKey) {
     notes: firstString3(value, "notes")
   };
 }
-function normalizeMetrics(record) {
+function normalizeMetrics(record5) {
   var _a;
-  const raw = (_a = record.rollup_metrics) != null ? _a : record.metrics;
+  const raw = (_a = record5.rollup_metrics) != null ? _a : record5.metrics;
   const result = {};
   if (Array.isArray(raw)) {
     for (const item of raw) {
@@ -14534,33 +15099,54 @@ function normalizeMetrics(record) {
   }
   return Object.keys(result).length ? result : void 0;
 }
-function buildRollupSummary(record) {
-  const schemaIdentity = validateIdentityField(record, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
-  const typeIdentity = validateIdentityField(record, ["type", "Type"], "health_rollup");
+function sleepRangeAuthority(record5, calendar) {
+  const profile = readAliasedValue(record5, ["schema_profile", "schemaProfile"], nonBlankString);
+  const source = readAliasedValue(record5, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
+  if (!profile.valid || profile.value !== "apple-rollup-v11" || !source.valid || source.value !== "apple-v11") return null;
+  const clock = readSleepAuthority({
+    schema: HEALTHMD_HEALTH_DATA_SCHEMA,
+    schema_version: 11,
+    schema_profile: "apple-v11",
+    time_context: record5.time_context,
+    timeContext: record5.timeContext
+  });
+  if (!(clock == null ? void 0 : clock.context) || clock.context.calendar_timezone !== calendar) return null;
+  return {
+    schemaProfile: profile.value,
+    schema_profile: profile.value,
+    sourceSchemaProfile: source.value,
+    source_schema_profile: source.value,
+    timeContext: clock.context,
+    time_context: clock.context
+  };
+}
+function buildRollupSummary(record5) {
+  const schemaIdentity = validateIdentityField(record5, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
+  const typeIdentity = validateIdentityField(record5, ["type", "Type"], "health_rollup");
   if (!schemaIdentity.valid || !typeIdentity.valid || !schemaIdentity.present && !typeIdentity.present) return null;
-  const parsedRollupPeriod = readAliasedValue(record, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
-  const parsedPeriodId = readAliasedValue(record, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
-  const parsedStartDate = readAliasedValue(record, ["start_date", "startDate", "Start Date"], nonBlankString);
-  const parsedEndDate = readAliasedValue(record, ["end_date", "endDate", "End Date"], nonBlankString);
+  const parsedRollupPeriod = readAliasedValue(record5, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
+  const parsedPeriodId = readAliasedValue(record5, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
+  const parsedStartDate = readAliasedValue(record5, ["start_date", "startDate", "Start Date"], nonBlankString);
+  const parsedEndDate = readAliasedValue(record5, ["end_date", "endDate", "End Date"], nonBlankString);
   if (!parsedRollupPeriod.valid || !parsedPeriodId.valid || !parsedStartDate.valid || !parsedEndDate.valid) return null;
   const rollupPeriod = parsedRollupPeriod.value;
   const periodId = parsedPeriodId.value;
   const startDate = parsedStartDate.value;
   const endDate = parsedEndDate.value;
   if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
-  const parsedSchemaVersion = readOptionalSchemaVersion(record);
+  const parsedSchemaVersion = readOptionalSchemaVersion(record5);
   if (!parsedSchemaVersion.valid) return null;
   const schemaVersion = parsedSchemaVersion.version;
   if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
-  const parsedCalendarTimezone = readOptionalCalendarTimezone(record);
-  const parsedDaysExpected = readAliasedValue(record, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
-  const parsedDaysCounted = readAliasedValue(record, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
-  const parsedCoveragePercent = readAliasedValue(record, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
-  const parsedSourceSchema = readAliasedValue(record, ["source_schema", "sourceSchema"], nonBlankString);
-  const parsedSourceSchemaVersion = readAliasedValue(record, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
-  const parsedRollupRulesVersion = readAliasedValue(record, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
-  const parsedGeneratedAt = readAliasedValue(record, ["generated_at", "generatedAt"], nonBlankString);
-  const parsedSourceDates = readAliasedValue(record, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
+  const parsedCalendarTimezone = readOptionalCalendarTimezone(record5);
+  const parsedDaysExpected = readAliasedValue(record5, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
+  const parsedDaysCounted = readAliasedValue(record5, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
+  const parsedCoveragePercent = readAliasedValue(record5, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
+  const parsedSourceSchema = readAliasedValue(record5, ["source_schema", "sourceSchema"], nonBlankString);
+  const parsedSourceSchemaVersion = readAliasedValue(record5, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
+  const parsedRollupRulesVersion = readAliasedValue(record5, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
+  const parsedGeneratedAt = readAliasedValue(record5, ["generated_at", "generatedAt"], nonBlankString);
+  const parsedSourceDates = readAliasedValue(record5, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
   const contractValues = [
     parsedCalendarTimezone,
     parsedDaysExpected,
@@ -14580,10 +15166,13 @@ function buildRollupSummary(record) {
   const sourceSchema = parsedSourceSchema.value;
   const sourceSchemaVersion = parsedSourceSchemaVersion.value;
   const rollupRulesVersion = parsedRollupRulesVersion.value;
-  if ((schemaVersion === 9 || schemaVersion === 10) && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION))) return null;
   const generatedAt = parsedGeneratedAt.value;
   const sourceDates = parsedSourceDates.value;
+  const authority = schemaVersion === 11 ? sleepRangeAuthority(record5, calendarTimezone) : {};
+  if (!authority) return null;
   return {
+    ...authority,
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
     schemaVersion: schemaVersion || void 0,
@@ -14614,8 +15203,8 @@ function buildRollupSummary(record) {
     generated_at: generatedAt,
     sourceDates,
     source_dates: sourceDates,
-    units: unitMap(record.units),
-    metrics: normalizeMetrics(record)
+    units: unitMap(record5.units),
+    metrics: normalizeMetrics(record5)
   };
 }
 function parseRollupJSON(content) {
@@ -14703,9 +15292,13 @@ function parseRollupMarkdown(content, cachedFrontmatter) {
   var _a;
   const parsed = parseFrontmatter(content);
   const frontmatter = (_a = parsed.frontmatter) != null ? _a : {};
-  const record = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
-  const summary = buildRollupSummary(record);
+  const record5 = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
+  const summary = buildRollupSummary(record5);
   if (!summary) return null;
+  if (cachedFrontmatter && (summary.schemaVersion === 11 || readOptionalSchemaVersion(frontmatter).version === 11)) {
+    const physical = buildRollupSummary(frontmatter);
+    if (!physical || physical.schemaVersion !== summary.schemaVersion || physical.schema_profile !== summary.schema_profile || physical.source_schema_profile !== summary.source_schema_profile || JSON.stringify(physical.timeContext) !== JSON.stringify(summary.timeContext)) return null;
+  }
   if (!summary.metrics) summary.metrics = metricsFromMarkdown(parsed.body);
   return summary;
 }
@@ -14744,7 +15337,13 @@ var CSV_CONTRACT_ALIASES = [
   ["Schema"],
   ["Schema Version", "schema_version", "schemaVersion"],
   ["Rollup Rules Version", "rollup_rules_version", "rollupRulesVersion"],
-  ["Calendar Timezone", "calendar_timezone", "calendarTimezone"]
+  ["Calendar Timezone", "calendar_timezone", "calendarTimezone"],
+  ["Schema Profile", "schema_profile", "schemaProfile"],
+  ["Source Schema Profile", "source_schema_profile", "sourceSchemaProfile"],
+  ["Timestamp Timezone", "timestamp_timezone", "timestampTimezone"],
+  ["Sleep Day Attribution", "sleep_day_attribution", "sleepDayAttribution"],
+  ["Sleep Owner Day Rule", "sleep_owner_day_rule", "sleepOwnerDayRule"],
+  ["Sleep Interval Clipping", "sleep_interval_clipping", "sleepIntervalClipping"]
 ];
 function parseRollupCSV(content) {
   var _a, _b, _c;
@@ -14783,20 +15382,35 @@ function parseRollupCSV(content) {
   const parsedSchemaVersion = strictSchemaVersion(rawSchemaVersion);
   if (schemaVersionIndex >= 0 && parsedSchemaVersion === void 0) return null;
   const schemaVersion = parsedSchemaVersion != null ? parsedSchemaVersion : 0;
-  if ((schemaVersion === 9 || schemaVersion === 10) && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (schemaIndex < 0 || schema !== HEALTHMD_ROLLUP_SCHEMA)) return null;
   if (schema !== void 0 && schema !== HEALTHMD_ROLLUP_SCHEMA) return null;
   const calendarTimezone = validCalendarTimezone(csvValue(firstRow, calendarTimezoneIndex));
-  if ((schemaVersion === 9 || schemaVersion === 10) && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (calendarTimezoneIndex < 0 || !calendarTimezone)) return null;
   const sourceSchema = csvValue(firstRow, sourceSchemaIndex);
   const sourceSchemaVersion = numberValue2(csvValue(firstRow, sourceSchemaVersionIndex));
   const rollupRulesVersion = numberValue2(csvValue(firstRow, rollupRulesVersionIndex));
-  if ((schemaVersion === 9 || schemaVersion === 10) && (sourceSchemaIndex < 0 || sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersionIndex < 0 || sourceSchemaVersion !== (schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersionIndex < 0 || rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)) return null;
+  if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (sourceSchemaIndex < 0 || sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersionIndex < 0 || sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersionIndex < 0 || rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION))) return null;
   const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
   const periodId = csvValue(firstRow, periodIdIndex);
   const startDate = csvValue(firstRow, startDateIndex);
   const endDate = csvValue(firstRow, endDateIndex);
   if (!rollupPeriod || !periodId || !isValidVersionPeriod(schemaVersion, rollupPeriod) || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
+  const authorityHeaders = CSV_CONTRACT_ALIASES.slice(-6);
+  const authorityIndexes = authorityHeaders.map((aliases) => indexOfHeader(header, ...aliases));
+  const authority = schemaVersion === 11 ? sleepRangeAuthority({
+    schema_profile: csvValue(firstRow, authorityIndexes[0]),
+    source_schema_profile: csvValue(firstRow, authorityIndexes[1]),
+    time_context: {
+      calendar_timezone: calendarTimezone,
+      timestamp_timezone: csvValue(firstRow, authorityIndexes[2]),
+      sleep_day_attribution: csvValue(firstRow, authorityIndexes[3]),
+      sleep_owner_day_rule: csvValue(firstRow, authorityIndexes[4]),
+      sleep_interval_clipping: csvValue(firstRow, authorityIndexes[5])
+    }
+  }, calendarTimezone) : {};
+  if (!authority) return null;
   const consistentMetadataIndexes = [
+    ...authorityIndexes,
     schemaIndex,
     schemaVersionIndex,
     sourceSchemaIndex,
@@ -14840,6 +15454,7 @@ function parseRollupCSV(content) {
     if (existing.unit !== void 0) units[metricKey] = existing.unit;
   }
   return {
+    ...authority,
     type: "health_rollup",
     schema: HEALTHMD_ROLLUP_SCHEMA,
     schemaVersion: schemaVersion || void 0,
@@ -15037,18 +15652,33 @@ var DataLoader = class {
       }
     }
     const byDate = /* @__PURE__ */ new Map();
+    const conflictingDates = /* @__PURE__ */ new Set();
     for (const day of days) {
+      if (conflictingDates.has(day.date)) continue;
       const existing = byDate.get(day.date);
       if (!existing) {
         byDate.set(day.date, day);
       } else {
-        byDate.set(day.date, mergeDays(existing, day));
+        if (!sleepAuthoritiesAgree(existing, day)) {
+          report.warnings.push(`${day.date}: conflicting sleep attribution/profile; ambiguous daily data was omitted.`);
+          conflictingDates.add(day.date);
+          byDate.delete(day.date);
+        } else {
+          try {
+            byDate.set(day.date, mergeDays(existing, day));
+          } catch (error) {
+            if (!(error instanceof QuantitySourceConflict)) throw error;
+            report.warnings.push(`${day.date}: conflicting native source facts; ambiguous daily data was omitted.`);
+            conflictingDates.add(day.date);
+            byDate.delete(day.date);
+          }
+        }
       }
     }
     const cache = Array.from(byDate.values()).sort(
       (a, b) => a.date.localeCompare(b.date)
     );
-    const rollupCache = dedupeRollups(rollups);
+    const rollupCache = dedupeRollups(rollups, report.warnings);
     for (const day of cache) {
       const capture2 = day.rawCapture;
       if (!capture2) continue;
@@ -15426,12 +16056,18 @@ function mergeRollups(a, b) {
     sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths)
   };
 }
-function dedupeRollups(rollups) {
+function dedupeRollups(rollups, warnings) {
   const byPeriod = /* @__PURE__ */ new Map();
+  const conflictingPeriods = /* @__PURE__ */ new Set();
   for (const rollup of rollups) {
     const key = rollupKey(rollup);
+    if (conflictingPeriods.has(key)) continue;
     const existing = byPeriod.get(key);
-    byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
+    if (existing && !sleepAuthoritiesAgree(existing, rollup)) {
+      warnings.push(`${rollup.periodId}: conflicting sleep attribution/profile; ambiguous rollup data was omitted.`);
+      conflictingPeriods.add(key);
+      byPeriod.delete(key);
+    } else byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);
   }
   return Array.from(byPeriod.values()).sort((a, b) => {
     var _a, _b;
@@ -15648,6 +16284,119 @@ function mergeSection(fallback, preferred) {
   }
   return merged;
 }
+function mergeNativeSleep(fallback, preferred) {
+  var _a;
+  const merged = mergeSection(fallback, preferred);
+  if (!merged || !fallback || !preferred) return merged;
+  function richer(a, b, key) {
+    if (!a || !b || a.length !== b.length) return (b == null ? void 0 : b.length) ? b : a;
+    const keys = (values) => values.map(key).sort().join("\n");
+    if (a.length !== b.length || keys(a) !== keys(b)) throw new QuantitySourceConflict("conflicting native quantity capture records");
+    return a.reduce((sum, value) => sum + objectDetailScore(value), 0) > b.reduce((sum, value) => sum + objectDetailScore(value), 0) ? a : b;
+  }
+  merged.sleepStages = (_a = richer(
+    fallback.sleepStages,
+    preferred.sleepStages,
+    (value) => JSON.stringify([value.stage, value.startDate, value.endDate, value.durationSeconds])
+  )) != null ? _a : [];
+  merged.sleepSessions = richer(
+    fallback.sleepSessions,
+    preferred.sleepSessions,
+    (value) => JSON.stringify([value.startTimeISO, value.endTimeISO])
+  );
+  return merged;
+}
+var QuantitySourceConflict = class extends Error {
+};
+function sourceObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function mergeQuantityFacts(a, b) {
+  if (sourceObject(a) && sourceObject(b)) {
+    return Object.fromEntries([.../* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)])].map((key) => [
+      key,
+      Object.prototype.hasOwnProperty.call(a, key) && Object.prototype.hasOwnProperty.call(b, key) ? mergeQuantityFacts(a[key], b[key]) : Object.prototype.hasOwnProperty.call(b, key) ? b[key] : a[key]
+    ]));
+  }
+  if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) {
+    return a.map((value, index) => mergeQuantityFacts(value, b[index]));
+  }
+  if (Object.is(a, b)) return a;
+  throw new QuantitySourceConflict("conflicting native quantity source facts");
+}
+function mergeNativeSources(a, b, key, merge) {
+  var _a;
+  if (!a.length || !b.length) return b.length ? b : a;
+  const keys = (values) => values.map(key).sort().join("\n");
+  if (a.length !== b.length || keys(a) !== keys(b)) throw new QuantitySourceConflict("conflicting native capture records");
+  const buckets = /* @__PURE__ */ new Map();
+  for (const value of a) {
+    const identity = key(value);
+    const bucket = (_a = buckets.get(identity)) != null ? _a : [];
+    bucket.push(value);
+    buckets.set(identity, bucket);
+  }
+  return b.map((value) => {
+    var _a2;
+    const remaining = (_a2 = buckets.get(key(value))) != null ? _a2 : [];
+    for (let index = 0; index < remaining.length; index++) {
+      try {
+        const result = merge(remaining[index], value);
+        remaining.splice(index, 1);
+        return result;
+      } catch (error) {
+        if (!(error instanceof QuantitySourceConflict)) throw error;
+      }
+    }
+    throw new QuantitySourceConflict("conflicting native source facts");
+  });
+}
+function mergeNativeQuantities(fallback = [], preferred = []) {
+  const identities = [...new Set([...fallback, ...preferred].map((value) => value.metric))];
+  return identities.flatMap((identity) => mergeNativeSources(
+    fallback.filter((value) => value.metric === identity),
+    preferred.filter((value) => value.metric === identity),
+    (value) => JSON.stringify([value.unit, value.sample.timestamp, value.sample.value]),
+    (a, b) => {
+      const source = mergeQuantityFacts(a.sample, b.sample);
+      if (!sourceObject(source)) throw new QuantitySourceConflict();
+      return { ...b, sample: { ...source, timestamp: b.sample.timestamp, value: b.sample.value } };
+    }
+  ));
+}
+function mergeNativeCorrelations(a = [], b = []) {
+  return mergeNativeSources(a, b, (value) => {
+    var _a;
+    return JSON.stringify([value.unit, value.sample.timestamp, (_a = value.sample.endDate) != null ? _a : null, value.sample.systolic, value.sample.diastolic]);
+  }, (a2, b2) => {
+    const source = mergeQuantityFacts(a2.sample, b2.sample);
+    if (!sourceObject(source)) throw new QuantitySourceConflict();
+    return { ...b2, sample: { ...source, timestamp: b2.sample.timestamp, systolic: b2.sample.systolic, diastolic: b2.sample.diastolic } };
+  });
+}
+function mergeNativeActivity(a = [], b = []) {
+  const metrics = [...new Set([...a, ...b].map((record5) => record5.metric))];
+  return metrics.flatMap((metric) => mergeNativeSources(
+    a.filter((record5) => record5.metric === metric),
+    b.filter((record5) => record5.metric === metric),
+    (record5) => {
+      var _a, _b;
+      return JSON.stringify([
+        record5.metric,
+        record5.unit,
+        (_a = record5.sample.timestamp) != null ? _a : record5.sample.startTimeISO,
+        sourceObject(record5.sample.exactEndTime) ? [record5.sample.exactEndTime.epochSecond, record5.sample.exactEndTime.nano] : null,
+        (_b = record5.sample.value) != null ? _b : record5.sample.intensity,
+        record5.sample.duration
+      ]);
+    },
+    (left, right) => {
+      const source = mergeQuantityFacts(left.sample, right.sample);
+      if (!sourceObject(source)) throw new QuantitySourceConflict();
+      return { ...right, sample: source };
+    }
+  ));
+}
 function mergeDays(a, b) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N;
   const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -15668,7 +16417,7 @@ function mergeDays(a, b) {
     const owner = whoop === preferred.whoop ? preferred : fallback;
     if (owner.providers) providers.whoop = owner.providers.whoop;
   }
-  return {
+  const result = {
     // Preserve versioned summary sections that do not yet have dedicated
     // visualizations. Parsers remove canonical archive payloads before merge.
     ...fallback,
@@ -15689,7 +16438,7 @@ function mergeDays(a, b) {
     activity: mergeSection(fallback.activity, preferred.activity),
     heart: mergeSection(fallback.heart, preferred.heart),
     vitals: mergeSection(fallback.vitals, preferred.vitals),
-    sleep: mergeSection(fallback.sleep, preferred.sleep),
+    sleep: successorSleepDetails(preferred.schema_profile) ? mergeNativeSleep(fallback.sleep, preferred.sleep) : mergeSection(fallback.sleep, preferred.sleep),
     mobility: mergeSection(fallback.mobility, preferred.mobility),
     workouts: mergeWorkouts(a.workouts, b.workouts),
     mood: mergeSection(fallback.mood, preferred.mood),
@@ -15716,6 +16465,12 @@ function mergeDays(a, b) {
     providers,
     whoop
   };
+  if (successorSleepDetails(result.schema_profile)) {
+    attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
+    attachNativeCorrelationDetails(result, mergeNativeCorrelations(fallback.nativeCorrelationDetails, preferred.nativeCorrelationDetails));
+    attachNativeActivityDetails(result, mergeNativeActivity(fallback.nativeActivityDetails, preferred.nativeActivityDetails));
+  }
+  return result;
 }
 
 // src/units.ts
@@ -16102,7 +16857,77 @@ function appendSvgFromMarkup(container, svgMarkup) {
   container.appendChild(activeDocument.importNode(svg, true));
 }
 
+// src/time-utils.ts
+function parseHour(timestamp2, fallbackDate) {
+  var _a, _b, _c;
+  if (!timestamp2) return void 0;
+  const trimmed = timestamp2.trim();
+  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
+  const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
+  const match = dateTime != null ? dateTime : timeOnly;
+  if (!match) {
+    if (fallbackDate && trimmed === fallbackDate) return 12;
+    return void 0;
+  }
+  let h = Number(match[1]);
+  const m = Number(match[2]);
+  const s = Number((_a = match[3]) != null ? _a : 0);
+  const meridiem = match === timeOnly ? (_c = (_b = /\s+([ap])\.?m\.?\s*$/i.exec(trimmed)) == null ? void 0 : _b[1]) == null ? void 0 : _c.toLowerCase() : void 0;
+  if (meridiem) {
+    if (h < 1 || h > 12) return void 0;
+    h = h % 12 + (meridiem === "p" ? 12 : 0);
+  }
+  if (h > 23 || m > 59 || s > 59) return void 0;
+  return h + m / 60 + s / 3600;
+}
+function formatClockTime(timestamp2) {
+  const hour = parseHour(timestamp2);
+  if (hour === void 0) return void 0;
+  const totalMinutes = Math.floor(hour * 60 + 1e-7);
+  const date = new Date(2e3, 0, 1, Math.floor(totalMinutes / 60), totalMinutes % 60);
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+function sampleClock(calendarTimezone) {
+  let formatter;
+  if (calendarTimezone) {
+    try {
+      formatter = new Intl.DateTimeFormat("en-GB", {
+        timeZone: calendarTimezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23"
+      });
+    } catch (e) {
+      return () => void 0;
+    }
+  }
+  return (timestamp2) => {
+    var _a, _b;
+    const instant = new Date(timestamp2);
+    if (!Number.isFinite(instant.getTime())) return void 0;
+    if (!formatter) return instant.getHours() * 60 + instant.getMinutes();
+    const parts = formatter.formatToParts(instant);
+    const hour = Number((_a = parts.find((part) => part.type === "hour")) == null ? void 0 : _a.value);
+    const minute = Number((_b = parts.find((part) => part.type === "minute")) == null ? void 0 : _b.value);
+    return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : void 0;
+  };
+}
+
 // src/visualizations/heart-terrain.ts
+function heartSummary(day) {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
+  const samples = ((_b = (_a = day.heart) == null ? void 0 : _a.heartRateSamples) != null ? _b : []).map((sample) => sample.value).filter(Number.isFinite);
+  const avg4 = (_d = (_c = day.heart) == null ? void 0 : _c.averageHeartRate) != null ? _d : samples.length ? samples.reduce((a, b) => a + b, 0) / samples.length : void 0;
+  if (avg4 === void 0 || !Number.isFinite(avg4)) return null;
+  return {
+    avg: avg4,
+    min: (_f = (_e = day.heart) == null ? void 0 : _e.heartRateMin) != null ? _f : samples.length ? Math.min(...samples) : avg4,
+    max: (_h = (_g = day.heart) == null ? void 0 : _g.heartRateMax) != null ? _h : samples.length ? Math.max(...samples) : avg4
+  };
+}
 var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const BUCKETS = 96;
   const days = data.filter((d) => {
@@ -16112,10 +16937,13 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const grid2 = [];
   let minBPM = 999, maxBPM = 0;
   days.forEach((day) => {
+    var _a, _b;
     const col = new Array(BUCKETS).fill(null);
+    const context = (_a = day.timeContext) != null ? _a : day.time_context;
+    const clock = sampleClock((_b = context == null ? void 0 : context.calendarTimezone) != null ? _b : context == null ? void 0 : context.calendar_timezone);
     day.heart.heartRateSamples.forEach((s) => {
-      const dt = new Date(s.timestamp);
-      const mins = dt.getHours() * 60 + dt.getMinutes();
+      const mins = clock(s.timestamp);
+      if (mins === void 0) return;
       const bucket = Math.floor(mins / 15);
       if (bucket >= 0 && bucket < BUCKETS) {
         if (!col[bucket]) col[bucket] = [];
@@ -16137,7 +16965,17 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     grid2.push({ date: day.date, col: averaged });
   });
   if (grid2.length === 0) {
-    const heartDays = data.filter((d) => d.heart && d.heart.averageHeartRate > 0);
+    const heartDays = data.flatMap((day) => {
+      var _a, _b;
+      const summary = heartSummary(day);
+      return summary && summary.avg > 0 ? [{ ...day, heart: {
+        ...day.heart,
+        averageHeartRate: summary.avg,
+        heartRateMin: summary.min,
+        heartRateMax: summary.max,
+        heartRateSamples: (_b = (_a = day.heart) == null ? void 0 : _a.heartRateSamples) != null ? _b : []
+      } }] : [];
+    });
     if (!heartDays.length) {
       statsEl.empty();
       statsEl.createEl("p", {
@@ -16206,7 +17044,7 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   grid2.forEach((day, x) => {
     day.col.forEach((bpm2, y) => {
       if (bpm2 === null) return;
-      const t = (bpm2 - minBPM) / (maxBPM - minBPM);
+      const t = (bpm2 - minBPM) / (maxBPM - minBPM || 1);
       const h = lerp(220, 0, t);
       const s = lerp(60, 100, t);
       const l = lerp(theme.isDark ? 12 : 30, theme.isDark ? 55 : 65, t);
@@ -16215,6 +17053,7 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     });
     const dayObj = days[x];
     const samples = dayObj.heart.heartRateSamples;
+    const summary = heartSummary(dayObj);
     hits.add({
       shape: "rect",
       x: x * colW,
@@ -16223,64 +17062,33 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       h: H,
       title: formatDate(day.date),
       details: [
-        { label: "Avg", value: `${Math.round(dayObj.heart.averageHeartRate)} bpm` },
-        { label: "Min", value: `${dayObj.heart.heartRateMin} bpm` },
-        { label: "Max", value: `${dayObj.heart.heartRateMax} bpm` },
+        { label: "Avg", value: summary ? `${Math.round(summary.avg)} bpm` : "Unavailable" },
+        { label: "Min", value: summary ? `${summary.min} bpm` : "Unavailable" },
+        { label: "Max", value: summary ? `${summary.max} bpm` : "Unavailable" },
         { label: "Samples", value: `${samples.length}` }
       ],
       payload: dayObj
     });
   });
-  const minHR = Math.min(...days.map((d) => d.heart.heartRateMin || 999));
-  const maxHR = Math.max(...days.map((d) => d.heart.heartRateMax || 0));
-  const avgHR = Math.round(
-    days.reduce((s, d) => s + (d.heart.averageHeartRate || 0), 0) / days.length
-  );
+  const summaries = days.flatMap((day) => {
+    const summary = heartSummary(day);
+    return summary ? [summary] : [];
+  });
+  const minHR = summaries.length ? Math.min(...summaries.map((summary) => summary.min)) : void 0;
+  const maxHR = summaries.length ? Math.max(...summaries.map((summary) => summary.max)) : void 0;
+  const avgHR = summaries.length ? Math.round(summaries.reduce((sum, summary) => sum + summary.avg, 0) / summaries.length) : void 0;
   renderStatBoxes(statsEl, [
-    { value: String(minHR), label: "Lowest", color: "#4488ff" },
-    { value: String(avgHR), label: "Average", color: "#cc6666" },
-    { value: String(maxHR), label: "Highest", color: "#ff4444" }
+    { value: minHR === void 0 ? "Unavailable" : String(minHR), label: "Lowest", color: "#4488ff" },
+    { value: avgHR === void 0 ? "Unavailable" : String(avgHR), label: "Average", color: "#cc6666" },
+    { value: maxHR === void 0 ? "Unavailable" : String(maxHR), label: "Highest", color: "#ff4444" }
   ]);
 };
 
-// src/time-utils.ts
-function parseHour(timestamp2, fallbackDate) {
-  var _a, _b, _c;
-  if (!timestamp2) return void 0;
-  const trimmed = timestamp2.trim();
-  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
-  const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
-  const match = dateTime != null ? dateTime : timeOnly;
-  if (!match) {
-    if (fallbackDate && trimmed === fallbackDate) return 12;
-    return void 0;
-  }
-  let h = Number(match[1]);
-  const m = Number(match[2]);
-  const s = Number((_a = match[3]) != null ? _a : 0);
-  const meridiem = match === timeOnly ? (_c = (_b = /\s+([ap])\.?m\.?\s*$/i.exec(trimmed)) == null ? void 0 : _b[1]) == null ? void 0 : _c.toLowerCase() : void 0;
-  if (meridiem) {
-    if (h < 1 || h > 12) return void 0;
-    h = h % 12 + (meridiem === "p" ? 12 : 0);
-  }
-  if (h > 23 || m > 59 || s > 59) return void 0;
-  return h + m / 60 + s / 3600;
-}
-function formatClockTime(timestamp2) {
-  const hour = parseHour(timestamp2);
-  if (hour === void 0) return void 0;
-  const totalMinutes = Math.floor(hour * 60 + 1e-7);
-  const date = new Date(2e3, 0, 1, Math.floor(totalMinutes / 60), totalMinutes % 60);
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  });
-}
-
 // src/visualizations/sleep-polar.ts
 function buildSyntheticStages(night) {
-  var _a, _b, _c, _d;
+  var _a, _b, _c, _d, _e, _f;
   const sleep2 = night.sleep;
+  if (((_a = night.timeContext) == null ? void 0 : _a.sleep_day_attribution) === "morning_ends") return [];
   if (!sleep2.bedtime || !sleep2.wakeTime) return [];
   const isTimeOnly = (s) => /^\d{1,2}:\d{2}$/.test(s);
   let bedMs;
@@ -16302,15 +17110,16 @@ function buildSyntheticStages(night) {
     cursor += secs * 1e3;
     stages.push({ stage, startDate, endDate: new Date(cursor).toISOString(), durationSeconds: Math.round(secs) });
   }
-  const awake = (_a = sleep2.awakeTime) != null ? _a : 0;
-  const core = (_b = sleep2.coreSleep) != null ? _b : 0;
-  const deep = (_c = sleep2.deepSleep) != null ? _c : 0;
-  const rem = (_d = sleep2.remSleep) != null ? _d : 0;
+  const awake = (_b = sleep2.awakeTime) != null ? _b : 0;
+  const core = (_d = (_c = sleep2.coreSleep) != null ? _c : sleep2.lightSleep) != null ? _d : 0;
+  const nativeStage = sleep2.lightSleep !== void 0 ? "light" : "core";
+  const deep = (_e = sleep2.deepSleep) != null ? _e : 0;
+  const rem = (_f = sleep2.remSleep) != null ? _f : 0;
   addStage("awake", awake * 0.3);
-  addStage("core", core * 0.45);
+  addStage(nativeStage, core * 0.45);
   addStage("deep", deep);
   addStage("rem", rem);
-  addStage("core", core * 0.55);
+  addStage(nativeStage, core * 0.55);
   addStage("awake", awake * 0.7);
   return stages;
 }
@@ -16323,13 +17132,16 @@ function getEffectiveStages(night) {
 var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
   const canvas = ctx.canvas;
   const nights = data.filter(
-    (d) => d.sleep && (d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)
+    (d) => d.sleep && getEffectiveStages(d).length > 0
   );
   if (!nights.length) {
     ctx.fillStyle = theme.muted;
     ctx.font = "12px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("No sleep data", W / 2, H / 2);
+    ctx.fillText(data.some((day) => {
+      var _a;
+      return ((_a = day.timeContext) == null ? void 0 : _a.sleep_day_attribution) === "morning_ends" && day.sleep;
+    }) ? "No recorded sleep stage timing" : "No sleep data", W / 2, H / 2);
     return;
   }
   const cols = 3;
@@ -16380,7 +17192,7 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, r - 1, a1, a2);
       ctx.closePath();
-      ctx.fillStyle = theme.colors.sleep[stage.stage] || "#333";
+      ctx.fillStyle = theme.colors.sleep[stage.stage === "light" ? "core" : stage.stage] || "#333";
       ctx.globalAlpha = 0.85;
       ctx.fill();
       ctx.globalAlpha = 1;
@@ -16411,10 +17223,11 @@ var renderSleepPolar = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
       r: r + 6,
       title: formatDate(night.date),
       details: [
-        { label: "Total", value: formatDuration(sleep2.totalDuration) },
-        { label: "Deep", value: formatDuration(sleep2.deepSleep) },
-        { label: "REM", value: formatDuration(sleep2.remSleep) },
-        { label: "Core", value: formatDuration(sleep2.coreSleep) },
+        ...sleep2.totalDuration !== void 0 ? [{ label: "Total", value: formatDuration(sleep2.totalDuration) }] : [],
+        ...sleep2.deepSleep !== void 0 ? [{ label: "Deep", value: formatDuration(sleep2.deepSleep) }] : [],
+        ...sleep2.remSleep !== void 0 ? [{ label: "REM", value: formatDuration(sleep2.remSleep) }] : [],
+        ...sleep2.coreSleep !== void 0 ? [{ label: "Core", value: formatDuration(sleep2.coreSleep) }] : [],
+        ...sleep2.lightSleep !== void 0 ? [{ label: "Light", value: formatDuration(sleep2.lightSleep) }] : [],
         ...sleep2.awakeTime ? [{ label: "Awake", value: formatDuration(sleep2.awakeTime) }] : [],
         ...bedtime ? [{ label: "Bedtime", value: bedtime }] : [],
         ...wakeTime ? [{ label: "Wake", value: wakeTime }] : []
@@ -16889,8 +17702,9 @@ var renderWalkingSymmetry = (ctx, data, W, H, _config, theme, _statsEl, hits) =>
 
 // src/visualizations/sleep-architecture.ts
 function buildSyntheticStages2(night) {
-  var _a, _b, _c, _d;
+  var _a, _b, _c, _d, _e, _f;
   const sleep2 = night.sleep;
+  if (((_a = night.timeContext) == null ? void 0 : _a.sleep_day_attribution) === "morning_ends") return [];
   if (!sleep2.bedtime || !sleep2.wakeTime) return [];
   const isTimeOnly = (s) => /^\d{1,2}:\d{2}$/.test(s);
   let bedMs;
@@ -16912,15 +17726,16 @@ function buildSyntheticStages2(night) {
     cursor += secs * 1e3;
     stages.push({ stage, startDate, endDate: new Date(cursor).toISOString(), durationSeconds: Math.round(secs) });
   }
-  const awake = (_a = sleep2.awakeTime) != null ? _a : 0;
-  const core = (_b = sleep2.coreSleep) != null ? _b : 0;
-  const deep = (_c = sleep2.deepSleep) != null ? _c : 0;
-  const rem = (_d = sleep2.remSleep) != null ? _d : 0;
+  const awake = (_b = sleep2.awakeTime) != null ? _b : 0;
+  const core = (_d = (_c = sleep2.coreSleep) != null ? _c : sleep2.lightSleep) != null ? _d : 0;
+  const nativeStage = sleep2.lightSleep !== void 0 ? "light" : "core";
+  const deep = (_e = sleep2.deepSleep) != null ? _e : 0;
+  const rem = (_f = sleep2.remSleep) != null ? _f : 0;
   addStage("awake", awake * 0.3);
-  addStage("core", core * 0.45);
+  addStage(nativeStage, core * 0.45);
   addStage("deep", deep);
   addStage("rem", rem);
-  addStage("core", core * 0.55);
+  addStage(nativeStage, core * 0.55);
   addStage("awake", awake * 0.7);
   return stages;
 }
@@ -16933,13 +17748,16 @@ function getEffectiveStages2(night) {
 var renderSleepArchitecture = (ctx, data, W, H, _config, theme, _statsEl, hits) => {
   const canvas = ctx.canvas;
   const nights = data.filter(
-    (d) => d.sleep && (d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)
+    (d) => d.sleep && getEffectiveStages2(d).length > 0
   );
   if (!nights.length) {
     ctx.fillStyle = theme.muted;
     ctx.font = "12px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("No sleep data", W / 2, H / 2);
+    ctx.fillText(data.some((day) => {
+      var _a;
+      return ((_a = day.timeContext) == null ? void 0 : _a.sleep_day_attribution) === "morning_ends" && day.sleep;
+    }) ? "No recorded sleep stage timing" : "No sleep data", W / 2, H / 2);
     return;
   }
   const stripeHeight = 48;
@@ -16990,10 +17808,11 @@ var renderSleepArchitecture = (ctx, data, W, H, _config, theme, _statsEl, hits) 
       h: stripeHeight,
       title: formatDate(night.date),
       details: [
-        { label: "Total", value: formatDuration(nightSleep.totalDuration) },
-        { label: "Deep", value: formatDuration(nightSleep.deepSleep) },
-        { label: "REM", value: formatDuration(nightSleep.remSleep) },
-        { label: "Core", value: formatDuration(nightSleep.coreSleep) }
+        ...nightSleep.totalDuration !== void 0 ? [{ label: "Total", value: formatDuration(nightSleep.totalDuration) }] : [],
+        ...nightSleep.deepSleep !== void 0 ? [{ label: "Deep", value: formatDuration(nightSleep.deepSleep) }] : [],
+        ...nightSleep.remSleep !== void 0 ? [{ label: "REM", value: formatDuration(nightSleep.remSleep) }] : [],
+        ...nightSleep.coreSleep !== void 0 ? [{ label: "Core", value: formatDuration(nightSleep.coreSleep) }] : [],
+        ...nightSleep.lightSleep !== void 0 ? [{ label: "Light", value: formatDuration(nightSleep.lightSleep) }] : []
       ],
       payload: night
     });
@@ -17005,15 +17824,19 @@ var renderSleepArchitecture = (ctx, data, W, H, _config, theme, _statsEl, hits) 
         1,
         (stageEnd - stageStart) / maxSpan * barWidth
       );
-      ctx.shadowColor = theme.colors.sleep[stage.stage] || "#000";
+      ctx.shadowColor = theme.colors.sleep[stage.stage === "light" ? "core" : stage.stage] || "#000";
       ctx.shadowBlur = 8;
-      ctx.fillStyle = theme.colors.sleep[stage.stage] || "#333";
+      ctx.fillStyle = theme.colors.sleep[stage.stage === "light" ? "core" : stage.stage] || "#333";
       ctx.fillRect(x, y + 2, w, stripeHeight - 4);
       ctx.shadowBlur = 0;
-      const fmtTime = (iso) => new Date(iso).toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit"
-      });
+      const fmtTime = (iso) => {
+        var _a;
+        return new Date(iso).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          ...((_a = night.timeContext) == null ? void 0 : _a.sleep_day_attribution) === "morning_ends" ? { timeZone: night.timeContext.calendar_timezone } : {}
+        });
+      };
       hits.add({
         shape: "rect",
         x,
@@ -17152,8 +17975,8 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
 };
 
 // src/whoop-viz-utils.ts
-function whoopIsScored(record) {
-  return record.score_state === void 0 || record.score_state === "SCORED";
+function whoopIsScored(record5) {
+  return record5.score_state === void 0 || record5.score_state === "SCORED";
 }
 function whoopRecoveryPairs(data) {
   return [...data].sort((a, b) => a.date.localeCompare(b.date)).flatMap((day) => {
@@ -17267,16 +18090,16 @@ function empty2(ctx, W, H, theme, stats, data, message) {
   text2(ctx, message, W / 2, H / 2, theme.muted, "center", W - 24);
   note(stats, data);
 }
-function details(day, record) {
+function details(day, record5) {
   var _a, _b;
   return [
     { label: "Source", value: "WHOOP" },
     { label: "Capture", value: (_b = (_a = whoopForDay(day)) == null ? void 0 : _a.captureStatus) != null ? _b : "Unavailable" },
-    ...record.id ? [{ label: "Provider ID", value: record.id }] : [],
-    ...record.score_state ? [{ label: "Score state", value: record.score_state }] : [],
-    ...record.start_time ? [{ label: "Start", value: record.start_time }] : [],
-    ...record.end_time ? [{ label: "End", value: record.end_time }] : [],
-    ...record.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
+    ...record5.id ? [{ label: "Provider ID", value: record5.id }] : [],
+    ...record5.score_state ? [{ label: "Score state", value: record5.score_state }] : [],
+    ...record5.start_time ? [{ label: "Start", value: record5.start_time }] : [],
+    ...record5.end_time ? [{ label: "End", value: record5.end_time }] : [],
+    ...record5.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
   ];
 }
 function grid(ctx, W, top, bottom, left, right, max, theme, suffix) {
@@ -17680,12 +18503,18 @@ function formatMetric(metric, val, theme) {
 var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
-  const days = data.filter((d) => d.sleep && d.sleep.totalDuration > 0);
+  const days = data.filter((d) => {
+    var _a;
+    return d.sleep && ((_a = d.sleep.totalDuration) != null ? _a : 0) > 0;
+  });
   if (!days.length) return;
   const padL = 40, padR = 16, padT = 20, padB = 28;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const maxTotal = Math.max(...days.map((d) => d.sleep.totalDuration));
+  const maxTotal = Math.max(...days.map((d) => {
+    var _a;
+    return (_a = d.sleep.totalDuration) != null ? _a : 0;
+  }));
   const barW = plotW / days.length;
   const gap = Math.max(1, barW * 0.15);
   const maxHours = Math.ceil(maxTotal / 3600);
@@ -17706,7 +18535,14 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   const legend2 = [
     { label: "Deep", color: theme.colors.sleep.deep },
     { label: "REM", color: theme.colors.sleep.rem },
-    { label: "Core", color: theme.colors.sleep.core },
+    ...days.some((day) => {
+      var _a;
+      return ((_a = day.sleep) == null ? void 0 : _a.coreSleep) !== void 0;
+    }) ? [{ label: "Core", color: theme.colors.sleep.core }] : [],
+    ...days.some((day) => {
+      var _a;
+      return ((_a = day.sleep) == null ? void 0 : _a.lightSleep) !== void 0;
+    }) ? [{ label: "Light", color: theme.colors.sleep.core }] : [],
     { label: "Awake", color: theme.colors.sleep.awake }
   ];
   let lx = padL;
@@ -17721,7 +18557,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
   }
   const dateLabelStep = days.length <= 14 ? 1 : Math.max(1, Math.ceil(days.length / 6));
   days.forEach((day, i) => {
-    var _a;
+    var _a, _b, _c;
     const sl = day.sleep;
     const x = padL + i * barW + gap / 2;
     const bw = barW - gap;
@@ -17729,6 +18565,7 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
       { secs: sl.deepSleep || 0, color: theme.colors.sleep.deep, label: "Deep" },
       { secs: sl.remSleep || 0, color: theme.colors.sleep.rem, label: "REM" },
       { secs: sl.coreSleep || 0, color: theme.colors.sleep.core, label: "Core" },
+      { secs: sl.lightSleep || 0, color: theme.colors.sleep.core, label: "Light" },
       { secs: sl.awakeTime || 0, color: theme.colors.sleep.awake, label: "Awake" }
     ].filter((s) => s.secs > 0);
     let stackY = padT + plotH;
@@ -17760,8 +18597,8 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
       ctx.textAlign = "center";
       ctx.fillText(lbl, x + bw / 2, H - 6);
     }
-    const barTop = padT + plotH - sl.totalDuration / maxTotal * plotH;
-    const bedtime = (_a = formatClockTime(sl.bedtime)) != null ? _a : formatClockTime(sl.bedtimeISO);
+    const barTop = padT + plotH - ((_a = sl.totalDuration) != null ? _a : 0) / maxTotal * plotH;
+    const bedtime = (_b = formatClockTime(sl.bedtime)) != null ? _b : formatClockTime(sl.bedtimeISO);
     hits.add({
       shape: "rect",
       x,
@@ -17770,32 +18607,38 @@ var renderSleepQualityBars = (ctx, data, W, H, _config, theme, statsEl, hits) =>
       h: plotH - (barTop - padT),
       title: formatDate(day.date),
       details: [
-        { label: "Total", value: formatDuration(sl.totalDuration) },
+        { label: "Total", value: formatDuration((_c = sl.totalDuration) != null ? _c : 0) },
         ...sl.deepSleep ? [{ label: "Deep", value: formatDuration(sl.deepSleep) }] : [],
         ...sl.remSleep ? [{ label: "REM", value: formatDuration(sl.remSleep) }] : [],
         ...sl.coreSleep ? [{ label: "Core", value: formatDuration(sl.coreSleep) }] : [],
+        ...sl.lightSleep ? [{ label: "Light", value: formatDuration(sl.lightSleep) }] : [],
         ...sl.awakeTime ? [{ label: "Awake", value: formatDuration(sl.awakeTime) }] : [],
         ...bedtime ? [{ label: "Bedtime", value: bedtime }] : []
       ],
       payload: day
     });
   });
-  const avgTotal = days.reduce((s, d) => s + d.sleep.totalDuration, 0) / days.length;
-  const avgDeep = days.reduce((s, d) => s + (d.sleep.deepSleep || 0), 0) / days.length;
-  const avgRem = days.reduce((s, d) => s + (d.sleep.remSleep || 0), 0) / days.length;
+  const avgTotal = days.reduce((s, d) => {
+    var _a;
+    return s + ((_a = d.sleep.totalDuration) != null ? _a : 0);
+  }, 0) / days.length;
+  const deepDays = days.filter((day) => day.sleep.deepSleep !== void 0);
+  const remDays = days.filter((day) => day.sleep.remSleep !== void 0);
+  const avgDeep = deepDays.length ? deepDays.reduce((sum, day) => {
+    var _a;
+    return sum + ((_a = day.sleep.deepSleep) != null ? _a : 0);
+  }, 0) / deepDays.length : void 0;
+  const avgRem = remDays.length ? remDays.reduce((sum, day) => {
+    var _a;
+    return sum + ((_a = day.sleep.remSleep) != null ? _a : 0);
+  }, 0) / remDays.length : void 0;
   renderInlineStats(statsEl, [
     [
       { text: "Avg sleep " },
       { text: formatDuration(avgTotal), strong: true }
     ],
-    [
-      { text: "Avg deep " },
-      { text: formatDuration(avgDeep), strong: true }
-    ],
-    [
-      { text: "Avg REM " },
-      { text: formatDuration(avgRem), strong: true }
-    ]
+    ...avgDeep !== void 0 ? [[{ text: "Avg deep " }, { text: formatDuration(avgDeep), strong: true }]] : [],
+    ...avgRem !== void 0 ? [[{ text: "Avg REM " }, { text: formatDuration(avgRem), strong: true }]] : []
   ]);
 };
 
@@ -18083,7 +18926,10 @@ var renderIntroStats = (data, el, _config, theme) => {
   const heartDays = data.filter((d) => d.heart);
   const avgHR = heartDays.length ? heartDays.reduce((s, d) => s + (d.heart.averageHeartRate || 0), 0) / heartDays.length : 0;
   const sleepNights = data.filter(
-    (d) => d.sleep && (d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)
+    (d) => {
+      var _a;
+      return d.sleep && (d.sleep.sleepStages.length > 0 || ((_a = d.sleep.totalDuration) != null ? _a : 0) > 0);
+    }
   ).length;
   el.addClass("health-md-intro-grid");
   const stats = [
@@ -18980,7 +19826,7 @@ function extractForMetric(day, metric) {
   const max = day.heart.heartRateMax;
   const avg4 = day.heart.averageHeartRate;
   if (avg4 == null || avg4 <= 0) return null;
-  return { min: min > 0 ? min : avg4, max: max > 0 ? max : avg4, avg: avg4 };
+  return { min: min != null && min > 0 ? min : avg4, max: max != null && max > 0 ? max : avg4, avg: avg4 };
 }
 function labelFor(m) {
   if (m === "resting") return "Resting HR";
@@ -23743,7 +24589,7 @@ function renderMetric(host, metric, rollup, selectedStatistic, context) {
   renderStatistics(article, metric, selectedStatistic);
 }
 function renderRollupCard(host, rollup, metrics, index, selectedStatistic, context) {
-  var _a, _b, _c, _d, _e, _f;
+  var _a, _b, _c, _d, _e, _f, _g;
   const card = appendElement(host, "section", void 0, `health-md-rollup-card${index === 0 ? " is-first" : ""}`);
   appendElement(card, "h3", rollup.periodId, "health-md-rollup-period-title");
   appendElement(card, "div", rollup.rollupPeriod, "health-md-rollup-period-kind");
@@ -23754,6 +24600,11 @@ function renderRollupCard(host, rollup, metrics, index, selectedStatistic, conte
   const metadata = appendElement(card, "dl", void 0, "health-md-rollup-period-details");
   addDefinition(metadata, "Date span", `${start} \u2013 ${end}`);
   addDefinition(metadata, "Coverage", coverageText(rollup));
+  const timeContext = (_g = rollup.timeContext) != null ? _g : rollup.time_context;
+  if ((timeContext == null ? void 0 : timeContext.sleep_day_attribution) === "morning_ends" || (timeContext == null ? void 0 : timeContext.sleep_day_attribution) === "night_begins") {
+    addDefinition(metadata, "Sleep day attribution", timeContext.sleep_day_attribution === "morning_ends" ? "Morning ends" : "Night begins");
+    if (timeContext.calendar_timezone) addDefinition(metadata, "Calendar timezone", timeContext.calendar_timezone);
+  }
   addDefinition(
     metadata,
     "Period days",
@@ -23835,9 +24686,9 @@ function safeLabel(value, fallback) {
   if (!normalized) return fallback;
   return normalized.length > MAX_LABEL_LENGTH ? `${normalized.slice(0, MAX_LABEL_LENGTH - 1)}\u2026` : normalized;
 }
-function firstPrimitive(record, ...keys) {
+function firstPrimitive(record5, ...keys) {
   for (const key of keys) {
-    const value = primitiveText(record[key]);
+    const value = primitiveText(record5[key]);
     if (value !== void 0 && value.trim()) return value;
   }
   return void 0;
@@ -27200,17 +28051,17 @@ function parseCsvPreview(content) {
   const rows = [];
   let truncatedColumns = false;
   let truncatedRows = false;
-  for (const record of iterateCsvRecords(content, {
+  for (const record5 of iterateCsvRecords(content, {
     cellCharacterLimit: () => CSV_PREVIEW_MAX_CELL_CHARACTERS,
     truncationMarker: "\u2026"
   })) {
-    if (isBlankCsvRecord(record)) continue;
+    if (isBlankCsvRecord(record5)) continue;
     if (rows.length >= CSV_PREVIEW_MAX_ROWS) {
       truncatedRows = true;
       break;
     }
-    if (record.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
-    rows.push(record.slice(0, CSV_PREVIEW_MAX_COLUMNS));
+    if (record5.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
+    rows.push(record5.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }
   return { rows, truncatedRows, truncatedColumns };
 }

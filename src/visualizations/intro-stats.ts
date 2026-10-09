@@ -18,7 +18,7 @@ export const renderIntroStats: HtmlRenderFn = (
 		  heartDays.length
 		: 0;
 	const sleepNights = data.filter(
-		(d) => d.sleep && (d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)
+		(d) => d.sleep && (d.sleep.sleepStages.length > 0 || (d.sleep.totalDuration ?? 0) > 0)
 	).length;
 
 	el.addClass("health-md-intro-grid");

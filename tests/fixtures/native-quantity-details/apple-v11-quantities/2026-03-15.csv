@@ -1,0 +1,16 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-03-15,Metadata,schema,healthmd.health_data,,
+2026-03-15,Metadata,schema_version,11,,
+2026-03-15,Metadata,schema_profile,apple-v11,,
+2026-03-15,Metadata,unit_system,metric,,
+2026-03-15,Metadata,time_context.calendar_timezone,GMT,,
+2026-03-15,Metadata,time_context.timestamp_timezone,UTC,,
+2026-03-15,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-03-15,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-03-15,Metadata,time_context.sleep_interval_clipping,none,,
+2026-03-15,Raw HealthKit,Raw Capture Status,not_requested,status,
+2026-03-15,Native Detail,Quantity Sample,"{""metric"":""heart_rate"",""sample"":{""metadata"":{""synthetic"":""quantity, \""source\""""},""timestamp"":""2026-03-15T01:00:00.125000000Z"",""value"":72.125},""unit"":""bpm""}",json,2026-03-15T01:00:00.125000000Z
+2026-03-15,Native Detail,Quantity Sample,"{""metric"":""hrv_sdnn"",""sample"":{""metadata"":{""synthetic"":""quantity, \""source\""""},""timestamp"":""2026-03-15T01:00:00.125000000Z"",""value"":31.875},""unit"":""ms""}",json,2026-03-15T01:00:00.125000000Z
+2026-03-15,Native Detail,Quantity Sample,"{""metric"":""blood_oxygen"",""sample"":{""metadata"":{""synthetic"":""quantity, \""source\""""},""timestamp"":""2026-03-15T01:00:00.125000000Z"",""value"":0.97124999999999995},""unit"":""ratio_0_1""}",json,2026-03-15T01:00:00.125000000Z
+2026-03-15,Native Detail,Quantity Sample,"{""metric"":""blood_glucose"",""sample"":{""metadata"":{""synthetic"":""quantity, \""source\""""},""timestamp"":""2026-03-15T01:00:00.125000000Z"",""value"":101.875},""unit"":""mg\/dL""}",json,2026-03-15T01:00:00.125000000Z
+2026-03-15,Native Detail,Quantity Sample,"{""metric"":""respiratory_rate"",""sample"":{""metadata"":{""synthetic"":""quantity, \""source\""""},""timestamp"":""2026-03-15T01:00:00.125000000Z"",""value"":16.125},""unit"":""breaths\/min""}",json,2026-03-15T01:00:00.125000000Z

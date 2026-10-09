@@ -1,0 +1,13 @@
+{
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_revision": "868018383e04fc37b5e7e52d9ec85fd5f3a96ad6",
+  "synthetic": true,
+  "capture": "HealthConnectManager synthetic SDK record with only IPC mocked; real Kotlin and host Rust four-format writer",
+  "case": "New York DST fold, local-noon crossing, separate nap, metadata/identity/offsets and nanosecond clocks",
+  "sha256": {
+    "2026-11-01-bases.md": "de97c61b3c4fcc1faa05deda74ff569619002000848f4fca1f2147e23f6e97ad",
+    "2026-11-01.csv": "848910a51c88c85d8d5a7d4e95fa69c35ba62f24f0056310074a8b2dd8f90711",
+    "2026-11-01.json": "48d73dde74d526456d72aac02de5d594f62bb23b26d2c4ce710d42eaa3dcd096",
+    "2026-11-01.md": "45e64fb2bf3c330ed91d0e441557dcacf4ad9d627fd5dad66de1c8eaa7f74e20"
+  }
+}
