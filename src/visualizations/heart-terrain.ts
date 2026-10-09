@@ -2,6 +2,14 @@ import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../t
 import { lerp, hsl, formatDate } from "../canvas-utils";
 import { renderStatBoxes } from "../dom-utils";
 
+function heartSummary(day: HealthDay) {
+    const samples = (day.heart?.heartRateSamples ?? []).map(sample => sample.value).filter(Number.isFinite);
+    const avg = day.heart?.averageHeartRate ?? (samples.length ? samples.reduce((a,b) => a+b,0)/samples.length : undefined);
+    if (avg === undefined || !Number.isFinite(avg)) return null;
+    return {avg,min:day.heart?.heartRateMin ?? (samples.length ? Math.min(...samples) : avg),
+        max:day.heart?.heartRateMax ?? (samples.length ? Math.max(...samples) : avg)};
+}
+
 export const renderHeartTerrain: RenderFn = (
 	ctx: CanvasRenderingContext2D,
 	data: HealthDay[],
@@ -51,7 +59,11 @@ export const renderHeartTerrain: RenderFn = (
 
 	if (grid.length === 0) {
 		// Fallback: per-day average heatmap when no timestamped samples are available
-		const heartDays = data.filter((d) => d.heart && d.heart.averageHeartRate > 0);
+		const heartDays = data.flatMap(day => {
+            const summary = heartSummary(day);
+            return summary && summary.avg > 0 ? [{...day,heart:{...day.heart,averageHeartRate:summary.avg,
+                heartRateMin:summary.min,heartRateMax:summary.max,heartRateSamples:day.heart?.heartRateSamples ?? []}}] : [];
+        });
 		if (!heartDays.length) {
 			statsEl.empty();
 			statsEl.createEl("p", {
@@ -61,19 +73,19 @@ export const renderHeartTerrain: RenderFn = (
 			return;
 		}
 
-		const allAvg = heartDays.map((d) => d.heart!.averageHeartRate);
+		const allAvg = heartDays.map((d) => d.heart.averageHeartRate);
 		const globalMin = Math.min(
-			...heartDays.map((d) => d.heart!.heartRateMin || d.heart!.averageHeartRate)
+			...heartDays.map((d) => d.heart.heartRateMin || d.heart.averageHeartRate)
 		);
 		const globalMax = Math.max(
-			...heartDays.map((d) => d.heart!.heartRateMax || d.heart!.averageHeartRate)
+			...heartDays.map((d) => d.heart.heartRateMax || d.heart.averageHeartRate)
 		);
 		const colW = W / heartDays.length;
 
 		heartDays.forEach((day, x) => {
-			const avg = day.heart!.averageHeartRate;
-			const lo = day.heart!.heartRateMin || avg;
-			const hi = day.heart!.heartRateMax || avg;
+			const avg = day.heart.averageHeartRate;
+			const lo = day.heart.heartRateMin || avg;
+			const hi = day.heart.heartRateMax || avg;
 
 			const grad = ctx.createLinearGradient(0, H, 0, 0);
 			const tLo = (lo - globalMin) / (globalMax - globalMin || 1);
@@ -137,6 +149,7 @@ export const renderHeartTerrain: RenderFn = (
 
 		const dayObj = days[x];
 		const samples = dayObj.heart!.heartRateSamples;
+        const summary = heartSummary(dayObj);
 		hits.add({
 			shape: "rect",
 			x: x * colW,
@@ -145,24 +158,23 @@ export const renderHeartTerrain: RenderFn = (
 			h: H,
 			title: formatDate(day.date),
 			details: [
-				{ label: "Avg", value: `${Math.round(dayObj.heart!.averageHeartRate)} bpm` },
-				{ label: "Min", value: `${dayObj.heart!.heartRateMin} bpm` },
-				{ label: "Max", value: `${dayObj.heart!.heartRateMax} bpm` },
+				{ label: "Avg", value: summary ? `${Math.round(summary.avg)} bpm` : "Unavailable" },
+				{ label: "Min", value: summary ? `${summary.min} bpm` : "Unavailable" },
+				{ label: "Max", value: summary ? `${summary.max} bpm` : "Unavailable" },
 				{ label: "Samples", value: `${samples.length}` },
 			],
 			payload: dayObj,
 		});
 	});
 
-	const minHR = Math.min(...days.map((d) => d.heart!.heartRateMin || 999));
-	const maxHR = Math.max(...days.map((d) => d.heart!.heartRateMax || 0));
-	const avgHR = Math.round(
-		days.reduce((s, d) => s + (d.heart!.averageHeartRate || 0), 0) / days.length
-	);
+    const summaries = days.flatMap(day => { const summary = heartSummary(day); return summary ? [summary] : []; });
+    const minHR = summaries.length ? Math.min(...summaries.map(summary => summary.min)) : undefined;
+    const maxHR = summaries.length ? Math.max(...summaries.map(summary => summary.max)) : undefined;
+    const avgHR = summaries.length ? Math.round(summaries.reduce((sum,summary) => sum+summary.avg,0)/summaries.length) : undefined;
 
 	renderStatBoxes(statsEl, [
-		{ value: String(minHR), label: "Lowest", color: "#4488ff" },
-		{ value: String(avgHR), label: "Average", color: "#cc6666" },
-		{ value: String(maxHR), label: "Highest", color: "#ff4444" },
+		{ value: minHR === undefined ? "Unavailable" : String(minHR), label: "Lowest", color: "#4488ff" },
+		{ value: avgHR === undefined ? "Unavailable" : String(avgHR), label: "Average", color: "#cc6666" },
+		{ value: maxHR === undefined ? "Unavailable" : String(maxHR), label: "Highest", color: "#ff4444" },
 	]);
 };

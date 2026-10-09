@@ -1,3 +1,4 @@
+import { attachNativeQuantityDetails, nativeQuantityDetails } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority } from "../sleep-attribution";
 import {
@@ -1175,6 +1176,14 @@ function buildDayFromRows(
 		day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
 	}
 
+    const quantityRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "quantity sample");
+    if (quantityRows.length) {
+        try {
+            const records = nativeQuantityDetails(quantityRows.map(row => { const value: unknown = JSON.parse(row.value); return value; }), authority.profile);
+            if (!records || records.some((record,index) => quantityRows[index].unit !== "json" || quantityRows[index].timestamp !== record.sample.timestamp)) return null;
+            attachNativeQuantityDetails(day, records);
+        } catch { return null; }
+    }
 	attachCanonicalMetrics(day, canonicalMetricsFromCsvRows(rows, dictionary));
 	if (authority.androidSleep && day.canonicalMetrics) delete day.canonicalMetrics.sleep_core_hours;
 	return day;

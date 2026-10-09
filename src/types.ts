@@ -300,6 +300,7 @@ export interface MindfulnessSession {
 }
 
 export interface HealthDay {
+	nativeQuantityDetails?: import("./native-quantity-details").NativeQuantityDetail[];
 	schemaProfile?: string;
 	schema_profile?: string;
 	type: string;
@@ -347,9 +348,9 @@ export interface HealthDay {
 		walkingRunningDistance?: number;
 	};
 	heart?: {
-		averageHeartRate: number;
-		heartRateMin: number;
-		heartRateMax: number;
+		averageHeartRate?: number;
+		heartRateMin?: number;
+		heartRateMax?: number;
 		heartRateSamples: Array<{ timestamp: string; value: number }>;
 		hrvSamples?: Array<{ timestamp: string; value: number }>;
 		hrv?: number;
@@ -358,6 +359,7 @@ export interface HealthDay {
 	};
 	vitals?: {
 		bloodOxygenSamples?: Array<{ timestamp: string; value: number; percent?: number }>;
+		bloodGlucoseSamples?: TimeSeriesSample[];
 		respiratoryRateSamples?: Array<{ timestamp: string; value: number }>;
 		bloodOxygenPercent?: number;
 		respiratoryRate?: number;

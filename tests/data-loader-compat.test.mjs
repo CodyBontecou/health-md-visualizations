@@ -856,3 +856,19 @@ test('DataLoader retains native Apple metadata when display tables and machine f
   }
  }
 });
+
+test('DataLoader retains complete quantity source objects across machine and display formats',async()=>{
+ for(const [variant,date] of [['apple-v11-quantities','2026-03-15'],['android-v6-quantities','2026-11-01']]){
+  const base=path.join(process.cwd(),'tests/fixtures/native-quantity-details',variant,date);
+  const [json,csv,md,bases]=await Promise.all(['.json','.csv','.md','-bases.md'].map(suffix=>readFile(base+suffix,'utf8')));
+  const native=JSON.parse(json);
+  for(const contents of [{'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},{'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},{'a.csv':csv,'b.md':md},{'a.md':md,'b.csv':csv},{'a.md':bases,'b.md':md},{'a.md':md,'b.md':bases}]){
+   const [day]=await loadWhoopVault(contents);
+   assert.ok(day,variant);
+   assert.deepEqual(day.heart.heartRateSamples,native.heart.heartRateSamples,variant);
+   assert.deepEqual(day.heart.hrvSamples,native.heart.hrvSamples,variant);
+   assert.deepEqual(day.vitals.bloodGlucoseSamples,native.vitals.bloodGlucoseSamples,variant);
+   assert.equal(day.heart.averageHeartRate,undefined,variant);
+  }
+ }
+});

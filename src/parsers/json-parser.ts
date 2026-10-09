@@ -1,3 +1,4 @@
+import { attachNativeQuantityDetails, quantityDetailsFromJSON } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority } from "../sleep-attribution";
 import {
@@ -378,6 +379,11 @@ export function parseJSON(content: string): HealthDay | null {
 
 		Object.assign(day, normalizeMedicationFields(normalizedMedicationSource(parsed)));
 		normalizePercentageSections(day, schemaVersion);
+        if (successorSleepDetails(authority.profile)) {
+            const quantities = quantityDetailsFromJSON(parsed, authority.profile);
+            if (!quantities) return null;
+            attachNativeQuantityDetails(day, quantities);
+        }
 		attachCanonicalMetrics(day);
 
 		const moodSummary = getMoodDaySummary(day);

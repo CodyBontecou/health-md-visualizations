@@ -9628,9 +9628,74 @@ function successorSleepDetails(profile) {
   return profile === "apple-v11" || profile === "android-sleep-v6";
 }
 
+// src/native-quantity-details.ts
+var quantityDefinitions = [
+  { metric: "heart_rate", category: "heart", field: "heartRateSamples", unit: "bpm", heading: "heart rate sample details" },
+  { metric: "hrv_sdnn", category: "heart", field: "hrvSamples", unit: "ms", heading: "hrv sdnn sample details" },
+  { metric: "hrv_rmssd", category: "heart", field: "hrvSamples", unit: "ms", heading: "hrv rmssd sample details" },
+  { metric: "blood_oxygen", category: "vitals", field: "bloodOxygenSamples", unit: "ratio_0_1", heading: "blood oxygen sample details" },
+  { metric: "blood_glucose", category: "vitals", field: "bloodGlucoseSamples", unit: "mg/dL", heading: "blood glucose sample details" },
+  { metric: "respiratory_rate", category: "vitals", field: "respiratoryRateSamples", unit: "breaths/min", heading: "respiratory rate sample details" }
+];
+function record2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function nativeQuantityDetails(value, profile) {
+  if (!successorSleepDetails(profile) || !Array.isArray(value)) return null;
+  const details2 = [];
+  for (const item of value) {
+    if (!record2(item) || !record2(item.sample)) return null;
+    const definition = quantityDefinitions.find((entry) => entry.metric === item.metric);
+    if (!definition || item.unit !== definition.unit || item.metric === "hrv_sdnn" && profile !== "apple-v11" || item.metric === "hrv_rmssd" && profile !== "android-sleep-v6") return null;
+    const source = item.sample;
+    if (typeof source.timestamp !== "string" || sleepInterval(source.timestamp, source.timestamp) !== 0 || typeof source.value !== "number" || !Number.isFinite(source.value) || definition.unit === "ratio_0_1" && (source.value < 0 || source.value > 1)) return null;
+    if (source.exactTime !== void 0) {
+      if (!record2(source.exactTime)) return null;
+      const { epochSecond, nano } = source.exactTime;
+      if (typeof epochSecond !== "number" || !Number.isSafeInteger(epochSecond) || typeof nano !== "number" || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return null;
+      const [whole, fraction = ""] = source.timestamp.slice(0, -1).split(".");
+      const actual = BigInt(Date.parse(`${whole}Z`)) * BigInt(1e6) + BigInt(fraction.padEnd(9, "0"));
+      if (actual !== BigInt(epochSecond) * BigInt(1e9) + BigInt(nano)) return null;
+    }
+    details2.push({ metric: definition.metric, unit: definition.unit, sample: { ...source, timestamp: source.timestamp, value: source.value } });
+  }
+  return details2;
+}
+function quantityDetailsFromJSON(root, profile) {
+  const details2 = [];
+  for (const definition of quantityDefinitions) {
+    if (definition.metric === "hrv_sdnn" && profile !== "apple-v11" || definition.metric === "hrv_rmssd" && profile !== "android-sleep-v6") continue;
+    const category = root[definition.category];
+    if (!record2(category) || category[definition.field] === void 0) continue;
+    const samples = category[definition.field];
+    if (!Array.isArray(samples)) return null;
+    details2.push(...samples.map((sample) => ({ metric: definition.metric, unit: definition.unit, sample })));
+  }
+  return nativeQuantityDetails(details2, profile);
+}
+function attachNativeQuantityDetails(day, details2) {
+  var _a, _b;
+  if (!details2.length) return;
+  day.nativeQuantityDetails = details2;
+  for (const definition of quantityDefinitions) {
+    const samples = details2.filter((value) => value.metric === definition.metric).map((value) => value.sample);
+    if (!samples.length) continue;
+    if (definition.category === "heart") {
+      day.heart = { ...day.heart, heartRateSamples: (_b = (_a = day.heart) == null ? void 0 : _a.heartRateSamples) != null ? _b : [] };
+      if (definition.field === "heartRateSamples") day.heart.heartRateSamples = samples;
+      else day.heart.hrvSamples = samples;
+    } else {
+      day.vitals = { ...day.vitals };
+      if (definition.field === "bloodOxygenSamples") day.vitals.bloodOxygenSamples = samples.map((sample) => ({ ...sample, value: sample.value * 100, percent: sample.value * 100 }));
+      else if (definition.field === "bloodGlucoseSamples") day.vitals.bloodGlucoseSamples = samples;
+      else day.vitals.respiratoryRateSamples = samples;
+    }
+  }
+}
+
 // src/csv-utils.ts
-function isBlankCsvRecord(record3) {
-  return record3.every((cell) => cell.trim() === "");
+function isBlankCsvRecord(record4) {
+  return record4.every((cell) => cell.trim() === "");
 }
 function* iterateCsvRecords(content, options = {}) {
   var _a;
@@ -9784,7 +9849,7 @@ function topLevelJsonObjectProperties(content) {
 function parseJsonObjectExcluding(content, omittedKeys) {
   const properties = topLevelJsonObjectProperties(content);
   if (!properties) return null;
-  const record3 = {};
+  const record4 = {};
   const omittedValues = {};
   try {
     for (const property of properties) {
@@ -9792,10 +9857,10 @@ function parseJsonObjectExcluding(content, omittedKeys) {
       if (omittedKeys.has(property.key)) {
         omittedValues[property.key] = rawValue;
       } else {
-        record3[property.key] = JSON.parse(rawValue);
+        record4[property.key] = JSON.parse(rawValue);
       }
     }
-    return { record: record3, omittedValues };
+    return { record: record4, omittedValues };
   } catch (e) {
     return null;
   }
@@ -9933,8 +9998,8 @@ function isHealthMetricDataDictionaryValue(value) {
   if (!Array.isArray(value)) return false;
   return value.some((entry) => {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
-    const record3 = entry;
-    return typeof record3.key === "string" && typeof record3.canonicalKey === "string";
+    const record4 = entry;
+    return typeof record4.key === "string" && typeof record4.canonicalKey === "string";
   });
 }
 function detectKnownSchema(format, schema, version) {
@@ -9978,14 +10043,14 @@ function detectJsonSchema(contentOrValue) {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return { kind: "unknown", version: 0, format: "json", reason: "JSON root is not an object" };
     }
-    const record3 = parsed;
-    const schema = typeof record3.schema === "string" ? record3.schema : void 0;
-    const version = schemaVersionOf(record3);
+    const record4 = parsed;
+    const schema = typeof record4.schema === "string" ? record4.schema : void 0;
+    const version = schemaVersionOf(record4);
     if (schema) return detectKnownSchema("json", schema, version);
-    if (record3.type === "health-data" && typeof record3.date === "string") {
+    if (record4.type === "health-data" && typeof record4.date === "string") {
       return { kind: "legacy-health-day", version: 0, format: "json" };
     }
-    if (record3.type === "health_rollup") {
+    if (record4.type === "health_rollup") {
       return { kind: "rollup-summary", version, format: "json", schema: HEALTHMD_ROLLUP_SCHEMA };
     }
     return { kind: "unknown", version, format: "json", reason: "JSON is not a Health.md daily export" };
@@ -10162,7 +10227,7 @@ function normalizeCsvLabel(value) {
 }
 
 // src/sleep-attribution.ts
-function record2(value) {
+function record3(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
 }
 function alias(value, snake, camel) {
@@ -10187,9 +10252,9 @@ function readSleepAuthority(source) {
     const version = schemaVersionOf(source);
     const androidSleep = profile === "android-sleep-v6";
     const successor = androidSleep || profile === "apple-v11" || version === 11;
-    const raw = record2((_a = source.time_context) != null ? _a : source.timeContext);
+    const raw = record3((_a = source.time_context) != null ? _a : source.timeContext);
     if (source.time_context !== void 0 && source.timeContext !== void 0) {
-      const other = record2(source.timeContext);
+      const other = record3(source.timeContext);
       if (!raw || !other) return null;
       for (const [snake, camel] of [
         ["calendar_timezone", "calendarTimezone"],
@@ -11257,9 +11322,9 @@ function canonicalMetricsFromSummaryRoot(root) {
 function isKnownCanonicalMetricKey(key, units) {
   return BUILTIN_KEYS.has(key) || key.startsWith("symptom_") || units !== void 0 && key in units;
 }
-function canonicalMetricsFromFlatRecord(record3, units) {
+function canonicalMetricsFromFlatRecord(record4, units) {
   const metrics = {};
-  for (const [key, value] of Object.entries(record3)) {
+  for (const [key, value] of Object.entries(record4)) {
     if (RESERVED_FLAT_KEYS.has(key)) continue;
     const allowed = isKnownCanonicalMetricKey(key, units);
     if (!allowed) continue;
@@ -11601,7 +11666,7 @@ function parseWhoopCsv(rows) {
   const profile = providerRows.find((row) => label(row.category) === "whoop body" && label(row.metric) === "body snapshot");
   const profileValue = profile ? object(decode(profile)) : void 0;
   if ((profileValue == null ? void 0 : profileValue.source_kind) === "current_profile_snapshot") result.body = body(profileValue);
-  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record3) => record3.projection)) {
+  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record4) => record4.projection)) {
     result.notes = result.notes.filter((note2) => !note2.startsWith("Single-record scalar"));
   }
   return finalize(result);
@@ -11737,17 +11802,17 @@ function stringArrayFromUnknown2(value) {
   }
   return [];
 }
-function firstString2(record3, keys) {
+function firstString2(record4, keys) {
   for (const key of keys) {
-    const value = record3[key];
+    const value = record4[key];
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
   }
   return void 0;
 }
-function firstNumber2(record3, keys) {
+function firstNumber2(record4, keys) {
   for (const key of keys) {
-    const parsed = parseNumber(record3[key]);
+    const parsed = parseNumber(record4[key]);
     if (parsed !== void 0) return parsed;
   }
   return void 0;
@@ -11763,9 +11828,9 @@ function normalizeTimestamp(raw, fallbackDate) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T12:00:00`;
   return value;
 }
-function moodEntryFromRecord(record3, fallbackDate) {
+function moodEntryFromRecord(record4, fallbackDate) {
   var _a, _b, _c, _d;
-  const valenceRaw = firstNumber2(record3, [
+  const valenceRaw = firstNumber2(record4, [
     "valence",
     "moodValence",
     "mood_valence",
@@ -11776,7 +11841,7 @@ function moodEntryFromRecord(record3, fallbackDate) {
     "avgValence",
     "avg_valence"
   ]);
-  const scoreRaw = firstNumber2(record3, [
+  const scoreRaw = firstNumber2(record4, [
     "score",
     "moodScore",
     "mood_score",
@@ -11792,7 +11857,7 @@ function moodEntryFromRecord(record3, fallbackDate) {
     "averageMoodPercent",
     "average_mood_percent"
   ]);
-  const label = firstString2(record3, [
+  const label = firstString2(record4, [
     "label",
     "primaryLabel",
     "primary_label",
@@ -11800,7 +11865,7 @@ function moodEntryFromRecord(record3, fallbackDate) {
     "mood_label",
     "state"
   ]);
-  const valenceDescription = firstString2(record3, [
+  const valenceDescription = firstString2(record4, [
     "classification",
     "valenceClassification",
     "valence_classification",
@@ -11808,16 +11873,16 @@ function moodEntryFromRecord(record3, fallbackDate) {
     "valence_description",
     "feeling"
   ]);
-  const rawMood = record3.mood;
+  const rawMood = record4.mood;
   const moodLabel = typeof rawMood === "string" && rawMood.trim() ? rawMood.trim() : void 0;
   const labels = [
-    ...stringArrayFromUnknown2(record3.labels),
-    ...stringArrayFromUnknown2(record3.emotions),
-    ...stringArrayFromUnknown2(record3.feelings)
+    ...stringArrayFromUnknown2(record4.labels),
+    ...stringArrayFromUnknown2(record4.emotions),
+    ...stringArrayFromUnknown2(record4.feelings)
   ].filter((item, index, all) => all.indexOf(item) === index);
   const primaryLabel2 = (_b = (_a = label != null ? label : moodLabel) != null ? _a : labels[0]) != null ? _b : valenceDescription;
   const valence = (_d = (_c = normalizeMoodValence(valenceRaw, "valence")) != null ? _c : normalizeMoodValence(scoreRaw, "score")) != null ? _d : normalizeMoodValence(primaryLabel2, "label");
-  const timestamp2 = normalizeTimestamp(firstString2(record3, [
+  const timestamp2 = normalizeTimestamp(firstString2(record4, [
     "timestamp",
     "date",
     "recordedAt",
@@ -11828,12 +11893,12 @@ function moodEntryFromRecord(record3, fallbackDate) {
     "start_time",
     "time"
   ]), fallbackDate);
-  const endDate = normalizeTimestamp(firstString2(record3, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
-  const kind = firstString2(record3, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
+  const endDate = normalizeTimestamp(firstString2(record4, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
+  const kind = firstString2(record4, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
   const associations = [
-    ...stringArrayFromUnknown2(record3.associations),
-    ...stringArrayFromUnknown2(record3.contexts),
-    ...stringArrayFromUnknown2(record3.factors)
+    ...stringArrayFromUnknown2(record4.associations),
+    ...stringArrayFromUnknown2(record4.contexts),
+    ...stringArrayFromUnknown2(record4.factors)
   ].filter((item, index, all) => all.indexOf(item) === index);
   if (valence === void 0 && !primaryLabel2 && !labels.length && !kind) return null;
   return {
@@ -12003,11 +12068,11 @@ function parseLargeHealthDataEnvelope(content) {
     return null;
   }
   try {
-    const record3 = JSON.parse(`${head}${content.slice(restStart)}`);
-    if (!isRecord4(record3) || record3.type !== "health-data") return null;
-    if ("healthkit_record_archive" in record3) return null;
+    const record4 = JSON.parse(`${head}${content.slice(restStart)}`);
+    if (!isRecord4(record4) || record4.type !== "health-data") return null;
+    if ("healthkit_record_archive" in record4) return null;
     return {
-      record: record3,
+      record: record4,
       omittedValues: {
         healthkit_record_archive: JSON.stringify(scan.topLevelScalars)
       }
@@ -12237,6 +12302,11 @@ function parseJSON(content) {
     }
     Object.assign(day, normalizeMedicationFields(normalizedMedicationSource(parsed)));
     normalizePercentageSections(day, schemaVersion);
+    if (successorSleepDetails(authority.profile)) {
+      const quantities = quantityDetailsFromJSON(parsed, authority.profile);
+      if (!quantities) return null;
+      attachNativeQuantityDetails(day, quantities);
+    }
     attachCanonicalMetrics(day);
     const moodSummary2 = getMoodDaySummary(day);
     if (moodSummary2.entries.length) {
@@ -13218,6 +13288,19 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
   if (headphone !== void 0 || environmentalSound !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
   }
+  const quantityRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "quantity sample");
+  if (quantityRows.length) {
+    try {
+      const records = nativeQuantityDetails(quantityRows.map((row) => {
+        const value = JSON.parse(row.value);
+        return value;
+      }), authority.profile);
+      if (!records || records.some((record4, index) => quantityRows[index].unit !== "json" || quantityRows[index].timestamp !== record4.sample.timestamp)) return null;
+      attachNativeQuantityDetails(day, records);
+    } catch (e) {
+      return null;
+    }
+  }
   attachCanonicalMetrics(day, canonicalMetricsFromCsvRows(rows, dictionary));
   if (authority.androidSleep && day.canonicalMetrics) delete day.canonicalMetrics.sleep_core_hours;
   return day;
@@ -13968,14 +14051,14 @@ function parseGranularMarkdownData(body2, date) {
 function sumStageSeconds2(stages, stageName) {
   return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
-function recordStr(record3, key) {
-  const value = record3[key];
+function recordStr(record4, key) {
+  const value = record4[key];
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return void 0;
 }
-function recordNum(record3, key) {
-  return parseNumberValue2(record3[key], key);
+function recordNum(record4, key) {
+  return parseNumberValue2(record4[key], key);
 }
 function cleanDisplayValue(value) {
   if (!value) return void 0;
@@ -14244,7 +14327,7 @@ function captureSummaryFromFrontmatter(fm) {
   };
 }
 function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H;
   const parsed = parseFrontmatter(content);
   let fm = applyFrontmatterAliases(
     mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter),
@@ -14556,6 +14639,28 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   if (headphone !== void 0 || environmentalSound !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
   }
+  if (fm.native_quantity_details !== void 0) {
+    const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);
+    if (!records) return null;
+    attachNativeQuantityDetails(day, records);
+  } else if (successorSleepDetails(authority.profile)) {
+    const values = [];
+    for (const table of parseMarkdownTables(parsed.body)) {
+      const definition = quantityDefinitions.find((item) => item.heading === normalizeLabel2(table.context));
+      if (!definition) continue;
+      const headers = normalizedHeaders(table);
+      const timestamp2 = headers.indexOf("timestamp (utc)"), value = headers.indexOf("value"), unit = headers.indexOf("unit");
+      if (timestamp2 < 0 || value < 0 || unit < 0) return null;
+      for (const row of table.rows) {
+        const number2 = Number(row[value]);
+        if (!((_H = row[value]) == null ? void 0 : _H.trim())) return null;
+        values.push({ metric: definition.metric, unit: row[unit], sample: { timestamp: row[timestamp2], value: number2 } });
+      }
+    }
+    const records = nativeQuantityDetails(values, authority.profile);
+    if (!records) return null;
+    attachNativeQuantityDetails(day, records);
+  }
   attachCanonicalMetrics(day, canonicalMetricsFromFlatRecord(fm, unitsMap));
   const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop;
   return hasData ? day : null;
@@ -14658,28 +14763,28 @@ function isValidPeriodIdentity(period, periodId, startDateValue, endDateValue) {
   const year = Number(match[1]);
   return startDate.year === year && startDate.month === 1 && startDate.day === 1 && endDate.year === year && endDate.month === 12 && endDate.day === 31;
 }
-function firstString3(record3, ...keys) {
+function firstString3(record4, ...keys) {
   for (const key of keys) {
-    const value = stringValue4(record3[key]);
+    const value = stringValue4(record4[key]);
     if (value !== void 0 && value !== "") return value;
   }
   return void 0;
 }
-function firstNumber3(record3, ...keys) {
+function firstNumber3(record4, ...keys) {
   for (const key of keys) {
-    const value = numberValue2(record3[key]);
+    const value = numberValue2(record4[key]);
     if (value !== void 0) return value;
   }
   return void 0;
 }
-function hasOwn(record3, key) {
-  return Boolean(Object.prototype.hasOwnProperty.call(record3, key));
+function hasOwn(record4, key) {
+  return Boolean(Object.prototype.hasOwnProperty.call(record4, key));
 }
-function readAliasedValue(record3, keys, parse, equals = (left, right) => left === right) {
+function readAliasedValue(record4, keys, parse, equals = (left, right) => left === right) {
   let parsedValue;
   for (const key of keys) {
-    if (!hasOwn(record3, key)) continue;
-    const current = parse(record3[key]);
+    if (!hasOwn(record4, key)) continue;
+    const current = parse(record4[key]);
     if (current === void 0 || parsedValue !== void 0 && !equals(parsedValue, current)) {
       return { valid: false };
     }
@@ -14694,12 +14799,12 @@ function nonBlankString(value) {
 function stringArraysEqual(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
-function validateIdentityField(record3, keys, expected) {
+function validateIdentityField(record4, keys, expected) {
   let present = false;
   for (const key of keys) {
-    if (!hasOwn(record3, key)) continue;
+    if (!hasOwn(record4, key)) continue;
     present = true;
-    if (record3[key] !== expected) return { present, valid: false };
+    if (record4[key] !== expected) return { present, valid: false };
   }
   return { present, valid: true };
 }
@@ -14709,18 +14814,18 @@ function strictSchemaVersion(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : void 0;
 }
-function readOptionalSchemaVersion(record3) {
+function readOptionalSchemaVersion(record4) {
   var _a;
-  const parsed = readAliasedValue(record3, ["schemaVersion", "schema_version"], strictSchemaVersion);
+  const parsed = readAliasedValue(record4, ["schemaVersion", "schema_version"], strictSchemaVersion);
   return { valid: parsed.valid, version: (_a = parsed.value) != null ? _a : 0 };
 }
 function validCalendarTimezone(value) {
   const trimmed = value == null ? void 0 : value.trim();
   return trimmed && trimmed.length <= 64 ? trimmed : void 0;
 }
-function readOptionalCalendarTimezone(record3) {
+function readOptionalCalendarTimezone(record4) {
   return readAliasedValue(
-    record3,
+    record4,
     ["calendarTimezone", "calendar_timezone"],
     (value) => typeof value === "string" ? validCalendarTimezone(value) : void 0
   );
@@ -14776,9 +14881,9 @@ function normalizeMetric(value, fallbackKey) {
     notes: firstString3(value, "notes")
   };
 }
-function normalizeMetrics(record3) {
+function normalizeMetrics(record4) {
   var _a;
-  const raw = (_a = record3.rollup_metrics) != null ? _a : record3.metrics;
+  const raw = (_a = record4.rollup_metrics) != null ? _a : record4.metrics;
   const result = {};
   if (Array.isArray(raw)) {
     for (const item of raw) {
@@ -14793,16 +14898,16 @@ function normalizeMetrics(record3) {
   }
   return Object.keys(result).length ? result : void 0;
 }
-function sleepRangeAuthority(record3, calendar) {
-  const profile = readAliasedValue(record3, ["schema_profile", "schemaProfile"], nonBlankString);
-  const source = readAliasedValue(record3, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
+function sleepRangeAuthority(record4, calendar) {
+  const profile = readAliasedValue(record4, ["schema_profile", "schemaProfile"], nonBlankString);
+  const source = readAliasedValue(record4, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
   if (!profile.valid || profile.value !== "apple-rollup-v11" || !source.valid || source.value !== "apple-v11") return null;
   const clock = readSleepAuthority({
     schema: HEALTHMD_HEALTH_DATA_SCHEMA,
     schema_version: 11,
     schema_profile: "apple-v11",
-    time_context: record3.time_context,
-    timeContext: record3.timeContext
+    time_context: record4.time_context,
+    timeContext: record4.timeContext
   });
   if (!(clock == null ? void 0 : clock.context) || clock.context.calendar_timezone !== calendar) return null;
   return {
@@ -14814,33 +14919,33 @@ function sleepRangeAuthority(record3, calendar) {
     time_context: clock.context
   };
 }
-function buildRollupSummary(record3) {
-  const schemaIdentity = validateIdentityField(record3, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
-  const typeIdentity = validateIdentityField(record3, ["type", "Type"], "health_rollup");
+function buildRollupSummary(record4) {
+  const schemaIdentity = validateIdentityField(record4, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
+  const typeIdentity = validateIdentityField(record4, ["type", "Type"], "health_rollup");
   if (!schemaIdentity.valid || !typeIdentity.valid || !schemaIdentity.present && !typeIdentity.present) return null;
-  const parsedRollupPeriod = readAliasedValue(record3, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
-  const parsedPeriodId = readAliasedValue(record3, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
-  const parsedStartDate = readAliasedValue(record3, ["start_date", "startDate", "Start Date"], nonBlankString);
-  const parsedEndDate = readAliasedValue(record3, ["end_date", "endDate", "End Date"], nonBlankString);
+  const parsedRollupPeriod = readAliasedValue(record4, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
+  const parsedPeriodId = readAliasedValue(record4, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
+  const parsedStartDate = readAliasedValue(record4, ["start_date", "startDate", "Start Date"], nonBlankString);
+  const parsedEndDate = readAliasedValue(record4, ["end_date", "endDate", "End Date"], nonBlankString);
   if (!parsedRollupPeriod.valid || !parsedPeriodId.valid || !parsedStartDate.valid || !parsedEndDate.valid) return null;
   const rollupPeriod = parsedRollupPeriod.value;
   const periodId = parsedPeriodId.value;
   const startDate = parsedStartDate.value;
   const endDate = parsedEndDate.value;
   if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
-  const parsedSchemaVersion = readOptionalSchemaVersion(record3);
+  const parsedSchemaVersion = readOptionalSchemaVersion(record4);
   if (!parsedSchemaVersion.valid) return null;
   const schemaVersion = parsedSchemaVersion.version;
   if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
-  const parsedCalendarTimezone = readOptionalCalendarTimezone(record3);
-  const parsedDaysExpected = readAliasedValue(record3, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
-  const parsedDaysCounted = readAliasedValue(record3, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
-  const parsedCoveragePercent = readAliasedValue(record3, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
-  const parsedSourceSchema = readAliasedValue(record3, ["source_schema", "sourceSchema"], nonBlankString);
-  const parsedSourceSchemaVersion = readAliasedValue(record3, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
-  const parsedRollupRulesVersion = readAliasedValue(record3, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
-  const parsedGeneratedAt = readAliasedValue(record3, ["generated_at", "generatedAt"], nonBlankString);
-  const parsedSourceDates = readAliasedValue(record3, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
+  const parsedCalendarTimezone = readOptionalCalendarTimezone(record4);
+  const parsedDaysExpected = readAliasedValue(record4, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
+  const parsedDaysCounted = readAliasedValue(record4, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
+  const parsedCoveragePercent = readAliasedValue(record4, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
+  const parsedSourceSchema = readAliasedValue(record4, ["source_schema", "sourceSchema"], nonBlankString);
+  const parsedSourceSchemaVersion = readAliasedValue(record4, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
+  const parsedRollupRulesVersion = readAliasedValue(record4, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
+  const parsedGeneratedAt = readAliasedValue(record4, ["generated_at", "generatedAt"], nonBlankString);
+  const parsedSourceDates = readAliasedValue(record4, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
   const contractValues = [
     parsedCalendarTimezone,
     parsedDaysExpected,
@@ -14863,7 +14968,7 @@ function buildRollupSummary(record3) {
   if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION))) return null;
   const generatedAt = parsedGeneratedAt.value;
   const sourceDates = parsedSourceDates.value;
-  const authority = schemaVersion === 11 ? sleepRangeAuthority(record3, calendarTimezone) : {};
+  const authority = schemaVersion === 11 ? sleepRangeAuthority(record4, calendarTimezone) : {};
   if (!authority) return null;
   return {
     ...authority,
@@ -14897,8 +15002,8 @@ function buildRollupSummary(record3) {
     generated_at: generatedAt,
     sourceDates,
     source_dates: sourceDates,
-    units: unitMap(record3.units),
-    metrics: normalizeMetrics(record3)
+    units: unitMap(record4.units),
+    metrics: normalizeMetrics(record4)
   };
 }
 function parseRollupJSON(content) {
@@ -14986,8 +15091,8 @@ function parseRollupMarkdown(content, cachedFrontmatter) {
   var _a;
   const parsed = parseFrontmatter(content);
   const frontmatter = (_a = parsed.frontmatter) != null ? _a : {};
-  const record3 = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
-  const summary = buildRollupSummary(record3);
+  const record4 = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
+  const summary = buildRollupSummary(record4);
   if (!summary) return null;
   if (cachedFrontmatter && (summary.schemaVersion === 11 || readOptionalSchemaVersion(frontmatter).version === 11)) {
     const physical = buildRollupSummary(frontmatter);
@@ -15991,6 +16096,16 @@ function mergeNativeSleep(fallback, preferred) {
   );
   return merged;
 }
+function mergeNativeQuantities(fallback = [], preferred = []) {
+  const identities = [...new Set([...fallback, ...preferred].map((value) => value.metric))];
+  return identities.flatMap((identity) => {
+    const a = fallback.filter((value) => value.metric === identity), b = preferred.filter((value) => value.metric === identity);
+    if (!a.length || !b.length || a.length !== b.length) return b.length ? b : a;
+    const keys = (values) => values.map((value) => JSON.stringify([value.unit, value.sample.timestamp, value.sample.value])).sort().join("\n");
+    if (keys(a) !== keys(b)) return b;
+    return a.reduce((sum, value) => sum + objectDetailScore(value), 0) > b.reduce((sum, value) => sum + objectDetailScore(value), 0) ? a : b;
+  });
+}
 function mergeDays(a, b) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N;
   const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -16011,7 +16126,7 @@ function mergeDays(a, b) {
     const owner = whoop === preferred.whoop ? preferred : fallback;
     if (owner.providers) providers.whoop = owner.providers.whoop;
   }
-  return {
+  const result = {
     // Preserve versioned summary sections that do not yet have dedicated
     // visualizations. Parsers remove canonical archive payloads before merge.
     ...fallback,
@@ -16059,6 +16174,10 @@ function mergeDays(a, b) {
     providers,
     whoop
   };
+  if (successorSleepDetails(result.schema_profile)) {
+    attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
+  }
+  return result;
 }
 
 // src/units.ts
@@ -16446,6 +16565,17 @@ function appendSvgFromMarkup(container, svgMarkup) {
 }
 
 // src/visualizations/heart-terrain.ts
+function heartSummary(day) {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
+  const samples = ((_b = (_a = day.heart) == null ? void 0 : _a.heartRateSamples) != null ? _b : []).map((sample) => sample.value).filter(Number.isFinite);
+  const avg4 = (_d = (_c = day.heart) == null ? void 0 : _c.averageHeartRate) != null ? _d : samples.length ? samples.reduce((a, b) => a + b, 0) / samples.length : void 0;
+  if (avg4 === void 0 || !Number.isFinite(avg4)) return null;
+  return {
+    avg: avg4,
+    min: (_f = (_e = day.heart) == null ? void 0 : _e.heartRateMin) != null ? _f : samples.length ? Math.min(...samples) : avg4,
+    max: (_h = (_g = day.heart) == null ? void 0 : _g.heartRateMax) != null ? _h : samples.length ? Math.max(...samples) : avg4
+  };
+}
 var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const BUCKETS = 96;
   const days = data.filter((d) => {
@@ -16480,7 +16610,17 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     grid2.push({ date: day.date, col: averaged });
   });
   if (grid2.length === 0) {
-    const heartDays = data.filter((d) => d.heart && d.heart.averageHeartRate > 0);
+    const heartDays = data.flatMap((day) => {
+      var _a, _b;
+      const summary = heartSummary(day);
+      return summary && summary.avg > 0 ? [{ ...day, heart: {
+        ...day.heart,
+        averageHeartRate: summary.avg,
+        heartRateMin: summary.min,
+        heartRateMax: summary.max,
+        heartRateSamples: (_b = (_a = day.heart) == null ? void 0 : _a.heartRateSamples) != null ? _b : []
+      } }] : [];
+    });
     if (!heartDays.length) {
       statsEl.empty();
       statsEl.createEl("p", {
@@ -16558,6 +16698,7 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     });
     const dayObj = days[x];
     const samples = dayObj.heart.heartRateSamples;
+    const summary = heartSummary(dayObj);
     hits.add({
       shape: "rect",
       x: x * colW,
@@ -16566,23 +16707,25 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
       h: H,
       title: formatDate(day.date),
       details: [
-        { label: "Avg", value: `${Math.round(dayObj.heart.averageHeartRate)} bpm` },
-        { label: "Min", value: `${dayObj.heart.heartRateMin} bpm` },
-        { label: "Max", value: `${dayObj.heart.heartRateMax} bpm` },
+        { label: "Avg", value: summary ? `${Math.round(summary.avg)} bpm` : "Unavailable" },
+        { label: "Min", value: summary ? `${summary.min} bpm` : "Unavailable" },
+        { label: "Max", value: summary ? `${summary.max} bpm` : "Unavailable" },
         { label: "Samples", value: `${samples.length}` }
       ],
       payload: dayObj
     });
   });
-  const minHR = Math.min(...days.map((d) => d.heart.heartRateMin || 999));
-  const maxHR = Math.max(...days.map((d) => d.heart.heartRateMax || 0));
-  const avgHR = Math.round(
-    days.reduce((s, d) => s + (d.heart.averageHeartRate || 0), 0) / days.length
-  );
+  const summaries = days.flatMap((day) => {
+    const summary = heartSummary(day);
+    return summary ? [summary] : [];
+  });
+  const minHR = summaries.length ? Math.min(...summaries.map((summary) => summary.min)) : void 0;
+  const maxHR = summaries.length ? Math.max(...summaries.map((summary) => summary.max)) : void 0;
+  const avgHR = summaries.length ? Math.round(summaries.reduce((sum, summary) => sum + summary.avg, 0) / summaries.length) : void 0;
   renderStatBoxes(statsEl, [
-    { value: String(minHR), label: "Lowest", color: "#4488ff" },
-    { value: String(avgHR), label: "Average", color: "#cc6666" },
-    { value: String(maxHR), label: "Highest", color: "#ff4444" }
+    { value: minHR === void 0 ? "Unavailable" : String(minHR), label: "Lowest", color: "#4488ff" },
+    { value: avgHR === void 0 ? "Unavailable" : String(avgHR), label: "Average", color: "#cc6666" },
+    { value: maxHR === void 0 ? "Unavailable" : String(maxHR), label: "Highest", color: "#ff4444" }
   ]);
 };
 
@@ -17511,8 +17654,8 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
 };
 
 // src/whoop-viz-utils.ts
-function whoopIsScored(record3) {
-  return record3.score_state === void 0 || record3.score_state === "SCORED";
+function whoopIsScored(record4) {
+  return record4.score_state === void 0 || record4.score_state === "SCORED";
 }
 function whoopRecoveryPairs(data) {
   return [...data].sort((a, b) => a.date.localeCompare(b.date)).flatMap((day) => {
@@ -17626,16 +17769,16 @@ function empty2(ctx, W, H, theme, stats, data, message) {
   text2(ctx, message, W / 2, H / 2, theme.muted, "center", W - 24);
   note(stats, data);
 }
-function details(day, record3) {
+function details(day, record4) {
   var _a, _b;
   return [
     { label: "Source", value: "WHOOP" },
     { label: "Capture", value: (_b = (_a = whoopForDay(day)) == null ? void 0 : _a.captureStatus) != null ? _b : "Unavailable" },
-    ...record3.id ? [{ label: "Provider ID", value: record3.id }] : [],
-    ...record3.score_state ? [{ label: "Score state", value: record3.score_state }] : [],
-    ...record3.start_time ? [{ label: "Start", value: record3.start_time }] : [],
-    ...record3.end_time ? [{ label: "End", value: record3.end_time }] : [],
-    ...record3.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
+    ...record4.id ? [{ label: "Provider ID", value: record4.id }] : [],
+    ...record4.score_state ? [{ label: "Score state", value: record4.score_state }] : [],
+    ...record4.start_time ? [{ label: "Start", value: record4.start_time }] : [],
+    ...record4.end_time ? [{ label: "End", value: record4.end_time }] : [],
+    ...record4.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
   ];
 }
 function grid(ctx, W, top, bottom, left, right, max, theme, suffix) {
@@ -19362,7 +19505,7 @@ function extractForMetric(day, metric) {
   const max = day.heart.heartRateMax;
   const avg4 = day.heart.averageHeartRate;
   if (avg4 == null || avg4 <= 0) return null;
-  return { min: min > 0 ? min : avg4, max: max > 0 ? max : avg4, avg: avg4 };
+  return { min: min != null && min > 0 ? min : avg4, max: max != null && max > 0 ? max : avg4, avg: avg4 };
 }
 function labelFor(m) {
   if (m === "resting") return "Resting HR";
@@ -24222,9 +24365,9 @@ function safeLabel(value, fallback) {
   if (!normalized) return fallback;
   return normalized.length > MAX_LABEL_LENGTH ? `${normalized.slice(0, MAX_LABEL_LENGTH - 1)}\u2026` : normalized;
 }
-function firstPrimitive(record3, ...keys) {
+function firstPrimitive(record4, ...keys) {
   for (const key of keys) {
-    const value = primitiveText(record3[key]);
+    const value = primitiveText(record4[key]);
     if (value !== void 0 && value.trim()) return value;
   }
   return void 0;
@@ -27587,17 +27730,17 @@ function parseCsvPreview(content) {
   const rows = [];
   let truncatedColumns = false;
   let truncatedRows = false;
-  for (const record3 of iterateCsvRecords(content, {
+  for (const record4 of iterateCsvRecords(content, {
     cellCharacterLimit: () => CSV_PREVIEW_MAX_CELL_CHARACTERS,
     truncationMarker: "\u2026"
   })) {
-    if (isBlankCsvRecord(record3)) continue;
+    if (isBlankCsvRecord(record4)) continue;
     if (rows.length >= CSV_PREVIEW_MAX_ROWS) {
       truncatedRows = true;
       break;
     }
-    if (record3.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
-    rows.push(record3.slice(0, CSV_PREVIEW_MAX_COLUMNS));
+    if (record4.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
+    rows.push(record4.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }
   return { rows, truncatedRows, truncatedColumns };
 }

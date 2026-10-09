@@ -1,3 +1,4 @@
+import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority, sleepDeclaration } from "../sleep-attribution";
 import {
@@ -1675,6 +1676,28 @@ export function parseMarkdown(
 		day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
 	}
 
+    if (fm.native_quantity_details !== undefined) {
+        const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);
+        if (!records) return null;
+        attachNativeQuantityDetails(day, records);
+    } else if (successorSleepDetails(authority.profile)) {
+        const values: unknown[] = [];
+        for (const table of parseMarkdownTables(parsed.body)) {
+            const definition = quantityDefinitions.find(item => item.heading === normalizeLabel(table.context));
+            if (!definition) continue;
+            const headers = normalizedHeaders(table);
+            const timestamp = headers.indexOf("timestamp (utc)"), value = headers.indexOf("value"), unit = headers.indexOf("unit");
+            if (timestamp < 0 || value < 0 || unit < 0) return null;
+            for (const row of table.rows) {
+                const number = Number(row[value]);
+                if (!row[value]?.trim()) return null;
+                values.push({metric:definition.metric,unit:row[unit],sample:{timestamp:row[timestamp],value:number}});
+            }
+        }
+        const records = nativeQuantityDetails(values, authority.profile);
+        if (!records) return null;
+        attachNativeQuantityDetails(day, records);
+    }
 	attachCanonicalMetrics(day, canonicalMetricsFromFlatRecord(fm, unitsMap));
 
 	// Only return if we found at least some health data beyond just a date

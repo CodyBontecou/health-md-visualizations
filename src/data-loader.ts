@@ -1,3 +1,4 @@
+import { attachNativeQuantityDetails, type NativeQuantityDetail } from "./native-quantity-details";
 import { successorSleepDetails } from "./native-sleep-details";
 import { sleepAuthoritiesAgree } from "./sleep-attribution";
 import { MetadataCache, Vault, TFile, TFolder } from "obsidian";
@@ -1006,6 +1007,17 @@ function mergeNativeSleep(fallback: HealthDay["sleep"], preferred: HealthDay["sl
     return merged;
 }
 
+function mergeNativeQuantities(fallback: NativeQuantityDetail[] = [], preferred: NativeQuantityDetail[] = []): NativeQuantityDetail[] {
+    const identities = [...new Set([...fallback,...preferred].map(value => value.metric))];
+    return identities.flatMap(identity => {
+        const a = fallback.filter(value => value.metric === identity), b = preferred.filter(value => value.metric === identity);
+        if (!a.length || !b.length || a.length !== b.length) return b.length ? b : a;
+        const keys = (values: NativeQuantityDetail[]) => values.map(value => JSON.stringify([value.unit,value.sample.timestamp,value.sample.value])).sort().join("\n");
+        if (keys(a) !== keys(b)) return b;
+        return a.reduce((sum,value) => sum+objectDetailScore(value),0) > b.reduce((sum,value) => sum+objectDetailScore(value),0) ? a : b;
+    });
+}
+
 /** Merge two HealthDay objects for the same date, preferring newer schema/richer fields. */
 function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 	const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -1029,7 +1041,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		if (owner.providers) providers.whoop = owner.providers.whoop;
 	}
 
-	return {
+	const result: HealthDay = {
 		// Preserve versioned summary sections that do not yet have dedicated
 		// visualizations. Parsers remove canonical archive payloads before merge.
 		...fallback,
@@ -1077,4 +1089,8 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		providers,
 		whoop,
 	};
+    if (successorSleepDetails(result.schema_profile)) {
+        attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
+    }
+    return result;
 }
