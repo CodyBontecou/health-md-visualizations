@@ -9587,21 +9587,53 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian5 = require("obsidian");
 
+// src/native-source-clock.ts
+var billion = BigInt(1e9);
+function offsetSeconds(value) {
+  var _a;
+  if (value === "Z") return 0;
+  if (typeof value !== "string") return null;
+  const match = /^([+-])(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[2]), minute = Number(match[3]), second = Number((_a = match[4]) != null ? _a : 0);
+  if (hour > 18 || minute > 59 || second > 59 || hour === 18 && (minute !== 0 || second !== 0)) return null;
+  return (match[1] === "-" ? -1 : 1) * (hour * 3600 + minute * 60 + second);
+}
+function isoInstant(value) {
+  var _a, _b;
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}:\d{2}(?::\d{2})?)$/.exec(value);
+  if (!match) return null;
+  const whole = `${match[1]}:${(_a = match[2]) != null ? _a : "00"}`, offset = offsetSeconds(match[4]);
+  const milliseconds = Date.parse(`${whole}Z`);
+  if (offset === null || !Number.isFinite(milliseconds) || new Date(milliseconds).toISOString().slice(0, 19) !== whole) return null;
+  return { instant: BigInt(milliseconds) * BigInt(1e6) + BigInt(((_b = match[3]) != null ? _b : "").padEnd(9, "0")) - BigInt(offset) * billion, offset: match[4] };
+}
+function canonicalSourceInstant(value) {
+  var _a, _b;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value)) return null;
+  return (_b = (_a = isoInstant(value)) == null ? void 0 : _a.instant) != null ? _b : null;
+}
+function exactSourceClockAgrees(timestamp2, exact) {
+  const instant = canonicalSourceInstant(timestamp2);
+  if (instant === null) return false;
+  if (exact === void 0) return true;
+  if (exact === null || typeof exact !== "object" || Array.isArray(exact)) return false;
+  const source = exact, { epochSecond, nano, offset } = source;
+  if (typeof epochSecond !== "number" || !Number.isSafeInteger(epochSecond) || typeof nano !== "number" || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return false;
+  const iso = isoInstant(source.iso8601);
+  if (!iso || iso.instant !== instant || BigInt(epochSecond) * billion + BigInt(nano) !== instant) return false;
+  if (offset === null) return iso.offset === "Z";
+  const supplied = offsetSeconds(offset);
+  return supplied !== null && supplied === offsetSeconds(iso.offset);
+}
+
 // src/native-sleep-details.ts
 function record(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
-function instant(value) {
-  var _a;
-  if (typeof value !== "string") return null;
-  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/.exec(value);
-  if (!match) return null;
-  const milliseconds = Date.parse(`${match[1]}Z`);
-  if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString().slice(0, 19) !== match[1]) return null;
-  return BigInt(milliseconds) * BigInt(1e6) + BigInt(((_a = match[2]) != null ? _a : "").padEnd(9, "0"));
-}
 function sleepInterval(start, end) {
-  const a = instant(start), b = instant(end);
+  const a = canonicalSourceInstant(start), b = canonicalSourceInstant(end);
   return a !== null && b !== null && b >= a ? Number(b - a) / 1e9 : null;
 }
 function nativeSleepStages(value) {
@@ -9609,7 +9641,7 @@ function nativeSleepStages(value) {
   const result = [];
   for (const item of value) {
     const source = record(item);
-    if (!source || typeof source.stage !== "string" || !source.stage || typeof source.startDate !== "string" || typeof source.endDate !== "string" || sleepInterval(source.startDate, source.endDate) === null || typeof source.durationSeconds !== "number" || !Number.isFinite(source.durationSeconds) || source.durationSeconds < 0) return null;
+    if (!source || typeof source.stage !== "string" || !source.stage || typeof source.startDate !== "string" || typeof source.endDate !== "string" || sleepInterval(source.startDate, source.endDate) === null || !exactSourceClockAgrees(source.startDate, source.exactStartTime) || !exactSourceClockAgrees(source.endDate, source.exactEndTime) || typeof source.durationSeconds !== "number" || !Number.isFinite(source.durationSeconds) || source.durationSeconds < 0) return null;
     result.push({ ...source, stage: source.stage, startDate: source.startDate, endDate: source.endDate, durationSeconds: source.durationSeconds });
   }
   return result;
@@ -9619,7 +9651,7 @@ function nativeSleepSessions(value) {
   const result = [];
   for (const item of value) {
     const source = record(item);
-    if (!source || typeof source.startTimeISO !== "string" || typeof source.endTimeISO !== "string" || sleepInterval(source.startTimeISO, source.endTimeISO) === null) return null;
+    if (!source || typeof source.startTimeISO !== "string" || typeof source.endTimeISO !== "string" || sleepInterval(source.startTimeISO, source.endTimeISO) === null || !exactSourceClockAgrees(source.startTimeISO, source.exactStartTime) || !exactSourceClockAgrees(source.endTimeISO, source.exactEndTime)) return null;
     result.push({ ...source, startTimeISO: source.startTimeISO, endTimeISO: source.endTimeISO });
   }
   return result;
@@ -9641,16 +9673,7 @@ function record2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function sourceTimestampAgrees(source) {
-  if (typeof source.timestamp !== "string" || sleepInterval(source.timestamp, source.timestamp) !== 0) return false;
-  if (source.exactTime !== void 0) {
-    if (!record2(source.exactTime)) return false;
-    const { epochSecond, nano } = source.exactTime;
-    if (typeof epochSecond !== "number" || !Number.isSafeInteger(epochSecond) || typeof nano !== "number" || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return false;
-    const [whole, fraction = ""] = source.timestamp.slice(0, -1).split(".");
-    const actual = BigInt(Date.parse(`${whole}Z`)) * BigInt(1e6) + BigInt(fraction.padEnd(9, "0"));
-    if (actual !== BigInt(epochSecond) * BigInt(1e9) + BigInt(nano)) return false;
-  }
-  return true;
+  return exactSourceClockAgrees(source.timestamp, source.exactTime);
 }
 function nativeQuantityDetails(value, profile) {
   if (!successorSleepDetails(profile) || !Array.isArray(value)) return null;
@@ -16757,10 +16780,10 @@ function sampleClock(calendarTimezone) {
   }
   return (timestamp2) => {
     var _a, _b;
-    const instant2 = new Date(timestamp2);
-    if (!Number.isFinite(instant2.getTime())) return void 0;
-    if (!formatter) return instant2.getHours() * 60 + instant2.getMinutes();
-    const parts = formatter.formatToParts(instant2);
+    const instant = new Date(timestamp2);
+    if (!Number.isFinite(instant.getTime())) return void 0;
+    if (!formatter) return instant.getHours() * 60 + instant.getMinutes();
+    const parts = formatter.formatToParts(instant);
     const hour = Number((_a = parts.find((part) => part.type === "hour")) == null ? void 0 : _a.value);
     const minute = Number((_b = parts.find((part) => part.type === "minute")) == null ? void 0 : _b.value);
     return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : void 0;

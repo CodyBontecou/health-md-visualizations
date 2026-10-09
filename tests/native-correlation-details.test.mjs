@@ -58,3 +58,12 @@ test('native blood-pressure fixtures keep immutable producer byte hashes',async(
  assert.match(provenance.producer_commit,/^[0-9a-f]{40}$/);
  for(const [file,digest] of Object.entries(provenance.sha256))assert.equal(createHash('sha256').update(await readFile(root+'/'+file)).digest('hex'),digest,file);
 });
+
+test('paired-pressure exact ISO clock and supplied offset must agree with the recorded instant',async()=>{
+ const module=await readers();
+ const original=JSON.parse(await readFile(base('android-v6-blood-pressure','2026-11-01')+'.json','utf8'));
+ for(const mutation of [clock=>clock.iso8601='2026-11-01T01:30:00.123456788Z',clock=>clock.offset='+01:00',clock=>delete clock.iso8601]){
+  const copy=structuredClone(original);mutation(copy.vitals.bloodPressureSamples[0].exactTime);
+  assert.equal(module.parseJSON(JSON.stringify(copy)),null);
+ }
+});

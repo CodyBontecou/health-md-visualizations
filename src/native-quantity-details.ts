@@ -1,3 +1,4 @@
+import { exactSourceClockAgrees } from "./native-source-clock";
 import type { HealthDay, TimeSeriesSample } from './types';
 import { sleepInterval, successorSleepDetails } from './native-sleep-details';
 
@@ -18,17 +19,7 @@ function record(value: unknown): value is Record<string, unknown> {
  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 export function sourceTimestampAgrees(source: Record<string, unknown>): boolean {
- if (typeof source.timestamp !== 'string' || sleepInterval(source.timestamp,source.timestamp) !== 0) return false;
- if (source.exactTime !== undefined) {
-   if (!record(source.exactTime)) return false;
-   const {epochSecond,nano} = source.exactTime;
-   if (typeof epochSecond !== 'number' || !Number.isSafeInteger(epochSecond) ||
-    typeof nano !== 'number' || !Number.isInteger(nano) || nano < 0 || nano >= 1e9) return false;
-   const [whole,fraction=''] = source.timestamp.slice(0,-1).split('.');
-   const actual = BigInt(Date.parse(`${whole}Z`)) * BigInt(1000000) + BigInt(fraction.padEnd(9,'0'));
-   if (actual !== BigInt(epochSecond) * BigInt(1000000000) + BigInt(nano)) return false;
-  }
- return true;
+ return exactSourceClockAgrees(source.timestamp,source.exactTime);
 }
 
 export function nativeQuantityDetails(value: unknown, profile: string | undefined): NativeQuantityDetail[] | null {
