@@ -1,0 +1,15 @@
+{
+  "producer_commit": "592dca1db12870ebafeda785ed666bd2fd659142",
+  "synthetic": true,
+  "production_enabled": false,
+  "sdk_capture_qualified": false,
+  "qualification": "Concrete Android frozen request -> native JSON/render-input -> real host Rust -> four artifact formats. Synthetic post-capture records; no health reads.",
+  "source_clock": "America/New_York DST fold; exact nanoseconds retained",
+  "count_boundary": 2147483648,
+  "sha256": {
+    "android-v6-activity/2026-11-01-bases.md": "caf1d89ae2ee30958bc15238d85f52f1a5bd36fe66ceaac87e78a707befe4783",
+    "android-v6-activity/2026-11-01.csv": "3e57fbab1afd7db1dcac6913f9301f5dcd0b272720907ab55e8f1f46cee5e267",
+    "android-v6-activity/2026-11-01.json": "912059bd536f9db0857ce06bd74a60e6e0b40863346e02f27ebcb6fa203b52ef",
+    "android-v6-activity/2026-11-01.md": "3258e3765220c525c0ef90e3c676aea0ff189bc4893ab80d4de35242a7af865f"
+  }
+}

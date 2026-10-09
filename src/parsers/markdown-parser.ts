@@ -1,3 +1,4 @@
+import { attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
 import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
@@ -1698,6 +1699,28 @@ export function parseMarkdown(
         const records = nativeCorrelationDetails(values, authority.profile);
         if (!records) return null;
         attachNativeCorrelationDetails(day, records);
+    }
+    const activityValues: unknown[] = [];
+    if (fm.native_activity_details !== undefined) {
+        const records = nativeActivityDetails(fm.native_activity_details, authority.profile);
+        if (!records) return null;
+        attachNativeActivityDetails(day, records);
+    } else {
+        for (const table of parseMarkdownTables(parsed.body)) {
+            if (normalizeLabel(table.context) !== "activity record details") continue;
+            if (normalizedHeaders(table).join() !== "native record (json)") return null;
+            try {
+                for (const row of table.rows) {
+                    if (row.length !== 1) return null;
+                    activityValues.push(JSON.parse(row[0]));
+                }
+            } catch { return null; }
+        }
+        if (activityValues.length) {
+            const records = nativeActivityDetails(activityValues, authority.profile);
+            if (!records) return null;
+            attachNativeActivityDetails(day, records);
+        }
     }
     if (fm.native_quantity_details !== undefined) {
         const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);

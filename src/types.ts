@@ -300,6 +300,7 @@ export interface MindfulnessSession {
 }
 
 export interface HealthDay {
+	nativeActivityDetails?: import("./native-activity-details").NativeActivityDetail[];
 	nativeCorrelationDetails?: import("./native-correlation-details").NativeCorrelationDetail[];
 	nativeQuantityDetails?: import("./native-quantity-details").NativeQuantityDetail[];
 	schemaProfile?: string;
@@ -333,6 +334,8 @@ export interface HealthDay {
 	/** Scalar daily summary values keyed by Health.md canonical metric key. */
 	canonicalMetrics?: Record<string, HealthMetricScalar>;
 	activity?: {
+		stepSamples?: Record<string, unknown>[];
+		activityIntensity?: Record<string, unknown>[];
 		steps?: number;
 		walkingRunningDistanceKm?: number;
 		activeCalories?: number;

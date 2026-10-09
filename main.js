@@ -9628,6 +9628,65 @@ function exactSourceClockAgrees(timestamp2, exact) {
   return supplied !== null && supplied === offsetSeconds(iso.offset);
 }
 
+// src/native-activity-details.ts
+function object(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function exactPublicClock(value) {
+  if (!object(value) || typeof value.epochSecond !== "number" || !Number.isSafeInteger(value.epochSecond) || typeof value.nano !== "number" || !Number.isInteger(value.nano) || value.nano < 0 || value.nano >= 1e9) return null;
+  try {
+    const whole = new Date(value.epochSecond * 1e3).toISOString().slice(0, 19);
+    const fraction = value.nano ? "." + String(value.nano).padStart(9, "0").replace(/0+$/, "") : "";
+    const clock = whole + fraction + "Z";
+    return exactSourceClockAgrees(clock, value) ? clock : null;
+  } catch (e) {
+    return null;
+  }
+}
+function activityRecordTimestamp(detail) {
+  return String(detail.sample[detail.metric === "steps_interval" ? "timestamp" : "startTimeISO"]);
+}
+function nativeActivityDetails(value, profile) {
+  if (profile !== "android-sleep-v6" || !Array.isArray(value)) return null;
+  const result = [];
+  for (const item of value) {
+    if (!object(item) || !object(item.sample)) return null;
+    const sample = item.sample;
+    const steps = item.metric === "steps_interval";
+    if (!steps && item.metric !== "activity_intensity_interval" || item.unit !== (steps ? "steps" : "seconds")) return null;
+    const start = sample[steps ? "timestamp" : "startTimeISO"];
+    const end = exactPublicClock(sample.exactEndTime);
+    const startInstant = canonicalSourceInstant(start), endInstant = canonicalSourceInstant(end);
+    if (startInstant === null || endInstant === null || endInstant < startInstant || !exactSourceClockAgrees(start, sample[steps ? "exactTime" : "exactStartTime"]) || sample[steps ? "exactTime" : "exactStartTime"] === void 0) return null;
+    if (steps) {
+      if (typeof sample.value !== "number" || !Number.isSafeInteger(sample.value) || sample.value < 0) return null;
+    } else if (sample.endTimeISO !== end || typeof sample.intensity !== "string" || !sample.intensity.trim() || typeof sample.duration !== "number" || !Number.isSafeInteger(sample.duration) || sample.duration < 0) return null;
+    result.push({ metric: steps ? "steps_interval" : "activity_intensity_interval", unit: steps ? "steps" : "seconds", sample: { ...sample } });
+  }
+  return result;
+}
+function activityDetailsFromJSON(root, profile) {
+  if (!object(root.activity)) return [];
+  if (profile !== "android-sleep-v6") return root.activity.stepSamples !== void 0 || root.activity.activityIntensity !== void 0 ? null : [];
+  const records = [];
+  for (const [field, metric, unit] of [["stepSamples", "steps_interval", "steps"], ["activityIntensity", "activity_intensity_interval", "seconds"]]) {
+    const samples = root.activity[field];
+    if (samples === void 0) continue;
+    if (!Array.isArray(samples)) return null;
+    records.push(...samples.map((sample) => ({ metric, unit, sample })));
+  }
+  return nativeActivityDetails(records, profile);
+}
+function attachNativeActivityDetails(day, records) {
+  if (!records.length) return;
+  day.nativeActivityDetails = records;
+  day.activity = {
+    ...day.activity,
+    stepSamples: records.filter((record5) => record5.metric === "steps_interval").map((record5) => record5.sample),
+    activityIntensity: records.filter((record5) => record5.metric === "activity_intensity_interval").map((record5) => record5.sample)
+  };
+}
+
 // src/native-sleep-details.ts
 function record(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
@@ -10588,15 +10647,15 @@ function parseYamlishList(value) {
   }).filter((line) => line.text && !line.text.startsWith("#"));
   if (!lines.length) return void 0;
   if (!lines.some((line) => line.text.startsWith("- "))) {
-    const object2 = {};
+    const object3 = {};
     let hasKeys = false;
     for (const line of lines) {
       const pair = splitYamlKeyValue(line.text);
       if (!pair) return void 0;
-      object2[pair[0]] = parseScalar(pair[1]);
+      object3[pair[0]] = parseScalar(pair[1]);
       hasKeys = true;
     }
-    return hasKeys ? [object2] : void 0;
+    return hasKeys ? [object3] : void 0;
   }
   const result = [];
   let current = null;
@@ -11450,7 +11509,7 @@ var WHOOP_ZONE_KEYS = [
 ];
 
 // src/whoop-data.ts
-function object(value) {
+function object2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
 }
 function text(value, limit2 = 256) {
@@ -11550,7 +11609,7 @@ function workout(raw) {
     altitude_change_meters: number(raw.altitude_change_meters, -Number.MAX_VALUE),
     percent_recorded: percent(raw.percent_recorded)
   }) };
-  const zones = object(raw.zone_durations);
+  const zones = object2(raw.zone_durations);
   if (zones) {
     const values = defined(Object.fromEntries(WHOOP_ZONE_KEYS.map((key) => [key, duration(zones[key])])));
     if (Object.keys(values).length) result.zone_durations = values;
@@ -11574,7 +11633,7 @@ function empty(source, status) {
   return { source, captureStatus: status, cycles: [], recoveries: [], sleep: [], workouts: [], resources: [], notes: [] };
 }
 function resource(value) {
-  const raw = object(value);
+  const raw = object2(value);
   if (!raw || !["cycles", "recovery", "sleep", "workouts", "body"].includes(String(raw.resource)) || !["success", "failure", "cancelled", "skipped", "unsupported"].includes(String(raw.status)) || duration(raw.record_count) === void 0) return void 0;
   return { resource: raw.resource, status: raw.status, record_count: raw.record_count };
 }
@@ -11589,7 +11648,7 @@ function validRecord(key, raw) {
 function setRecords(result, key, values, cycleSteps = true) {
   const mapped = [];
   for (const value of values.slice(0, 1e4)) {
-    const raw = object(value);
+    const raw = object2(value);
     if (!raw || !validRecord(key, raw)) {
       result.notes.push(`Invalid WHOOP ${key} record omitted.`);
       continue;
@@ -11613,7 +11672,7 @@ function finalize(result) {
   return result;
 }
 function parseWhoopSection(value) {
-  const raw = object(value);
+  const raw = object2(value);
   if (!raw || raw.schema !== "healthmd.provider.whoop_daily" || raw.schema_version !== 1 && raw.schema_version !== 2 || !capture(raw.capture_status)) return void 0;
   const result = empty("typed", capture(raw.capture_status));
   if (result.captureStatus === "not_requested") return result;
@@ -11623,7 +11682,7 @@ function parseWhoopSection(value) {
     else result.notes.push(`WHOOP ${key} collection unavailable.`);
   }
   if (Array.isArray(raw.resources)) result.resources = raw.resources.map(resource).filter((row) => !!row);
-  const profile = object(raw.body);
+  const profile = object2(raw.body);
   if ((profile == null ? void 0 : profile.source_kind) === "current_profile_snapshot") result.body = body(profile);
   if (Array.isArray(raw.warnings) && raw.warnings.length) result.notes.push("WHOOP producer reported capture warnings.");
   return finalize(result);
@@ -11722,7 +11781,7 @@ function parseWhoopCsv(rows) {
   }
   result.resources = providerRows.filter((row) => label(row.category) === "whoop capture" && label(row.metric) === "resource result").map((row) => resource(decode(row))).filter((row) => !!row);
   const profile = providerRows.find((row) => label(row.category) === "whoop body" && label(row.metric) === "body snapshot");
-  const profileValue = profile ? object(decode(profile)) : void 0;
+  const profileValue = profile ? object2(decode(profile)) : void 0;
   if ((profileValue == null ? void 0 : profileValue.source_kind) === "current_profile_snapshot") result.body = body(profileValue);
   if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record5) => record5.projection)) {
     result.notes = result.notes.filter((note2) => !note2.startsWith("Single-record scalar"));
@@ -12367,6 +12426,9 @@ function parseJSON(content) {
       const correlations = correlationsFromJSON(parsed, authority.profile);
       if (!correlations) return null;
       attachNativeCorrelationDetails(day, correlations);
+      const activity = activityDetailsFromJSON(parsed, authority.profile);
+      if (!activity) return null;
+      attachNativeActivityDetails(day, activity);
     }
     attachCanonicalMetrics(day);
     const moodSummary2 = getMoodDaySummary(day);
@@ -13348,6 +13410,16 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
   ]);
   if (headphone !== void 0 || environmentalSound !== void 0) {
     day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
+  }
+  const activityRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "activity record");
+  if (activityRows.length) {
+    try {
+      const records = nativeActivityDetails(activityRows.map((row) => JSON.parse(row.value)), authority.profile);
+      if (!records || records.some((record5, index) => activityRows[index].unit !== "json" || activityRows[index].timestamp !== activityRecordTimestamp(record5))) return null;
+      attachNativeActivityDetails(day, records);
+    } catch (e) {
+      return null;
+    }
   }
   const correlationRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "blood pressure correlation");
   if (correlationRows.length) {
@@ -14737,6 +14809,30 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
     const records = nativeCorrelationDetails(values, authority.profile);
     if (!records) return null;
     attachNativeCorrelationDetails(day, records);
+  }
+  const activityValues = [];
+  if (fm.native_activity_details !== void 0) {
+    const records = nativeActivityDetails(fm.native_activity_details, authority.profile);
+    if (!records) return null;
+    attachNativeActivityDetails(day, records);
+  } else {
+    for (const table of parseMarkdownTables(parsed.body)) {
+      if (normalizeLabel2(table.context) !== "activity record details") continue;
+      if (normalizedHeaders(table).join() !== "native record (json)") return null;
+      try {
+        for (const row of table.rows) {
+          if (row.length !== 1) return null;
+          activityValues.push(JSON.parse(row[0]));
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+    if (activityValues.length) {
+      const records = nativeActivityDetails(activityValues, authority.profile);
+      if (!records) return null;
+      attachNativeActivityDetails(day, records);
+    }
   }
   if (fm.native_quantity_details !== void 0) {
     const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);
@@ -16272,6 +16368,29 @@ function mergeNativeCorrelations(a = [], b = []) {
     return { ...b2, sample: { ...source, timestamp: b2.sample.timestamp, systolic: b2.sample.systolic, diastolic: b2.sample.diastolic } };
   });
 }
+function mergeNativeActivity(a = [], b = []) {
+  const metrics = [...new Set([...a, ...b].map((record5) => record5.metric))];
+  return metrics.flatMap((metric) => mergeNativeSources(
+    a.filter((record5) => record5.metric === metric),
+    b.filter((record5) => record5.metric === metric),
+    (record5) => {
+      var _a, _b;
+      return JSON.stringify([
+        record5.metric,
+        record5.unit,
+        (_a = record5.sample.timestamp) != null ? _a : record5.sample.startTimeISO,
+        sourceObject(record5.sample.exactEndTime) ? [record5.sample.exactEndTime.epochSecond, record5.sample.exactEndTime.nano] : null,
+        (_b = record5.sample.value) != null ? _b : record5.sample.intensity,
+        record5.sample.duration
+      ]);
+    },
+    (left, right) => {
+      const source = mergeQuantityFacts(left.sample, right.sample);
+      if (!sourceObject(source)) throw new QuantitySourceConflict();
+      return { ...right, sample: source };
+    }
+  ));
+}
 function mergeDays(a, b) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N;
   const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -16343,6 +16462,7 @@ function mergeDays(a, b) {
   if (successorSleepDetails(result.schema_profile)) {
     attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
     attachNativeCorrelationDetails(result, mergeNativeCorrelations(fallback.nativeCorrelationDetails, preferred.nativeCorrelationDetails));
+    attachNativeActivityDetails(result, mergeNativeActivity(fallback.nativeActivityDetails, preferred.nativeActivityDetails));
   }
   return result;
 }

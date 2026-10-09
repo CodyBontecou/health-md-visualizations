@@ -1,3 +1,4 @@
+import { attachNativeActivityDetails, type NativeActivityDetail } from "./native-activity-details";
 import { attachNativeCorrelationDetails, type NativeCorrelationDetail } from "./native-correlation-details";
 import { attachNativeQuantityDetails, type NativeQuantityDetail } from "./native-quantity-details";
 import { successorSleepDetails } from "./native-sleep-details";
@@ -1081,6 +1082,18 @@ function mergeNativeCorrelations(a: NativeCorrelationDetail[] = [], b: NativeCor
     });
 }
 
+function mergeNativeActivity(a: NativeActivityDetail[] = [], b: NativeActivityDetail[] = []): NativeActivityDetail[] {
+    const metrics = [...new Set([...a, ...b].map(record => record.metric))];
+    return metrics.flatMap(metric => mergeNativeSources(a.filter(record => record.metric === metric), b.filter(record => record.metric === metric),
+        record => JSON.stringify([record.metric, record.unit, record.sample.timestamp ?? record.sample.startTimeISO,
+            sourceObject(record.sample.exactEndTime) ? [record.sample.exactEndTime.epochSecond, record.sample.exactEndTime.nano] : null,
+            record.sample.value ?? record.sample.intensity, record.sample.duration]), (left, right) => {
+            const source = mergeQuantityFacts(left.sample, right.sample);
+            if (!sourceObject(source)) throw new QuantitySourceConflict();
+            return {...right, sample: source};
+        }));
+}
+
 /** Merge two HealthDay objects for the same date, preferring newer schema/richer fields. */
 function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 	const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -1155,6 +1168,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
     if (successorSleepDetails(result.schema_profile)) {
         attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
         attachNativeCorrelationDetails(result, mergeNativeCorrelations(fallback.nativeCorrelationDetails, preferred.nativeCorrelationDetails));
+        attachNativeActivityDetails(result, mergeNativeActivity(fallback.nativeActivityDetails, preferred.nativeActivityDetails));
     }
     return result;
 }

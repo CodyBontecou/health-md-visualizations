@@ -927,3 +927,23 @@ test('DataLoader retains native paired-pressure objects across all format orders
   }
  }
 });
+
+
+test('DataLoader keeps native activity source records once across format orders and rejects conflicts',async()=>{
+ const base=path.join(process.cwd(),'tests/fixtures/native-activity/android-v6-activity/2026-11-01');
+ const [json,csv,md,bases]=await Promise.all(['.json','.csv','.md','-bases.md'].map(suffix=>readFile(base+suffix,'utf8')));
+ const native=JSON.parse(json);
+ for(const contents of [{'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},{'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},
+  {'a.csv':csv,'b.md':md},{'a.md':md,'b.csv':csv},{'a.md':bases,'b.md':md},{'a.md':md,'b.md':bases}]){
+  const [day]=await loadWhoopVault(contents);assert.ok(day);
+  assert.deepEqual(day.activity.stepSamples,native.activity.stepSamples);
+  assert.deepEqual(day.activity.activityIntensity,native.activity.activityIntensity);
+  assert.equal(day.nativeActivityDetails.length,2);
+  assert.equal(day.canonicalMetrics?.steps,undefined);
+ }
+ const changed=structuredClone(native);changed.activity.stepSamples[0].metadata.synthetic='another-capture';
+ for(const [a,b] of [[json,JSON.stringify(changed)],[JSON.stringify(changed),json]]){
+  const {days,report}=await loadWhoopVault({'a.json':a,'b.json':b,'c.md':md},true);
+  assert.deepEqual(days,[]);assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+ }
+});

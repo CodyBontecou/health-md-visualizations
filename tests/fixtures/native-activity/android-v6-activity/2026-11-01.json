@@ -1,0 +1,72 @@
+{
+    "date": "2026-11-01",
+    "type": "health-data",
+    "activity": {
+        "stepSamples": [
+            {
+                "timestamp": "2026-11-01T05:30:00.123456789Z",
+                "value": 2147483648,
+                "source": "example.synthetic.activity",
+                "metadata": {
+                    "synthetic": "activity-source|`<br>&nbsp;"
+                },
+                "exactTime": {
+                    "iso8601": "2026-11-01T05:30:00.123456789Z",
+                    "epochSecond": 1793511000,
+                    "nano": 123456789,
+                    "offset": null
+                },
+                "exactEndTime": {
+                    "iso8601": "2026-11-01T06:30:00.987654321Z",
+                    "epochSecond": 1793514600,
+                    "nano": 987654321,
+                    "offset": null
+                },
+                "identity": {
+                    "nativeId": "synthetic-steps",
+                    "isSynthetic": false
+                }
+            }
+        ],
+        "activityIntensity": [
+            {
+                "startTimeISO": "2026-11-01T05:30:00.123456789Z",
+                "endTimeISO": "2026-11-01T06:30:00.987654321Z",
+                "duration": 3600,
+                "intensity": "moderate",
+                "source": "example.synthetic.activity",
+                "metadata": {
+                    "synthetic": "activity-source|`<br>&nbsp;"
+                },
+                "exactStartTime": {
+                    "iso8601": "2026-11-01T05:30:00.123456789Z",
+                    "epochSecond": 1793511000,
+                    "nano": 123456789,
+                    "offset": null
+                },
+                "exactEndTime": {
+                    "iso8601": "2026-11-01T06:30:00.987654321Z",
+                    "epochSecond": 1793514600,
+                    "nano": 987654321,
+                    "offset": null
+                },
+                "identity": {
+                    "nativeId": "synthetic-intensity",
+                    "isSynthetic": false
+                }
+            }
+        ]
+    },
+    "schema": "healthmd.health_data",
+    "schema_version": 6,
+    "schema_profile": "android-sleep-v6",
+    "time_context": {
+        "calendar_timezone": "America/New_York",
+        "timestamp_timezone": "UTC",
+        "sleep_day_attribution": "morning_ends",
+        "sleep_owner_day_rule": "session_end_date",
+        "sleep_interval_clipping": "none"
+    },
+    "unit_system": "metric",
+    "units": {}
+}

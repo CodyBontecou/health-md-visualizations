@@ -1,0 +1,12 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-11-01,Metadata,schema,healthmd.health_data,,
+2026-11-01,Metadata,schema_version,6,,
+2026-11-01,Metadata,schema_profile,android-sleep-v6,,
+2026-11-01,Metadata,unit_system,metric,,
+2026-11-01,Metadata,time_context.calendar_timezone,America/New_York,,
+2026-11-01,Metadata,time_context.timestamp_timezone,UTC,,
+2026-11-01,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-11-01,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-11-01,Metadata,time_context.sleep_interval_clipping,none,,
+2026-11-01,Native Detail,Activity Record,"{""metric"":""steps_interval"",""unit"":""steps"",""sample"":{""timestamp"":""2026-11-01T05:30:00.123456789Z"",""value"":2147483648,""source"":""example.synthetic.activity"",""metadata"":{""synthetic"":""activity-source|`<br>&nbsp;""},""exactTime"":{""iso8601"":""2026-11-01T05:30:00.123456789Z"",""epochSecond"":1793511000,""nano"":123456789,""offset"":null},""exactEndTime"":{""iso8601"":""2026-11-01T06:30:00.987654321Z"",""epochSecond"":1793514600,""nano"":987654321,""offset"":null},""identity"":{""nativeId"":""synthetic-steps"",""isSynthetic"":false}}}",json,2026-11-01T05:30:00.123456789Z
+2026-11-01,Native Detail,Activity Record,"{""metric"":""activity_intensity_interval"",""unit"":""seconds"",""sample"":{""startTimeISO"":""2026-11-01T05:30:00.123456789Z"",""endTimeISO"":""2026-11-01T06:30:00.987654321Z"",""duration"":3600,""intensity"":""moderate"",""source"":""example.synthetic.activity"",""metadata"":{""synthetic"":""activity-source|`<br>&nbsp;""},""exactStartTime"":{""iso8601"":""2026-11-01T05:30:00.123456789Z"",""epochSecond"":1793511000,""nano"":123456789,""offset"":null},""exactEndTime"":{""iso8601"":""2026-11-01T06:30:00.987654321Z"",""epochSecond"":1793514600,""nano"":987654321,""offset"":null},""identity"":{""nativeId"":""synthetic-intensity"",""isSynthetic"":false}}}",json,2026-11-01T05:30:00.123456789Z

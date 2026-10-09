@@ -1,0 +1,3 @@
+# Native Android activity fixtures
+
+These four immutable artifacts come from `HostCoreDailyAggregatePlannerTest.nativeActivityIntervalsReachConcretePlannerWithoutInventedSummaries` at the producer revision in `provenance.json`. The real host Rust planner processes synthetic post-capture step/intensity records with DST-fold nanoseconds, a step count above signed Int, and source metadata containing Markdown/HTML delimiters. The request freezes mutable metadata before artifact preparation. No daily totals are inferred from source intervals. This is not SDK/provider/device capture or physical-vault qualification; Morning ends remains production-gated.

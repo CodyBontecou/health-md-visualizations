@@ -1,3 +1,4 @@
+import { activityRecordTimestamp, attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
 import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
@@ -1177,6 +1178,14 @@ function buildDayFromRows(
 		day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
 	}
 
+    const activityRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "activity record");
+    if (activityRows.length) {
+        try {
+            const records = nativeActivityDetails(activityRows.map(row => JSON.parse(row.value)), authority.profile);
+            if (!records || records.some((record, index) => activityRows[index].unit !== "json" || activityRows[index].timestamp !== activityRecordTimestamp(record))) return null;
+            attachNativeActivityDetails(day, records);
+        } catch { return null; }
+    }
     const correlationRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "blood pressure correlation");
     if (correlationRows.length) {
         try {
