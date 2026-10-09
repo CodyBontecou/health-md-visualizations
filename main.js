@@ -9660,7 +9660,11 @@ function nativeActivityDetails(value, profile) {
     if (startInstant === null || endInstant === null || endInstant < startInstant || !exactSourceClockAgrees(start, sample[steps ? "exactTime" : "exactStartTime"]) || sample[steps ? "exactTime" : "exactStartTime"] === void 0) return null;
     if (steps) {
       if (typeof sample.value !== "number" || !Number.isSafeInteger(sample.value) || sample.value < 0) return null;
-    } else if (sample.endTimeISO !== end || typeof sample.intensity !== "string" || !sample.intensity.trim() || typeof sample.duration !== "number" || !Number.isSafeInteger(sample.duration) || sample.duration < 0) return null;
+    } else {
+      const elapsed = endInstant - startInstant;
+      const seconds = Number(elapsed / BigInt(1e9)) + Number(elapsed % BigInt(1e9)) / 1e9;
+      if (sample.endTimeISO !== end || typeof sample.intensity !== "string" || !sample.intensity.trim() || typeof sample.duration !== "number" || !Number.isFinite(sample.duration) || sample.duration <= 0 || sample.duration !== seconds) return null;
+    }
     result.push({ metric: steps ? "steps_interval" : "activity_intensity_interval", unit: steps ? "steps" : "seconds", sample: { ...sample } });
   }
   return result;
@@ -9680,10 +9684,12 @@ function activityDetailsFromJSON(root, profile) {
 function attachNativeActivityDetails(day, records) {
   if (!records.length) return;
   day.nativeActivityDetails = records;
+  const steps = records.filter((record5) => record5.metric === "steps_interval").map((record5) => record5.sample);
+  const intensity = records.filter((record5) => record5.metric === "activity_intensity_interval").map((record5) => record5.sample);
   day.activity = {
     ...day.activity,
-    stepSamples: records.filter((record5) => record5.metric === "steps_interval").map((record5) => record5.sample),
-    activityIntensity: records.filter((record5) => record5.metric === "activity_intensity_interval").map((record5) => record5.sample)
+    ...steps.length ? { stepSamples: steps } : {},
+    ...intensity.length ? { activityIntensity: intensity } : {}
   };
 }
 

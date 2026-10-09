@@ -5,26 +5,30 @@
         "stepSamples": [
             {
                 "timestamp": "2026-11-01T05:30:00.123456789Z",
-                "value": 2147483648,
-                "source": "example.synthetic.activity",
+                "value": 123,
+                "source": "",
                 "metadata": {
-                    "synthetic": "activity-source|`<br>&nbsp;"
+                    "client_record_id": "captured-steps",
+                    "client_record_version": "0",
+                    "recording_method": "manual_entry"
                 },
                 "exactTime": {
-                    "iso8601": "2026-11-01T05:30:00.123456789Z",
+                    "iso8601": "2026-11-01T01:30:00.123456789-04:00",
                     "epochSecond": 1793511000,
                     "nano": 123456789,
-                    "offset": null
+                    "offset": "-04:00"
                 },
                 "exactEndTime": {
-                    "iso8601": "2026-11-01T06:30:00.987654321Z",
+                    "iso8601": "2026-11-01T01:30:00.987654321-05:00",
                     "epochSecond": 1793514600,
                     "nano": 987654321,
-                    "offset": null
+                    "offset": "-05:00"
                 },
                 "identity": {
-                    "nativeId": "synthetic-steps",
-                    "isSynthetic": false
+                    "clientRecordId": "captured-steps",
+                    "clientRecordVersion": 0,
+                    "isSynthetic": true,
+                    "syntheticId": "b19e9556-2f5b-32d6-a64f-3e32e3bc1a06"
                 }
             }
         ],
@@ -34,25 +38,29 @@
                 "endTimeISO": "2026-11-01T06:30:00.987654321Z",
                 "duration": 3600.864197532,
                 "intensity": "moderate",
-                "source": "example.synthetic.activity",
+                "source": "",
                 "metadata": {
-                    "synthetic": "activity-source|`<br>&nbsp;"
+                    "client_record_id": "captured-intensity",
+                    "client_record_version": "0",
+                    "recording_method": "manual_entry"
                 },
                 "exactStartTime": {
-                    "iso8601": "2026-11-01T05:30:00.123456789Z",
+                    "iso8601": "2026-11-01T01:30:00.123456789-04:00",
                     "epochSecond": 1793511000,
                     "nano": 123456789,
-                    "offset": null
+                    "offset": "-04:00"
                 },
                 "exactEndTime": {
-                    "iso8601": "2026-11-01T06:30:00.987654321Z",
+                    "iso8601": "2026-11-01T01:30:00.987654321-05:00",
                     "epochSecond": 1793514600,
                     "nano": 987654321,
-                    "offset": null
+                    "offset": "-05:00"
                 },
                 "identity": {
-                    "nativeId": "synthetic-intensity",
-                    "isSynthetic": false
+                    "clientRecordId": "captured-intensity",
+                    "clientRecordVersion": 0,
+                    "isSynthetic": true,
+                    "syntheticId": "b7ac9fc7-99b5-3226-a1f5-715f4cab207e"
                 }
             }
         ]

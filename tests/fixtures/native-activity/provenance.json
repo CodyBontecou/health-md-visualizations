@@ -1,15 +1,28 @@
 {
-  "producer_commit": "592dca1db12870ebafeda785ed666bd2fd659142",
+  "producer_commit": "a74f5917745cf1aadf36dab29989a3d3d1421ad1",
   "synthetic": true,
   "production_enabled": false,
-  "sdk_capture_qualified": false,
-  "qualification": "Concrete Android frozen request -> native JSON/render-input -> real host Rust -> four artifact formats. Synthetic post-capture records; no health reads.",
-  "source_clock": "America/New_York DST fold; exact nanoseconds retained",
+  "sdk_boundary_qualified": true,
+  "physical_device_qualified": false,
+  "qualification_by_variant": {
+    "android-v6-activity": "Synthetic post-capture models; mutable metadata, source-only selection and count boundary.",
+    "android-v6-activity-captured-true": "Real Health Connect SDK record classes and production pinned-calendar range reader, substituted IPC, available intensity.",
+    "android-v6-activity-captured-false": "Same SDK boundary; intensity unavailable, verified never queried and absent from output."
+  },
+  "qualification": "Frozen Android-v6 request -> native JSON/render input -> real host Rust -> four native artifacts. No health reads. Exact elapsed intensity seconds derive from source instants; historical writers unchanged.",
   "count_boundary": 2147483648,
   "sha256": {
-    "android-v6-activity/2026-11-01-bases.md": "caf1d89ae2ee30958bc15238d85f52f1a5bd36fe66ceaac87e78a707befe4783",
-    "android-v6-activity/2026-11-01.csv": "3e57fbab1afd7db1dcac6913f9301f5dcd0b272720907ab55e8f1f46cee5e267",
-    "android-v6-activity/2026-11-01.json": "912059bd536f9db0857ce06bd74a60e6e0b40863346e02f27ebcb6fa203b52ef",
-    "android-v6-activity/2026-11-01.md": "3258e3765220c525c0ef90e3c676aea0ff189bc4893ab80d4de35242a7af865f"
+    "android-v6-activity/2026-11-01-bases.md": "b6267666caf85ba556dca9e9318e16caea7627b57ec609cc932b4370266c56cf",
+    "android-v6-activity/2026-11-01.csv": "d6db30b61e7a5d0e0b8516f77ad7391965ebd8dbea80cd11f87e788733f2b8dc",
+    "android-v6-activity/2026-11-01.json": "520ced8ae1a34f5ea65dc9744abc593cc5808a5c863a8482b2e307f1c8ba7314",
+    "android-v6-activity/2026-11-01.md": "84137dd084b8f7fde8ba68d50e4c6ceab62d32b69dd638d3dc79bd731895a505",
+    "android-v6-activity-captured-true/2026-11-01-bases.md": "b73d18520271353ad76cec2bf3c003c0091597dfd4167707552db76ccf25b1d7",
+    "android-v6-activity-captured-true/2026-11-01.csv": "c953bc718c7b9aa8d0d140eea62108befdce00b17c32fbc835bf8defd8a641ad",
+    "android-v6-activity-captured-true/2026-11-01.json": "aa933c77bf1a747c95110d90dbbd307a4e19b5dab61d0d6ef6a423070def7b11",
+    "android-v6-activity-captured-true/2026-11-01.md": "ef51f2cc65ca769bf0fae3796a025e82aae430d11961cce98a41db6f4b453467",
+    "android-v6-activity-captured-false/2026-11-01-bases.md": "5616d0cc54f1157eea35f667188e0cd02a2c4cdd67f8e33ab34ba98a48540bb5",
+    "android-v6-activity-captured-false/2026-11-01.csv": "ebaa3bc23540b4b98950683e0969d6d2887c353e4c412386e5478796ba735f8e",
+    "android-v6-activity-captured-false/2026-11-01.json": "d2528381db1a51210e7157b37ad5f75b13146a298f48486af9021c36a55a4ba8",
+    "android-v6-activity-captured-false/2026-11-01.md": "7d84ff980bf0363e7cab3d86f22c7e57b6a04aa5b1accc4de3d57d9367c9db66"
   }
 }

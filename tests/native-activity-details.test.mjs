@@ -17,16 +17,21 @@ async function readers(){
 }
 const base='tests/fixtures/native-activity/android-v6-activity/2026-11-01';
 test('all four native activity formats preserve exact interval records without daily aggregates',async()=>{
- const module=await readers(),native=module.parseJSON(await readFile(base+'.json','utf8'));
- assert.equal(native.nativeActivityDetails.length,2);
- for(const [suffix,parse] of [['.csv',module.parseCSV],['.md',module.parseMarkdown],['-bases.md',module.parseMarkdown]]){
-  const result=parse(await readFile(base+suffix,'utf8')),day=Array.isArray(result)?result[0]:result;
-  assert.ok(day,suffix);
-  assert.deepEqual(day.nativeActivityDetails,native.nativeActivityDetails,suffix);
-  assert.deepEqual(day.activity.stepSamples,native.activity.stepSamples,suffix);
-  assert.deepEqual(day.activity.activityIntensity,native.activity.activityIntensity,suffix);
-  assert.equal(day.canonicalMetrics?.steps,undefined);
-  assert.equal(day.canonicalMetrics?.activity_intensity_minutes,undefined);
+ const module=await readers();
+ for(const variant of ['android-v6-activity','android-v6-activity-captured-true','android-v6-activity-captured-false']){
+  const fixture='tests/fixtures/native-activity/'+variant+'/2026-11-01';
+  const native=module.parseJSON(await readFile(fixture+'.json','utf8'));
+  assert.equal(native.nativeActivityDetails.length,variant.endsWith('false')?1:2);
+  for(const [suffix,parse] of [['.csv',module.parseCSV],['.md',module.parseMarkdown],['-bases.md',module.parseMarkdown]]){
+   const result=parse(await readFile(fixture+suffix,'utf8')),day=Array.isArray(result)?result[0]:result;
+   assert.ok(day,variant+suffix);
+   assert.deepEqual(day.nativeActivityDetails,native.nativeActivityDetails,variant+suffix);
+   assert.deepEqual(day.activity.stepSamples,native.activity.stepSamples,variant+suffix);
+   assert.deepEqual(day.activity.activityIntensity,native.activity.activityIntensity,variant+suffix);
+   assert.equal(day.canonicalMetrics?.steps,undefined);
+   assert.equal(day.canonicalMetrics?.activity_intensity_minutes,undefined);
+  }
+  if(variant.endsWith('false'))assert.equal(native.activity.activityIntensity,undefined);
  }
 });
 test('native activity rejects missing interval ends, clock conflicts, fractional counts and foreign authority',async()=>{
@@ -36,7 +41,8 @@ test('native activity rejects missing interval ends, clock conflicts, fractional
    value=>value.activity.stepSamples[0].exactTime.nano++,
    value=>value.activity.activityIntensity[0].endTimeISO='2026-11-01T05:00:00Z',
    value=>value.activity.activityIntensity[0].intensity='',
-   value=>value.activity.activityIntensity[0].duration=-1]){
+   value=>value.activity.activityIntensity[0].duration=-1,
+   value=>value.activity.activityIntensity[0].duration=3600]){
   const copy=structuredClone(original);mutation(copy);assert.equal(module.parseJSON(JSON.stringify(copy)),null);
  }
  const foreign=structuredClone(original);foreign.schema_profile='apple-v11';foreign.schema_version=11;
@@ -50,6 +56,6 @@ test('native activity rejects missing interval ends, clock conflicts, fractional
 test('activity fixtures retain their native producer hashes and explicit synthetic qualification',async()=>{
  const root='tests/fixtures/native-activity',manifest=JSON.parse(await readFile(root+'/provenance.json','utf8'));
  assert.match(manifest.producer_commit,/^[0-9a-f]{40}$/);
- assert.equal(manifest.synthetic,true);assert.equal(manifest.production_enabled,false);assert.equal(manifest.sdk_capture_qualified,false);
+ assert.equal(manifest.synthetic,true);assert.equal(manifest.production_enabled,false);assert.equal(manifest.sdk_boundary_qualified,true);assert.equal(manifest.physical_device_qualified,false);
  for(const [file,digest] of Object.entries(manifest.sha256))assert.equal(createHash('sha256').update(await readFile(root+'/'+file)).digest('hex'),digest,file);
 });

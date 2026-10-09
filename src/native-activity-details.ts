@@ -38,8 +38,13 @@ export function nativeActivityDetails(value: unknown, profile: string | undefine
       sample[steps ? 'exactTime' : 'exactStartTime'] === undefined) return null;
   if (steps) {
    if (typeof sample.value !== 'number' || !Number.isSafeInteger(sample.value) || sample.value < 0) return null;
-  } else if (sample.endTimeISO !== end || typeof sample.intensity !== 'string' || !sample.intensity.trim() ||
-      typeof sample.duration !== 'number' || !Number.isSafeInteger(sample.duration) || sample.duration < 0) return null;
+  } else {
+   const elapsed = endInstant - startInstant;
+   const seconds = Number(elapsed / BigInt(1_000_000_000)) + Number(elapsed % BigInt(1_000_000_000)) / 1e9;
+   if (sample.endTimeISO !== end || typeof sample.intensity !== 'string' || !sample.intensity.trim() ||
+       typeof sample.duration !== 'number' || !Number.isFinite(sample.duration) || sample.duration <= 0 ||
+       sample.duration !== seconds) return null;
+  }
   result.push({metric: steps ? 'steps_interval' : 'activity_intensity_interval', unit: steps ? 'steps' : 'seconds', sample: {...sample}});
  }
  return result;
@@ -59,7 +64,8 @@ export function activityDetailsFromJSON(root: Record<string, unknown>, profile: 
 export function attachNativeActivityDetails(day: HealthDay, records: NativeActivityDetail[]): void {
  if (!records.length) return;
  day.nativeActivityDetails = records;
- day.activity = {...day.activity,
-  stepSamples: records.filter(record => record.metric === 'steps_interval').map(record => record.sample),
-  activityIntensity: records.filter(record => record.metric === 'activity_intensity_interval').map(record => record.sample)};
+ const steps = records.filter(record => record.metric === 'steps_interval').map(record => record.sample);
+ const intensity = records.filter(record => record.metric === 'activity_intensity_interval').map(record => record.sample);
+ day.activity = {...day.activity, ...(steps.length ? {stepSamples: steps} : {}),
+  ...(intensity.length ? {activityIntensity: intensity} : {})};
 }
