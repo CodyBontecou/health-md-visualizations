@@ -15462,7 +15462,16 @@ var DataLoader = class {
           report.warnings.push(`${day.date}: conflicting sleep attribution/profile; ambiguous daily data was omitted.`);
           conflictingDates.add(day.date);
           byDate.delete(day.date);
-        } else byDate.set(day.date, mergeDays(existing, day));
+        } else {
+          try {
+            byDate.set(day.date, mergeDays(existing, day));
+          } catch (error) {
+            if (!(error instanceof QuantitySourceConflict)) throw error;
+            report.warnings.push(`${day.date}: conflicting native quantity source facts; ambiguous daily data was omitted.`);
+            conflictingDates.add(day.date);
+            byDate.delete(day.date);
+          }
+        }
       }
     }
     const cache = Array.from(byDate.values()).sort(
@@ -16081,7 +16090,7 @@ function mergeNativeSleep(fallback, preferred) {
   function richer(a, b, key) {
     if (!a || !b || a.length !== b.length) return (b == null ? void 0 : b.length) ? b : a;
     const keys = (values) => values.map(key).sort().join("\n");
-    if (keys(a) !== keys(b)) return b;
+    if (a.length !== b.length || keys(a) !== keys(b)) throw new QuantitySourceConflict("conflicting native quantity capture records");
     return a.reduce((sum, value) => sum + objectDetailScore(value), 0) > b.reduce((sum, value) => sum + objectDetailScore(value), 0) ? a : b;
   }
   merged.sleepStages = (_a = richer(
@@ -16096,14 +16105,57 @@ function mergeNativeSleep(fallback, preferred) {
   );
   return merged;
 }
+var QuantitySourceConflict = class extends Error {
+};
+function sourceObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function mergeQuantityFacts(a, b) {
+  if (sourceObject(a) && sourceObject(b)) {
+    return Object.fromEntries([.../* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)])].map((key) => [
+      key,
+      Object.prototype.hasOwnProperty.call(a, key) && Object.prototype.hasOwnProperty.call(b, key) ? mergeQuantityFacts(a[key], b[key]) : Object.prototype.hasOwnProperty.call(b, key) ? b[key] : a[key]
+    ]));
+  }
+  if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) {
+    return a.map((value, index) => mergeQuantityFacts(value, b[index]));
+  }
+  if (Object.is(a, b)) return a;
+  throw new QuantitySourceConflict("conflicting native quantity source facts");
+}
 function mergeNativeQuantities(fallback = [], preferred = []) {
   const identities = [...new Set([...fallback, ...preferred].map((value) => value.metric))];
+  const key = (value) => JSON.stringify([value.unit, value.sample.timestamp, value.sample.value]);
   return identities.flatMap((identity) => {
+    var _a;
     const a = fallback.filter((value) => value.metric === identity), b = preferred.filter((value) => value.metric === identity);
-    if (!a.length || !b.length || a.length !== b.length) return b.length ? b : a;
-    const keys = (values) => values.map((value) => JSON.stringify([value.unit, value.sample.timestamp, value.sample.value])).sort().join("\n");
-    if (keys(a) !== keys(b)) return b;
-    return a.reduce((sum, value) => sum + objectDetailScore(value), 0) > b.reduce((sum, value) => sum + objectDetailScore(value), 0) ? a : b;
+    if (!a.length || !b.length) return b.length ? b : a;
+    const keys = (values) => values.map(key).sort().join("\n");
+    if (a.length !== b.length || keys(a) !== keys(b)) throw new QuantitySourceConflict("conflicting native quantity capture records");
+    const buckets = /* @__PURE__ */ new Map();
+    for (const value of a) {
+      const identity2 = key(value);
+      const bucket = (_a = buckets.get(identity2)) != null ? _a : [];
+      bucket.push(value);
+      buckets.set(identity2, bucket);
+    }
+    return b.map((value) => {
+      var _a2;
+      const remaining = (_a2 = buckets.get(key(value))) != null ? _a2 : [];
+      for (let index = 0; index < remaining.length; index++) {
+        const candidate = remaining[index];
+        if (key(candidate) !== key(value)) continue;
+        try {
+          const source = mergeQuantityFacts(candidate.sample, value.sample);
+          if (!sourceObject(source)) throw new QuantitySourceConflict();
+          remaining.splice(index, 1);
+          return { ...value, sample: { ...source, timestamp: value.sample.timestamp, value: value.sample.value } };
+        } catch (error) {
+          if (!(error instanceof QuantitySourceConflict)) throw error;
+        }
+      }
+      throw new QuantitySourceConflict("conflicting native quantity source facts");
+    });
   });
 }
 function mergeDays(a, b) {

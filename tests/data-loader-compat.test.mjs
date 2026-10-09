@@ -710,7 +710,7 @@ route_file: gone.route.json
 	assert.ok(report.warnings.some((w) => w.includes("gone.route.json")));
 });
 
-async function loadWhoopVault(contents) {
+async function loadWhoopVault(contents, includeReport = false) {
 	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
 	const root = new TFolder("Health", Object.keys(contents).map((name) => new TFile(`Health/${name}`)));
 	root.children.forEach((file) => { file.parent = root; });
@@ -719,7 +719,9 @@ async function loadWhoopVault(contents) {
 		getAbstractFileByPath(filePath) { return index.get(filePath) ?? null; },
 		async read(file) { return contents[file.name] ?? ""; },
 	};
-	return new DataLoader(vault, { dataFolder: "Health", filePattern: "*", dataFormat: "auto", dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" }).load();
+	const loader = new DataLoader(vault, { dataFolder: "Health", filePattern: "*", dataFormat: "auto", dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" });
+	const days = await loader.load();
+	return includeReport ? {days, report: loader.getLastLoadReport()} : days;
 }
 
 const whoopFixture = (name) => readFile(path.join(process.cwd(), "tests/fixtures/schema-v8", name), "utf8");
@@ -870,5 +872,40 @@ test('DataLoader retains complete quantity source objects across machine and dis
    assert.deepEqual(day.vitals.bloodGlucoseSamples,native.vitals.bloodGlucoseSamples,variant);
    assert.equal(day.heart.averageHeartRate,undefined,variant);
   }
+ }
+});
+
+test('DataLoader merges complementary quantity provenance and rejects conflicting source facts',async()=>{
+ const original=JSON.parse(await readFile('tests/fixtures/native-quantity-details/android-v6-heart-only/2026-11-01.json','utf8'));
+ const left=structuredClone(original),right=structuredClone(original);
+ left.heart.heartRateSamples[0].metadata.left={name:'recorded source'};
+ right.heart.heartRateSamples[0].metadata.right={version:'recorded revision'};
+ for(const [a,b] of [[left,right],[right,left]]){
+  const [day]=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)});
+  assert.deepEqual(day.heart.heartRateSamples[0].metadata,{synthetic:'quantity-source',left:{name:'recorded source'},right:{version:'recorded revision'}});
+ }
+ for(const mutation of [sample=>sample.identity.nativeId='another-source',sample=>sample.metadata.synthetic='contradictory-source',sample=>sample.value=75.25]){
+  const changed=structuredClone(original);mutation(changed.heart.heartRateSamples[0]);
+  for(const [a,b] of [[original,changed],[changed,original]]){
+   const {days,report}=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b),'c.json':JSON.stringify(original)},true);
+   assert.deepEqual(days,[]);
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting native quantity source facts')));
+  }
+ }
+});
+
+
+test('DataLoader pairs duplicate quantity clocks by compatible identity independently of array order',async()=>{
+ const original=JSON.parse(await readFile('tests/fixtures/native-quantity-details/android-v6-heart-only/2026-11-01.json','utf8'));
+ const second=structuredClone(original.heart.heartRateSamples[0]);second.identity.nativeId='second-native-record';
+ original.heart.heartRateSamples.push(second);
+ const reversed=structuredClone(original);reversed.heart.heartRateSamples.reverse();
+ for(const [a,b] of [[original,reversed],[reversed,original]]){
+  const [day]=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)});
+  assert.deepEqual(day.heart.heartRateSamples.map(sample=>sample.identity.nativeId).sort(),['second-native-record','synthetic-quantity']);
+ }
+ const truncated=structuredClone(original);truncated.heart.heartRateSamples.pop();
+ for(const [a,b] of [[original,truncated],[truncated,original]]){
+  assert.deepEqual(await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)}),[]);
  }
 });
