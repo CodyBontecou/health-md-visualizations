@@ -86,34 +86,37 @@ test("bundled mock data pairs daily v8 with a source-compatible range v9 summary
 	assert.equal(range.end_date, "2026-12-31");
 });
 
-test("mock generator writes daily summaries and roll-ups to a clean output directory", async () => {
-	const outputDir = await mkdtemp(path.join(os.tmpdir(), "health-md-mock-generator-"));
-	tempDirs.push(outputDir);
-	await execFileAsync(process.execPath, [path.join(process.cwd(), "scripts", "generate-mock-health-data.mjs")], {
-		cwd: process.cwd(),
-		env: {
-			...process.env,
-			HEALTHMD_MOCK_OUTPUT_DIR: outputDir,
-			HEALTHMD_MOCK_START_DATE: "2026-07-01",
-			HEALTHMD_MOCK_END_DATE: "2026-07-31",
-		},
-	});
+for (const timezone of ["UTC", "Europe/Lisbon", "America/New_York"]) {
+	test(`mock generator writes the requested daily dates and roll-ups in ${timezone}`, async () => {
+		const outputDir = await mkdtemp(path.join(os.tmpdir(), "health-md-mock-generator-"));
+		tempDirs.push(outputDir);
+		await execFileAsync(process.execPath, [path.join(process.cwd(), "scripts", "generate-mock-health-data.mjs")], {
+			cwd: process.cwd(),
+			env: {
+				...process.env,
+				TZ: timezone,
+				HEALTHMD_MOCK_OUTPUT_DIR: outputDir,
+				HEALTHMD_MOCK_START_DATE: "2026-07-01",
+				HEALTHMD_MOCK_END_DATE: "2026-07-31",
+			},
+		});
 
-	const [day, rollup, range, generatedFiles] = await Promise.all([
-		readFile(path.join(outputDir, "2026-07-17.json"), "utf8").then(JSON.parse),
-		readFile(path.join(outputDir, "Rollups", "Monthly", "2026-07.json"), "utf8").then(JSON.parse),
-		readFile(path.join(outputDir, "Rollups", "Range", "2026-07-01_to_2026-07-31.json"), "utf8").then(JSON.parse),
-		readdir(outputDir),
-	]);
-	assertVisualizationCoverage(day);
-	const dailyFiles = generatedFiles.filter((file) => /^\d{4}-\d{2}-\d{2}\.json$/.test(file));
-	assert.equal(dailyFiles.length, 31);
-	const generatedDays = await Promise.all(
-		dailyFiles.map((file) => readFile(path.join(outputDir, file), "utf8").then(JSON.parse))
-	);
-	for (const generatedDay of generatedDays) assertPrivacySafeCapture(generatedDay);
-	assertRollupCoverage(rollup);
-	assertRollupCoverage(range, "range");
-	assert.equal(range.period_id, "2026-07-01_to_2026-07-31");
-	assert.equal(range.days_counted, 31);
-});
+		const [day, rollup, range, generatedFiles] = await Promise.all([
+			readFile(path.join(outputDir, "2026-07-17.json"), "utf8").then(JSON.parse),
+			readFile(path.join(outputDir, "Rollups", "Monthly", "2026-07.json"), "utf8").then(JSON.parse),
+			readFile(path.join(outputDir, "Rollups", "Range", "2026-07-01_to_2026-07-31.json"), "utf8").then(JSON.parse),
+			readdir(outputDir),
+		]);
+		assertVisualizationCoverage(day);
+		const dailyFiles = generatedFiles.filter((file) => /^\d{4}-\d{2}-\d{2}\.json$/.test(file));
+		assert.equal(dailyFiles.length, 31);
+		const generatedDays = await Promise.all(
+			dailyFiles.map((file) => readFile(path.join(outputDir, file), "utf8").then(JSON.parse))
+		);
+		for (const generatedDay of generatedDays) assertPrivacySafeCapture(generatedDay);
+		assertRollupCoverage(rollup);
+		assertRollupCoverage(range, "range");
+		assert.equal(range.period_id, "2026-07-01_to_2026-07-31");
+		assert.equal(range.days_counted, 31);
+	});
+}

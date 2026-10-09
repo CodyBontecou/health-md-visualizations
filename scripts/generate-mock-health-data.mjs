@@ -94,7 +94,8 @@ function choose(rng, items) {
 }
 
 function dateFromIso(dateIso) {
-	return new Date(`${dateIso}T00:00:00`);
+	// Synthetic calendar arithmetic must not depend on the host timezone.
+	return new Date(`${dateIso}T00:00:00Z`);
 }
 
 function isoDate(date) {
