@@ -834,3 +834,25 @@ test('DataLoader preserves native parent and stage objects across duplicate form
   assert.deepEqual(day.sleep.sleepSessions,native.sleepSessions);
  }
 });
+
+
+test('DataLoader retains native Apple metadata when display tables and machine formats coexist', async () => {
+ for (const variant of ['selected-stages', 'total-only']) {
+  const base = path.join(process.cwd(), 'tests/fixtures/sleep-native-apple', variant, '2026-11-01');
+  const [json, csv, md, bases] = await Promise.all(['.json', '.csv', '.md', '-bases.md'].map(suffix => readFile(base + suffix, 'utf8')));
+  const native = JSON.parse(json).sleep.sleepStages;
+  for (const contents of [
+   {'a.json': json, 'b.csv': csv, 'c.md': md, 'd.md': bases},
+   {'a.md': md, 'b.csv': csv, 'c.json': json, 'd.md': bases},
+   {'a.csv': csv, 'b.md': md},
+   {'a.md': md, 'b.csv': csv},
+   {'a.md': bases, 'b.md': md},
+   {'a.md': md, 'b.md': bases},
+  ]) {
+   const [day] = await loadWhoopVault(contents);
+   assert.ok(day, variant);
+   assert.deepEqual(day.sleep.sleepStages, native, variant);
+   assert.equal(day.sleep.sleepSessions, undefined);
+  }
+ }
+});

@@ -65,3 +65,45 @@ test('successor details reject malformed clocks without rewriting source records
  assert.equal(day.sleep.sleepStages[0].stage,'core');
  assert.equal(day.sleep.sleepStages[0].startDate,'2026-11-01T02:00:00.123456789Z');
 });
+
+
+test('native Apple fixture bytes retain recorded producer provenance', async () => {
+ const root = path.join(process.cwd(), 'tests/fixtures/sleep-native-apple');
+ const provenance = JSON.parse(await readFile(path.join(root, 'provenance.json'), 'utf8'));
+ assert.equal(provenance.synthetic, true);
+ assert.match(provenance.producer_revision, /^[a-f0-9]{40}$/);
+ assert.equal(Object.keys(provenance.sha256).length, 8);
+ for (const [name, digest] of Object.entries(provenance.sha256)) {
+  assert.equal(createHash('sha256').update(await readFile(path.join(root, name))).digest('hex'), digest, name);
+ }
+});
+
+test('native Apple stage selection retains exact clocks and platform identities in every reader', async () => {
+ const module = await readers();
+ for (const variant of ['selected-stages', 'total-only']) {
+  const base = path.join(process.cwd(), 'tests/fixtures/sleep-native-apple', variant, '2026-11-01');
+  const native = JSON.parse(await readFile(base + '.json', 'utf8'));
+  const expectedStages = variant === 'total-only' ? ['unspecified'] : ['inBed', 'core', 'unspecified'];
+  assert.deepEqual(native.sleep.sleepStages.map(stage => stage.stage), expectedStages);
+  for (const [suffix, parse] of [['.json', module.parseJSON], ['.csv', module.parseCSV], ['.md', module.parseMarkdown], ['-bases.md', module.parseMarkdown]]) {
+   const result = parse(await readFile(base + suffix, 'utf8'));
+   const day = Array.isArray(result) ? result[0] : result;
+   assert.ok(day, variant + suffix);
+   assert.equal(day.date, '2026-11-01');
+   assert.equal(day.schemaProfile, 'apple-v11');
+   assert.deepEqual(day.sleep.sleepStages.map(stage => stage.stage), expectedStages, variant + suffix);
+   assert.equal(day.sleep.sleepSessions, undefined, 'Apple does not synthesize Android parent records');
+   assert.equal(day.sleep.lightSleep, undefined, 'Core does not alias Light');
+   for (let i = 0; i < native.sleep.sleepStages.length; i++) {
+    const expected = native.sleep.sleepStages[i];
+    const actual = day.sleep.sleepStages[i];
+    assert.equal(actual.startDate, expected.startDate, variant + suffix);
+    assert.equal(actual.endDate, expected.endDate, variant + suffix);
+    assert.equal(actual.durationSeconds, expected.durationSeconds, variant + suffix);
+   }
+   if (suffix !== '.md') {
+    assert.deepEqual(day.sleep.sleepStages, native.sleep.sleepStages, variant + suffix);
+   }
+  }
+ }
+});

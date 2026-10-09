@@ -1,0 +1,18 @@
+{
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_revision": "40b9e2a9308679e117aee264d4aed2f2c3570969",
+  "synthetic": true,
+  "capture": "HealthKitManager.fetchSleepProjection with synthetic FakeHealthStore IPC; concrete AppleLooseDailyExportPlanner and packaged Rust four-format writer",
+  "producer_test": "AppleWakeDateExportPlannerTests/testCapturedWakeDateSleepDetailsReachConcretePlannerAcrossEveryFormat",
+  "case": "America/New_York DST fold and local-noon crossing; In Bed, Core and unspecified stages versus Total-only selection; fractional clocks and quoted metadata",
+  "sha256": {
+    "selected-stages/2026-11-01-bases.md": "fa68daf67596fde0280ac5c96eb8f2df33a004e4a8dac8e4aff8ad9482e72508",
+    "selected-stages/2026-11-01.csv": "b95cd492c24e995c7e475946e900fb33be2169c54efe98dab6825e78cf018dd6",
+    "selected-stages/2026-11-01.json": "a28762639e881fa2ed7faead11b52a43843df92b2e9044882c104c2b3e44ca95",
+    "selected-stages/2026-11-01.md": "42a6d44be1c96eebc61205338fd2072c793ecf19fd117325a77a900f203c3e16",
+    "total-only/2026-11-01-bases.md": "c5342fa61fb2bbe29ef18ee1bb2ae149d7e2a856f9f97beaf269916bfac08864",
+    "total-only/2026-11-01.csv": "e4b326a4f727cc06797bb2cfa70269548f19c6c46f1b7ab3797a69db338f6e87",
+    "total-only/2026-11-01.json": "9ab2f7f330549441f6c9e90e29781242b54d4ef14ac829607126ed9a688aafcc",
+    "total-only/2026-11-01.md": "e2488f851e8d781b20264aa7808516a766db2230279e19d3e4ea3efab6827ac3"
+  }
+}
