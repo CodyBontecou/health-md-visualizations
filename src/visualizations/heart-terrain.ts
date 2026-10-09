@@ -1,6 +1,7 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { lerp, hsl, formatDate } from "../canvas-utils";
 import { renderStatBoxes } from "../dom-utils";
+import { sampleMinutes } from "../time-utils";
 
 function heartSummary(day: HealthDay) {
     const samples = (day.heart?.heartRateSamples ?? []).map(sample => sample.value).filter(Number.isFinite);
@@ -29,8 +30,9 @@ export const renderHeartTerrain: RenderFn = (
 	days.forEach((day) => {
 		const col: (number[] | null)[] = new Array<number[] | null>(BUCKETS).fill(null);
 		day.heart!.heartRateSamples.forEach((s) => {
-			const dt = new Date(s.timestamp);
-			const mins = dt.getHours() * 60 + dt.getMinutes();
+			const context = day.timeContext ?? day.time_context;
+			const mins = sampleMinutes(s.timestamp, context?.calendarTimezone ?? context?.calendar_timezone);
+			if (mins === undefined) return;
 			const bucket = Math.floor(mins / 15);
 			if (bucket >= 0 && bucket < BUCKETS) {
 				if (!col[bucket]) col[bucket] = [];
@@ -139,7 +141,7 @@ export const renderHeartTerrain: RenderFn = (
 	grid.forEach((day, x) => {
 		day.col.forEach((bpm, y) => {
 			if (bpm === null) return;
-			const t = (bpm - minBPM) / (maxBPM - minBPM);
+			const t = (bpm - minBPM) / (maxBPM - minBPM || 1);
 			const h = lerp(220, 0, t);
 			const s = lerp(60, 100, t);
 			const l = lerp(theme.isDark ? 12 : 30, theme.isDark ? 55 : 65, t);

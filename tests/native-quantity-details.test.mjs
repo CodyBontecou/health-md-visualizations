@@ -83,3 +83,32 @@ test('sample-only heart terrain uses recorded samples without adding daily summa
  const text=JSON.stringify(stats);
  assert.ok(!text.includes('999') && !text.includes('NaN') && !text.includes('undefined'));
 });
+
+
+test('heart terrain buckets explicit capture clocks independently of viewer timezone',async()=>{
+ const module=await readers();
+ const original=module.parseJSON(await readFile(base('android-v6-heart-only','2026-11-01')+'.json','utf8'));
+ const savedTZ=process.env.TZ;
+ try {
+  for(const viewer of ['UTC','America/Los_Angeles','Asia/Tokyo']) {
+   process.env.TZ=viewer;
+   for(const [zone,times,bucket] of [
+    ['UTC',['2026-11-01T05:30:00Z'],22],
+    ['America/New_York',['2026-11-01T05:30:00Z','2026-11-01T06:30:00Z'],6],
+    ['Asia/Kathmandu',['2026-11-01T00:00:00Z'],23],
+   ]) {
+    const day=structuredClone(original);
+    day.timeContext={calendarTimezone:zone,timestampTimezone:'UTC'};
+    day.heart.heartRateSamples=times.map(timestamp=>({timestamp,value:72.125}));
+    const before=JSON.stringify(day),rectangles=[],colors=[];
+    const stats={style:{},empty(){},createDiv(){return this;},createEl(){return this;},classList:{add(){},remove(){}}};
+    const ctx={set fillStyle(value){colors.push(value);},fillRect(...args){rectangles.push(args);}};
+    module.renderHeartTerrain(ctx,[day],400,192,{}, {isDark:false},stats,{add(){}});
+    assert.equal(rectangles.length,1,viewer+' '+zone);
+    assert.equal(rectangles[0][1],bucket*2,viewer+' '+zone);
+    assert.ok(colors.every(value=>!value.includes('NaN')),viewer+' '+zone);
+    assert.equal(JSON.stringify(day),before);
+   }
+  }
+ } finally {if(savedTZ===undefined) delete process.env.TZ;else process.env.TZ=savedTZ;}
+});

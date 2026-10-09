@@ -16564,6 +16564,59 @@ function appendSvgFromMarkup(container, svgMarkup) {
   container.appendChild(activeDocument.importNode(svg, true));
 }
 
+// src/time-utils.ts
+function parseHour(timestamp2, fallbackDate) {
+  var _a, _b, _c;
+  if (!timestamp2) return void 0;
+  const trimmed = timestamp2.trim();
+  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
+  const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
+  const match = dateTime != null ? dateTime : timeOnly;
+  if (!match) {
+    if (fallbackDate && trimmed === fallbackDate) return 12;
+    return void 0;
+  }
+  let h = Number(match[1]);
+  const m = Number(match[2]);
+  const s = Number((_a = match[3]) != null ? _a : 0);
+  const meridiem = match === timeOnly ? (_c = (_b = /\s+([ap])\.?m\.?\s*$/i.exec(trimmed)) == null ? void 0 : _b[1]) == null ? void 0 : _c.toLowerCase() : void 0;
+  if (meridiem) {
+    if (h < 1 || h > 12) return void 0;
+    h = h % 12 + (meridiem === "p" ? 12 : 0);
+  }
+  if (h > 23 || m > 59 || s > 59) return void 0;
+  return h + m / 60 + s / 3600;
+}
+function formatClockTime(timestamp2) {
+  const hour = parseHour(timestamp2);
+  if (hour === void 0) return void 0;
+  const totalMinutes = Math.floor(hour * 60 + 1e-7);
+  const date = new Date(2e3, 0, 1, Math.floor(totalMinutes / 60), totalMinutes % 60);
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+function sampleMinutes(timestamp2, calendarTimezone) {
+  var _a, _b;
+  const instant2 = new Date(timestamp2);
+  if (!Number.isFinite(instant2.getTime())) return void 0;
+  if (!calendarTimezone) return instant2.getHours() * 60 + instant2.getMinutes();
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: calendarTimezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(instant2);
+    const hour = Number((_a = parts.find((part) => part.type === "hour")) == null ? void 0 : _a.value);
+    const minute = Number((_b = parts.find((part) => part.type === "minute")) == null ? void 0 : _b.value);
+    return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : void 0;
+  } catch (e) {
+    return void 0;
+  }
+}
+
 // src/visualizations/heart-terrain.ts
 function heartSummary(day) {
   var _a, _b, _c, _d, _e, _f, _g, _h;
@@ -16587,8 +16640,10 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   days.forEach((day) => {
     const col = new Array(BUCKETS).fill(null);
     day.heart.heartRateSamples.forEach((s) => {
-      const dt = new Date(s.timestamp);
-      const mins = dt.getHours() * 60 + dt.getMinutes();
+      var _a, _b;
+      const context = (_a = day.timeContext) != null ? _a : day.time_context;
+      const mins = sampleMinutes(s.timestamp, (_b = context == null ? void 0 : context.calendarTimezone) != null ? _b : context == null ? void 0 : context.calendar_timezone);
+      if (mins === void 0) return;
       const bucket = Math.floor(mins / 15);
       if (bucket >= 0 && bucket < BUCKETS) {
         if (!col[bucket]) col[bucket] = [];
@@ -16689,7 +16744,7 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   grid2.forEach((day, x) => {
     day.col.forEach((bpm2, y) => {
       if (bpm2 === null) return;
-      const t = (bpm2 - minBPM) / (maxBPM - minBPM);
+      const t = (bpm2 - minBPM) / (maxBPM - minBPM || 1);
       const h = lerp(220, 0, t);
       const s = lerp(60, 100, t);
       const l = lerp(theme.isDark ? 12 : 30, theme.isDark ? 55 : 65, t);
@@ -16728,40 +16783,6 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
     { value: maxHR === void 0 ? "Unavailable" : String(maxHR), label: "Highest", color: "#ff4444" }
   ]);
 };
-
-// src/time-utils.ts
-function parseHour(timestamp2, fallbackDate) {
-  var _a, _b, _c;
-  if (!timestamp2) return void 0;
-  const trimmed = timestamp2.trim();
-  const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
-  const dateTime = /T(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(trimmed);
-  const match = dateTime != null ? dateTime : timeOnly;
-  if (!match) {
-    if (fallbackDate && trimmed === fallbackDate) return 12;
-    return void 0;
-  }
-  let h = Number(match[1]);
-  const m = Number(match[2]);
-  const s = Number((_a = match[3]) != null ? _a : 0);
-  const meridiem = match === timeOnly ? (_c = (_b = /\s+([ap])\.?m\.?\s*$/i.exec(trimmed)) == null ? void 0 : _b[1]) == null ? void 0 : _c.toLowerCase() : void 0;
-  if (meridiem) {
-    if (h < 1 || h > 12) return void 0;
-    h = h % 12 + (meridiem === "p" ? 12 : 0);
-  }
-  if (h > 23 || m > 59 || s > 59) return void 0;
-  return h + m / 60 + s / 3600;
-}
-function formatClockTime(timestamp2) {
-  const hour = parseHour(timestamp2);
-  if (hour === void 0) return void 0;
-  const totalMinutes = Math.floor(hour * 60 + 1e-7);
-  const date = new Date(2e3, 0, 1, Math.floor(totalMinutes / 60), totalMinutes % 60);
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  });
-}
 
 // src/visualizations/sleep-polar.ts
 function buildSyntheticStages(night) {
