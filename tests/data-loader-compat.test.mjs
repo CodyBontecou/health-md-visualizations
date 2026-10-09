@@ -819,3 +819,18 @@ test("DataLoader omits same-window rollups with conflicting sleep ownership inde
 		assert.ok(loader.getLastLoadReport().warnings.some((warning) => warning.includes("ambiguous rollup data")));
 	}
 });
+test('DataLoader preserves native parent and stage objects across duplicate formats in either order', async () => {
+ const fixture = async suffix => readFile(path.join(process.cwd(), `tests/fixtures/sleep-native-parents/2026-11-01${suffix}`), 'utf8');
+ const [json,csv,md,bases] = await Promise.all(['.json','.csv','.md','-bases.md'].map(fixture));
+ const native = JSON.parse(json).sleep;
+ for(const contents of [
+  {'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},
+  {'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},
+  {'a.csv':csv,'b.md':md},
+  {'a.md':md,'b.csv':csv},
+ ]){
+  const [day] = await loadWhoopVault(contents);
+  assert.deepEqual(day.sleep.sleepStages,native.sleepStages);
+  assert.deepEqual(day.sleep.sleepSessions,native.sleepSessions);
+ }
+});

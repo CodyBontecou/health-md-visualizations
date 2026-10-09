@@ -1,3 +1,4 @@
+import { successorSleepDetails } from "./native-sleep-details";
 import { sleepAuthoritiesAgree } from "./sleep-attribution";
 import { MetadataCache, Vault, TFile, TFolder } from "obsidian";
 import {
@@ -988,6 +989,23 @@ function mergeSection<T extends object>(
 	return merged as T;
 }
 
+/** A display table must not replace the complete native objects for the same intervals. */
+function mergeNativeSleep(fallback: HealthDay["sleep"], preferred: HealthDay["sleep"]): HealthDay["sleep"] {
+    const merged = mergeSection(fallback, preferred);
+    if (!merged || !fallback || !preferred) return merged;
+    function richer<T extends object>(a: T[] | undefined, b: T[] | undefined, key: (value: T) => string): T[] | undefined {
+        if (!a || !b || a.length !== b.length) return b?.length ? b : a;
+        const keys = (values: T[]) => values.map(key).sort().join("\n");
+        if (keys(a) !== keys(b)) return b;
+        return a.reduce((sum, value) => sum + objectDetailScore(value), 0) > b.reduce((sum, value) => sum + objectDetailScore(value), 0) ? a : b;
+    }
+    merged.sleepStages = richer(fallback.sleepStages, preferred.sleepStages,
+        value => JSON.stringify([value.stage,value.startDate,value.endDate,value.durationSeconds])) ?? [];
+    merged.sleepSessions = richer(fallback.sleepSessions, preferred.sleepSessions,
+        value => JSON.stringify([value.startTimeISO,value.endTimeISO]));
+    return merged;
+}
+
 /** Merge two HealthDay objects for the same date, preferring newer schema/richer fields. */
 function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 	const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -1032,7 +1050,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		activity: mergeSection(fallback.activity, preferred.activity),
 		heart: mergeSection(fallback.heart, preferred.heart),
 		vitals: mergeSection(fallback.vitals, preferred.vitals),
-		sleep: mergeSection(fallback.sleep, preferred.sleep),
+		sleep: successorSleepDetails(preferred.schema_profile) ? mergeNativeSleep(fallback.sleep, preferred.sleep) : mergeSection(fallback.sleep, preferred.sleep),
 		mobility: mergeSection(fallback.mobility, preferred.mobility),
 		workouts: mergeWorkouts(a.workouts, b.workouts),
 		mood: mergeSection(fallback.mood, preferred.mood),

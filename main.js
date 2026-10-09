@@ -9587,9 +9587,50 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian5 = require("obsidian");
 
+// src/native-sleep-details.ts
+function record(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function instant(value) {
+  var _a;
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/.exec(value);
+  if (!match) return null;
+  const milliseconds = Date.parse(`${match[1]}Z`);
+  if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString().slice(0, 19) !== match[1]) return null;
+  return BigInt(milliseconds) * BigInt(1e6) + BigInt(((_a = match[2]) != null ? _a : "").padEnd(9, "0"));
+}
+function sleepInterval(start, end) {
+  const a = instant(start), b = instant(end);
+  return a !== null && b !== null && b >= a ? Number(b - a) / 1e9 : null;
+}
+function nativeSleepStages(value) {
+  if (!Array.isArray(value)) return null;
+  const result = [];
+  for (const item of value) {
+    const source = record(item);
+    if (!source || typeof source.stage !== "string" || !source.stage || typeof source.startDate !== "string" || typeof source.endDate !== "string" || sleepInterval(source.startDate, source.endDate) === null || typeof source.durationSeconds !== "number" || !Number.isFinite(source.durationSeconds) || source.durationSeconds < 0) return null;
+    result.push({ ...source, stage: source.stage, startDate: source.startDate, endDate: source.endDate, durationSeconds: source.durationSeconds });
+  }
+  return result;
+}
+function nativeSleepSessions(value) {
+  if (!Array.isArray(value)) return null;
+  const result = [];
+  for (const item of value) {
+    const source = record(item);
+    if (!source || typeof source.startTimeISO !== "string" || typeof source.endTimeISO !== "string" || sleepInterval(source.startTimeISO, source.endTimeISO) === null) return null;
+    result.push({ ...source, startTimeISO: source.startTimeISO, endTimeISO: source.endTimeISO });
+  }
+  return result;
+}
+function successorSleepDetails(profile) {
+  return profile === "apple-v11" || profile === "android-sleep-v6";
+}
+
 // src/csv-utils.ts
-function isBlankCsvRecord(record2) {
-  return record2.every((cell) => cell.trim() === "");
+function isBlankCsvRecord(record3) {
+  return record3.every((cell) => cell.trim() === "");
 }
 function* iterateCsvRecords(content, options = {}) {
   var _a;
@@ -9743,7 +9784,7 @@ function topLevelJsonObjectProperties(content) {
 function parseJsonObjectExcluding(content, omittedKeys) {
   const properties = topLevelJsonObjectProperties(content);
   if (!properties) return null;
-  const record2 = {};
+  const record3 = {};
   const omittedValues = {};
   try {
     for (const property of properties) {
@@ -9751,10 +9792,10 @@ function parseJsonObjectExcluding(content, omittedKeys) {
       if (omittedKeys.has(property.key)) {
         omittedValues[property.key] = rawValue;
       } else {
-        record2[property.key] = JSON.parse(rawValue);
+        record3[property.key] = JSON.parse(rawValue);
       }
     }
-    return { record: record2, omittedValues };
+    return { record: record3, omittedValues };
   } catch (e) {
     return null;
   }
@@ -9892,8 +9933,8 @@ function isHealthMetricDataDictionaryValue(value) {
   if (!Array.isArray(value)) return false;
   return value.some((entry) => {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
-    const record2 = entry;
-    return typeof record2.key === "string" && typeof record2.canonicalKey === "string";
+    const record3 = entry;
+    return typeof record3.key === "string" && typeof record3.canonicalKey === "string";
   });
 }
 function detectKnownSchema(format, schema, version) {
@@ -9937,14 +9978,14 @@ function detectJsonSchema(contentOrValue) {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return { kind: "unknown", version: 0, format: "json", reason: "JSON root is not an object" };
     }
-    const record2 = parsed;
-    const schema = typeof record2.schema === "string" ? record2.schema : void 0;
-    const version = schemaVersionOf(record2);
+    const record3 = parsed;
+    const schema = typeof record3.schema === "string" ? record3.schema : void 0;
+    const version = schemaVersionOf(record3);
     if (schema) return detectKnownSchema("json", schema, version);
-    if (record2.type === "health-data" && typeof record2.date === "string") {
+    if (record3.type === "health-data" && typeof record3.date === "string") {
       return { kind: "legacy-health-day", version: 0, format: "json" };
     }
-    if (record2.type === "health_rollup") {
+    if (record3.type === "health_rollup") {
       return { kind: "rollup-summary", version, format: "json", schema: HEALTHMD_ROLLUP_SCHEMA };
     }
     return { kind: "unknown", version, format: "json", reason: "JSON is not a Health.md daily export" };
@@ -10121,7 +10162,7 @@ function normalizeCsvLabel(value) {
 }
 
 // src/sleep-attribution.ts
-function record(value) {
+function record2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
 }
 function alias(value, snake, camel) {
@@ -10146,9 +10187,9 @@ function readSleepAuthority(source) {
     const version = schemaVersionOf(source);
     const androidSleep = profile === "android-sleep-v6";
     const successor = androidSleep || profile === "apple-v11" || version === 11;
-    const raw = record((_a = source.time_context) != null ? _a : source.timeContext);
+    const raw = record2((_a = source.time_context) != null ? _a : source.timeContext);
     if (source.time_context !== void 0 && source.timeContext !== void 0) {
-      const other = record(source.timeContext);
+      const other = record2(source.timeContext);
       if (!raw || !other) return null;
       for (const [snake, camel] of [
         ["calendar_timezone", "calendarTimezone"],
@@ -11216,9 +11257,9 @@ function canonicalMetricsFromSummaryRoot(root) {
 function isKnownCanonicalMetricKey(key, units) {
   return BUILTIN_KEYS.has(key) || key.startsWith("symptom_") || units !== void 0 && key in units;
 }
-function canonicalMetricsFromFlatRecord(record2, units) {
+function canonicalMetricsFromFlatRecord(record3, units) {
   const metrics = {};
-  for (const [key, value] of Object.entries(record2)) {
+  for (const [key, value] of Object.entries(record3)) {
     if (RESERVED_FLAT_KEYS.has(key)) continue;
     const allowed = isKnownCanonicalMetricKey(key, units);
     if (!allowed) continue;
@@ -11560,7 +11601,7 @@ function parseWhoopCsv(rows) {
   const profile = providerRows.find((row) => label(row.category) === "whoop body" && label(row.metric) === "body snapshot");
   const profileValue = profile ? object(decode(profile)) : void 0;
   if ((profileValue == null ? void 0 : profileValue.source_kind) === "current_profile_snapshot") result.body = body(profileValue);
-  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record2) => record2.projection)) {
+  if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record3) => record3.projection)) {
     result.notes = result.notes.filter((note2) => !note2.startsWith("Single-record scalar"));
   }
   return finalize(result);
@@ -11696,17 +11737,17 @@ function stringArrayFromUnknown2(value) {
   }
   return [];
 }
-function firstString2(record2, keys) {
+function firstString2(record3, keys) {
   for (const key of keys) {
-    const value = record2[key];
+    const value = record3[key];
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
   }
   return void 0;
 }
-function firstNumber2(record2, keys) {
+function firstNumber2(record3, keys) {
   for (const key of keys) {
-    const parsed = parseNumber(record2[key]);
+    const parsed = parseNumber(record3[key]);
     if (parsed !== void 0) return parsed;
   }
   return void 0;
@@ -11722,9 +11763,9 @@ function normalizeTimestamp(raw, fallbackDate) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T12:00:00`;
   return value;
 }
-function moodEntryFromRecord(record2, fallbackDate) {
+function moodEntryFromRecord(record3, fallbackDate) {
   var _a, _b, _c, _d;
-  const valenceRaw = firstNumber2(record2, [
+  const valenceRaw = firstNumber2(record3, [
     "valence",
     "moodValence",
     "mood_valence",
@@ -11735,7 +11776,7 @@ function moodEntryFromRecord(record2, fallbackDate) {
     "avgValence",
     "avg_valence"
   ]);
-  const scoreRaw = firstNumber2(record2, [
+  const scoreRaw = firstNumber2(record3, [
     "score",
     "moodScore",
     "mood_score",
@@ -11751,7 +11792,7 @@ function moodEntryFromRecord(record2, fallbackDate) {
     "averageMoodPercent",
     "average_mood_percent"
   ]);
-  const label = firstString2(record2, [
+  const label = firstString2(record3, [
     "label",
     "primaryLabel",
     "primary_label",
@@ -11759,7 +11800,7 @@ function moodEntryFromRecord(record2, fallbackDate) {
     "mood_label",
     "state"
   ]);
-  const valenceDescription = firstString2(record2, [
+  const valenceDescription = firstString2(record3, [
     "classification",
     "valenceClassification",
     "valence_classification",
@@ -11767,16 +11808,16 @@ function moodEntryFromRecord(record2, fallbackDate) {
     "valence_description",
     "feeling"
   ]);
-  const rawMood = record2.mood;
+  const rawMood = record3.mood;
   const moodLabel = typeof rawMood === "string" && rawMood.trim() ? rawMood.trim() : void 0;
   const labels = [
-    ...stringArrayFromUnknown2(record2.labels),
-    ...stringArrayFromUnknown2(record2.emotions),
-    ...stringArrayFromUnknown2(record2.feelings)
+    ...stringArrayFromUnknown2(record3.labels),
+    ...stringArrayFromUnknown2(record3.emotions),
+    ...stringArrayFromUnknown2(record3.feelings)
   ].filter((item, index, all) => all.indexOf(item) === index);
   const primaryLabel2 = (_b = (_a = label != null ? label : moodLabel) != null ? _a : labels[0]) != null ? _b : valenceDescription;
   const valence = (_d = (_c = normalizeMoodValence(valenceRaw, "valence")) != null ? _c : normalizeMoodValence(scoreRaw, "score")) != null ? _d : normalizeMoodValence(primaryLabel2, "label");
-  const timestamp2 = normalizeTimestamp(firstString2(record2, [
+  const timestamp2 = normalizeTimestamp(firstString2(record3, [
     "timestamp",
     "date",
     "recordedAt",
@@ -11787,12 +11828,12 @@ function moodEntryFromRecord(record2, fallbackDate) {
     "start_time",
     "time"
   ]), fallbackDate);
-  const endDate = normalizeTimestamp(firstString2(record2, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
-  const kind = firstString2(record2, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
+  const endDate = normalizeTimestamp(firstString2(record3, ["endDate", "end_date", "endTime", "end_time"]), fallbackDate);
+  const kind = firstString2(record3, ["kind", "moodKind", "mood_kind", "feelingKind", "feeling_kind", "category"]);
   const associations = [
-    ...stringArrayFromUnknown2(record2.associations),
-    ...stringArrayFromUnknown2(record2.contexts),
-    ...stringArrayFromUnknown2(record2.factors)
+    ...stringArrayFromUnknown2(record3.associations),
+    ...stringArrayFromUnknown2(record3.contexts),
+    ...stringArrayFromUnknown2(record3.factors)
   ].filter((item, index, all) => all.indexOf(item) === index);
   if (valence === void 0 && !primaryLabel2 && !labels.length && !kind) return null;
   return {
@@ -11962,11 +12003,11 @@ function parseLargeHealthDataEnvelope(content) {
     return null;
   }
   try {
-    const record2 = JSON.parse(`${head}${content.slice(restStart)}`);
-    if (!isRecord4(record2) || record2.type !== "health-data") return null;
-    if ("healthkit_record_archive" in record2) return null;
+    const record3 = JSON.parse(`${head}${content.slice(restStart)}`);
+    if (!isRecord4(record3) || record3.type !== "health-data") return null;
+    if ("healthkit_record_archive" in record3) return null;
     return {
-      record: record2,
+      record: record3,
       omittedValues: {
         healthkit_record_archive: JSON.stringify(scan.topLevelScalars)
       }
@@ -12150,6 +12191,13 @@ function parseJSON(content) {
     delete summaryRoot.medications;
     const day = summaryRoot;
     if (isRecord4(parsed.sleep)) {
+      if (successorSleepDetails(authority.profile)) {
+        if (parsed.sleep.sleepStages !== void 0 && !nativeSleepStages(parsed.sleep.sleepStages)) return null;
+        if (parsed.sleep.sleepSessions !== void 0) {
+          const sessions = nativeSleepSessions(parsed.sleep.sleepSessions);
+          if (!sessions || !authority.androidSleep && sessions.length) return null;
+        }
+      }
       const stages = parsed.sleep.sleepStages;
       day.sleep = { ...parsed.sleep, sleepStages: Array.isArray(stages) ? stages : [] };
     }
@@ -13038,7 +13086,29 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
       hrv: (_j = getNum(rows, "Heart", "HRV")) != null ? _j : average(hrvSamples.map((sample) => sample.value))
     };
   }
-  const sleepStages = parseSleepStages(rows).map((stage) => !authority.androidSleep && stage.stage === "light" ? { ...stage, stage: "core" } : stage);
+  let nativeStages = [];
+  let nativeSessions = [];
+  if (successorSleepDetails(authority.profile)) {
+    for (const row of rows.filter((row2) => normalizeLabel(row2.category) === "sleep detail")) {
+      const metric = normalizeLabel(row.metric);
+      if (metric !== "sleep stage" && metric !== "sleep session") continue;
+      try {
+        const source = JSON.parse(row.value);
+        if (metric === "sleep stage") {
+          const parsed = nativeSleepStages([source]);
+          if (!parsed || row.unit !== "seconds" || parsed[0].startDate !== row.timestamp) return null;
+          nativeStages.push(...parsed);
+        } else {
+          const parsed = nativeSleepSessions([source]);
+          if (!parsed || !authority.androidSleep || row.unit !== "json" || parsed[0].startTimeISO !== row.timestamp) return null;
+          nativeSessions.push(...parsed);
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+  const sleepStages = [...nativeStages, ...parseSleepStages(rows)].map((stage) => !authority.androidSleep && stage.stage === "light" ? { ...stage, stage: "core" } : stage);
   const sleepSeconds = (metric) => {
     const row = findRow(rows, [lookup("Sleep", metric)]);
     if (!row) return void 0;
@@ -13052,8 +13122,9 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
   const coreSleep = authority.androidSleep ? void 0 : (_p = (_o = sleepSeconds("Core Sleep")) != null ? _o : sleepSeconds("Light Sleep")) != null ? _p : sumStageSeconds(sleepStages, "core");
   const lightSleep = authority.androidSleep ? (_q = sleepSeconds("Light Sleep")) != null ? _q : sumStageSeconds(sleepStages, "light") : void 0;
   const awakeTime = (_r = getNum(rows, "Sleep", "Awake Time")) != null ? _r : sumStageSeconds(sleepStages, "awake");
-  if (sleepTotal > 0 || sleepStages.length) {
+  if (sleepTotal > 0 || sleepStages.length || nativeSessions.length) {
     day.sleep = {
+      ...nativeSessions.length ? { sleepSessions: nativeSessions } : {},
       sleepStages,
       totalDuration: sleepTotal,
       deepSleep,
@@ -13320,6 +13391,15 @@ function parseYamlBlock(lines, start, indent) {
         const parsed = parseYamlBlock(lines, i2 + 1, indent + 2);
         arr.push(parsed.value);
         i2 = parsed.index;
+        continue;
+      }
+      if (rest.startsWith("{") && rest.endsWith("}")) {
+        try {
+          arr.push(JSON.parse(rest));
+        } catch (e) {
+          arr.push(rest);
+        }
+        i2++;
         continue;
       }
       const keyValue = splitYamlKeyValue2(rest);
@@ -13888,14 +13968,14 @@ function parseGranularMarkdownData(body2, date) {
 function sumStageSeconds2(stages, stageName) {
   return stages.filter((stage) => stage.stage === stageName).reduce((sum, stage) => sum + stage.durationSeconds, 0);
 }
-function recordStr(record2, key) {
-  const value = record2[key];
+function recordStr(record3, key) {
+  const value = record3[key];
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return void 0;
 }
-function recordNum(record2, key) {
-  return parseNumberValue2(record2[key], key);
+function recordNum(record3, key) {
+  return parseNumberValue2(record3[key], key);
 }
 function cleanDisplayValue(value) {
   if (!value) return void 0;
@@ -14203,6 +14283,40 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   const explicitUnitSystem = getFirstStr(fm, "unit_system", "unitSystem");
   const unitSystem = explicitUnitSystem != null ? explicitUnitSystem : schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : void 0;
   const granular = parseGranularMarkdownData(parsed.body, date);
+  let nativeSessions = [];
+  if (successorSleepDetails(authority.profile)) {
+    if (fm.sleep_stage_details !== void 0) {
+      const stages = nativeSleepStages(fm.sleep_stage_details);
+      if (!stages) return null;
+      granular.sleepStages = stages;
+    }
+    if (fm.sleep_session_details !== void 0) {
+      const sessions = nativeSleepSessions(fm.sleep_session_details);
+      if (!sessions || !authority.androidSleep) return null;
+      nativeSessions = sessions;
+    }
+    for (const table of parseMarkdownTables(parsed.body)) {
+      const headers = normalizedHeaders(table);
+      const start = headers.indexOf("start (utc)"), end = headers.indexOf("end (utc)");
+      const stage = headers.indexOf("stage");
+      const context = normalizeLabel2(table.context);
+      if (start < 0 || end < 0 || !["sleep stage details", "sleep session details"].includes(context)) continue;
+      if (context === "sleep stage details" && fm.sleep_stage_details === void 0) {
+        const stages = [];
+        for (const row of table.rows) {
+          const duration2 = sleepInterval(row[start], row[end]);
+          if (stage < 0 || duration2 === null || !row[stage]) return null;
+          stages.push({ stage: row[stage], startDate: row[start], endDate: row[end], durationSeconds: duration2 });
+        }
+        granular.sleepStages.push(...stages);
+      }
+      if (context === "sleep session details" && fm.sleep_session_details === void 0) {
+        const sessions = nativeSleepSessions(table.rows.map((row) => ({ startTimeISO: row[start], endTimeISO: row[end] })));
+        if (!sessions || !authority.androidSleep) return null;
+        nativeSessions.push(...sessions);
+      }
+    }
+  }
   if (!authority.androidSleep) granular.sleepStages = granular.sleepStages.map((stage) => stage.stage === "light" ? { ...stage, stage: "core" } : stage);
   if (authority.androidSleep && granular.sleepStages.some((stage) => stage.stage === "core")) return null;
   const timeContext = authority.context;
@@ -14314,13 +14428,14 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   );
   const derivedSleepTotal = granular.sleepStages.filter((stage) => stage.stage !== "awake").reduce((sum, stage) => sum + stage.durationSeconds, 0);
   const sleepTotal = sleepHours !== void 0 ? sleepHours * 3600 : sleepSeconds != null ? sleepSeconds : derivedSleepTotal > 0 ? derivedSleepTotal : void 0;
-  if (sleepTotal !== void 0 || granular.sleepStages.length) {
+  if (sleepTotal !== void 0 || granular.sleepStages.length || nativeSessions.length) {
     const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
     const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
     if (authority.androidSleep && getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "coreSleep") !== void 0) return null;
     const coreH = getFirstNum(fm, ...authority.androidSleep ? ["sleep_core_hours"] : ["sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours"]);
     const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
     day.sleep = {
+      ...nativeSessions.length ? { sleepSessions: nativeSessions } : {},
       sleepStages: granular.sleepStages,
       totalDuration: sleepTotal != null ? sleepTotal : derivedSleepTotal,
       deepSleep: deepH !== void 0 ? deepH * 3600 : (_m = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _m : sumStageSeconds2(granular.sleepStages, "deep"),
@@ -14543,28 +14658,28 @@ function isValidPeriodIdentity(period, periodId, startDateValue, endDateValue) {
   const year = Number(match[1]);
   return startDate.year === year && startDate.month === 1 && startDate.day === 1 && endDate.year === year && endDate.month === 12 && endDate.day === 31;
 }
-function firstString3(record2, ...keys) {
+function firstString3(record3, ...keys) {
   for (const key of keys) {
-    const value = stringValue4(record2[key]);
+    const value = stringValue4(record3[key]);
     if (value !== void 0 && value !== "") return value;
   }
   return void 0;
 }
-function firstNumber3(record2, ...keys) {
+function firstNumber3(record3, ...keys) {
   for (const key of keys) {
-    const value = numberValue2(record2[key]);
+    const value = numberValue2(record3[key]);
     if (value !== void 0) return value;
   }
   return void 0;
 }
-function hasOwn(record2, key) {
-  return Boolean(Object.prototype.hasOwnProperty.call(record2, key));
+function hasOwn(record3, key) {
+  return Boolean(Object.prototype.hasOwnProperty.call(record3, key));
 }
-function readAliasedValue(record2, keys, parse, equals = (left, right) => left === right) {
+function readAliasedValue(record3, keys, parse, equals = (left, right) => left === right) {
   let parsedValue;
   for (const key of keys) {
-    if (!hasOwn(record2, key)) continue;
-    const current = parse(record2[key]);
+    if (!hasOwn(record3, key)) continue;
+    const current = parse(record3[key]);
     if (current === void 0 || parsedValue !== void 0 && !equals(parsedValue, current)) {
       return { valid: false };
     }
@@ -14579,12 +14694,12 @@ function nonBlankString(value) {
 function stringArraysEqual(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
-function validateIdentityField(record2, keys, expected) {
+function validateIdentityField(record3, keys, expected) {
   let present = false;
   for (const key of keys) {
-    if (!hasOwn(record2, key)) continue;
+    if (!hasOwn(record3, key)) continue;
     present = true;
-    if (record2[key] !== expected) return { present, valid: false };
+    if (record3[key] !== expected) return { present, valid: false };
   }
   return { present, valid: true };
 }
@@ -14594,18 +14709,18 @@ function strictSchemaVersion(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : void 0;
 }
-function readOptionalSchemaVersion(record2) {
+function readOptionalSchemaVersion(record3) {
   var _a;
-  const parsed = readAliasedValue(record2, ["schemaVersion", "schema_version"], strictSchemaVersion);
+  const parsed = readAliasedValue(record3, ["schemaVersion", "schema_version"], strictSchemaVersion);
   return { valid: parsed.valid, version: (_a = parsed.value) != null ? _a : 0 };
 }
 function validCalendarTimezone(value) {
   const trimmed = value == null ? void 0 : value.trim();
   return trimmed && trimmed.length <= 64 ? trimmed : void 0;
 }
-function readOptionalCalendarTimezone(record2) {
+function readOptionalCalendarTimezone(record3) {
   return readAliasedValue(
-    record2,
+    record3,
     ["calendarTimezone", "calendar_timezone"],
     (value) => typeof value === "string" ? validCalendarTimezone(value) : void 0
   );
@@ -14661,9 +14776,9 @@ function normalizeMetric(value, fallbackKey) {
     notes: firstString3(value, "notes")
   };
 }
-function normalizeMetrics(record2) {
+function normalizeMetrics(record3) {
   var _a;
-  const raw = (_a = record2.rollup_metrics) != null ? _a : record2.metrics;
+  const raw = (_a = record3.rollup_metrics) != null ? _a : record3.metrics;
   const result = {};
   if (Array.isArray(raw)) {
     for (const item of raw) {
@@ -14678,16 +14793,16 @@ function normalizeMetrics(record2) {
   }
   return Object.keys(result).length ? result : void 0;
 }
-function sleepRangeAuthority(record2, calendar) {
-  const profile = readAliasedValue(record2, ["schema_profile", "schemaProfile"], nonBlankString);
-  const source = readAliasedValue(record2, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
+function sleepRangeAuthority(record3, calendar) {
+  const profile = readAliasedValue(record3, ["schema_profile", "schemaProfile"], nonBlankString);
+  const source = readAliasedValue(record3, ["source_schema_profile", "sourceSchemaProfile"], nonBlankString);
   if (!profile.valid || profile.value !== "apple-rollup-v11" || !source.valid || source.value !== "apple-v11") return null;
   const clock = readSleepAuthority({
     schema: HEALTHMD_HEALTH_DATA_SCHEMA,
     schema_version: 11,
     schema_profile: "apple-v11",
-    time_context: record2.time_context,
-    timeContext: record2.timeContext
+    time_context: record3.time_context,
+    timeContext: record3.timeContext
   });
   if (!(clock == null ? void 0 : clock.context) || clock.context.calendar_timezone !== calendar) return null;
   return {
@@ -14699,33 +14814,33 @@ function sleepRangeAuthority(record2, calendar) {
     time_context: clock.context
   };
 }
-function buildRollupSummary(record2) {
-  const schemaIdentity = validateIdentityField(record2, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
-  const typeIdentity = validateIdentityField(record2, ["type", "Type"], "health_rollup");
+function buildRollupSummary(record3) {
+  const schemaIdentity = validateIdentityField(record3, ["schema", "Schema"], HEALTHMD_ROLLUP_SCHEMA);
+  const typeIdentity = validateIdentityField(record3, ["type", "Type"], "health_rollup");
   if (!schemaIdentity.valid || !typeIdentity.valid || !schemaIdentity.present && !typeIdentity.present) return null;
-  const parsedRollupPeriod = readAliasedValue(record2, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
-  const parsedPeriodId = readAliasedValue(record2, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
-  const parsedStartDate = readAliasedValue(record2, ["start_date", "startDate", "Start Date"], nonBlankString);
-  const parsedEndDate = readAliasedValue(record2, ["end_date", "endDate", "End Date"], nonBlankString);
+  const parsedRollupPeriod = readAliasedValue(record3, ["rollup_period", "rollupPeriod", "period", "Period"], normalizePeriod);
+  const parsedPeriodId = readAliasedValue(record3, ["period_id", "periodId", "Period ID", "periodID"], nonBlankString);
+  const parsedStartDate = readAliasedValue(record3, ["start_date", "startDate", "Start Date"], nonBlankString);
+  const parsedEndDate = readAliasedValue(record3, ["end_date", "endDate", "End Date"], nonBlankString);
   if (!parsedRollupPeriod.valid || !parsedPeriodId.valid || !parsedStartDate.valid || !parsedEndDate.valid) return null;
   const rollupPeriod = parsedRollupPeriod.value;
   const periodId = parsedPeriodId.value;
   const startDate = parsedStartDate.value;
   const endDate = parsedEndDate.value;
   if (!rollupPeriod || !periodId || !isValidPeriodIdentity(rollupPeriod, periodId, startDate, endDate)) return null;
-  const parsedSchemaVersion = readOptionalSchemaVersion(record2);
+  const parsedSchemaVersion = readOptionalSchemaVersion(record3);
   if (!parsedSchemaVersion.valid) return null;
   const schemaVersion = parsedSchemaVersion.version;
   if (!isValidVersionPeriod(schemaVersion, rollupPeriod)) return null;
-  const parsedCalendarTimezone = readOptionalCalendarTimezone(record2);
-  const parsedDaysExpected = readAliasedValue(record2, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
-  const parsedDaysCounted = readAliasedValue(record2, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
-  const parsedCoveragePercent = readAliasedValue(record2, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
-  const parsedSourceSchema = readAliasedValue(record2, ["source_schema", "sourceSchema"], nonBlankString);
-  const parsedSourceSchemaVersion = readAliasedValue(record2, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
-  const parsedRollupRulesVersion = readAliasedValue(record2, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
-  const parsedGeneratedAt = readAliasedValue(record2, ["generated_at", "generatedAt"], nonBlankString);
-  const parsedSourceDates = readAliasedValue(record2, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
+  const parsedCalendarTimezone = readOptionalCalendarTimezone(record3);
+  const parsedDaysExpected = readAliasedValue(record3, ["days_expected", "daysExpected", "Days Expected"], numberValue2);
+  const parsedDaysCounted = readAliasedValue(record3, ["days_counted", "daysCounted", "Days Counted"], numberValue2);
+  const parsedCoveragePercent = readAliasedValue(record3, ["coverage_percent", "coveragePercent", "Coverage Percent"], numberValue2);
+  const parsedSourceSchema = readAliasedValue(record3, ["source_schema", "sourceSchema"], nonBlankString);
+  const parsedSourceSchemaVersion = readAliasedValue(record3, ["source_schema_version", "sourceSchemaVersion"], numberValue2);
+  const parsedRollupRulesVersion = readAliasedValue(record3, ["rollup_rules_version", "rollupRulesVersion"], numberValue2);
+  const parsedGeneratedAt = readAliasedValue(record3, ["generated_at", "generatedAt"], nonBlankString);
+  const parsedSourceDates = readAliasedValue(record3, ["source_dates", "sourceDates"], stringArray, stringArraysEqual);
   const contractValues = [
     parsedCalendarTimezone,
     parsedDaysExpected,
@@ -14748,7 +14863,7 @@ function buildRollupSummary(record2) {
   if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA || sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION) || rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION))) return null;
   const generatedAt = parsedGeneratedAt.value;
   const sourceDates = parsedSourceDates.value;
-  const authority = schemaVersion === 11 ? sleepRangeAuthority(record2, calendarTimezone) : {};
+  const authority = schemaVersion === 11 ? sleepRangeAuthority(record3, calendarTimezone) : {};
   if (!authority) return null;
   return {
     ...authority,
@@ -14782,8 +14897,8 @@ function buildRollupSummary(record2) {
     generated_at: generatedAt,
     sourceDates,
     source_dates: sourceDates,
-    units: unitMap(record2.units),
-    metrics: normalizeMetrics(record2)
+    units: unitMap(record3.units),
+    metrics: normalizeMetrics(record3)
   };
 }
 function parseRollupJSON(content) {
@@ -14871,8 +14986,8 @@ function parseRollupMarkdown(content, cachedFrontmatter) {
   var _a;
   const parsed = parseFrontmatter(content);
   const frontmatter = (_a = parsed.frontmatter) != null ? _a : {};
-  const record2 = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
-  const summary = buildRollupSummary(record2);
+  const record3 = cachedFrontmatter ? { ...frontmatter, ...cachedFrontmatter } : frontmatter;
+  const summary = buildRollupSummary(record3);
   if (!summary) return null;
   if (cachedFrontmatter && (summary.schemaVersion === 11 || readOptionalSchemaVersion(frontmatter).version === 11)) {
     const physical = buildRollupSummary(frontmatter);
@@ -15854,6 +15969,28 @@ function mergeSection(fallback, preferred) {
   }
   return merged;
 }
+function mergeNativeSleep(fallback, preferred) {
+  var _a;
+  const merged = mergeSection(fallback, preferred);
+  if (!merged || !fallback || !preferred) return merged;
+  function richer(a, b, key) {
+    if (!a || !b || a.length !== b.length) return (b == null ? void 0 : b.length) ? b : a;
+    const keys = (values) => values.map(key).sort().join("\n");
+    if (keys(a) !== keys(b)) return b;
+    return a.reduce((sum, value) => sum + objectDetailScore(value), 0) > b.reduce((sum, value) => sum + objectDetailScore(value), 0) ? a : b;
+  }
+  merged.sleepStages = (_a = richer(
+    fallback.sleepStages,
+    preferred.sleepStages,
+    (value) => JSON.stringify([value.stage, value.startDate, value.endDate, value.durationSeconds])
+  )) != null ? _a : [];
+  merged.sleepSessions = richer(
+    fallback.sleepSessions,
+    preferred.sleepSessions,
+    (value) => JSON.stringify([value.startTimeISO, value.endTimeISO])
+  );
+  return merged;
+}
 function mergeDays(a, b) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N;
   const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -15895,7 +16032,7 @@ function mergeDays(a, b) {
     activity: mergeSection(fallback.activity, preferred.activity),
     heart: mergeSection(fallback.heart, preferred.heart),
     vitals: mergeSection(fallback.vitals, preferred.vitals),
-    sleep: mergeSection(fallback.sleep, preferred.sleep),
+    sleep: successorSleepDetails(preferred.schema_profile) ? mergeNativeSleep(fallback.sleep, preferred.sleep) : mergeSection(fallback.sleep, preferred.sleep),
     mobility: mergeSection(fallback.mobility, preferred.mobility),
     workouts: mergeWorkouts(a.workouts, b.workouts),
     mood: mergeSection(fallback.mood, preferred.mood),
@@ -17374,8 +17511,8 @@ var renderHrvTrend = (ctx, data, W, H, _config, theme, statsEl, hits) => {
 };
 
 // src/whoop-viz-utils.ts
-function whoopIsScored(record2) {
-  return record2.score_state === void 0 || record2.score_state === "SCORED";
+function whoopIsScored(record3) {
+  return record3.score_state === void 0 || record3.score_state === "SCORED";
 }
 function whoopRecoveryPairs(data) {
   return [...data].sort((a, b) => a.date.localeCompare(b.date)).flatMap((day) => {
@@ -17489,16 +17626,16 @@ function empty2(ctx, W, H, theme, stats, data, message) {
   text2(ctx, message, W / 2, H / 2, theme.muted, "center", W - 24);
   note(stats, data);
 }
-function details(day, record2) {
+function details(day, record3) {
   var _a, _b;
   return [
     { label: "Source", value: "WHOOP" },
     { label: "Capture", value: (_b = (_a = whoopForDay(day)) == null ? void 0 : _a.captureStatus) != null ? _b : "Unavailable" },
-    ...record2.id ? [{ label: "Provider ID", value: record2.id }] : [],
-    ...record2.score_state ? [{ label: "Score state", value: record2.score_state }] : [],
-    ...record2.start_time ? [{ label: "Start", value: record2.start_time }] : [],
-    ...record2.end_time ? [{ label: "End", value: record2.end_time }] : [],
-    ...record2.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
+    ...record3.id ? [{ label: "Provider ID", value: record3.id }] : [],
+    ...record3.score_state ? [{ label: "Score state", value: record3.score_state }] : [],
+    ...record3.start_time ? [{ label: "Start", value: record3.start_time }] : [],
+    ...record3.end_time ? [{ label: "End", value: record3.end_time }] : [],
+    ...record3.projection ? [{ label: "Fidelity", value: "Single-record scalar projection; identity/timing unavailable" }] : []
   ];
 }
 function grid(ctx, W, top, bottom, left, right, max, theme, suffix) {
@@ -24085,9 +24222,9 @@ function safeLabel(value, fallback) {
   if (!normalized) return fallback;
   return normalized.length > MAX_LABEL_LENGTH ? `${normalized.slice(0, MAX_LABEL_LENGTH - 1)}\u2026` : normalized;
 }
-function firstPrimitive(record2, ...keys) {
+function firstPrimitive(record3, ...keys) {
   for (const key of keys) {
-    const value = primitiveText(record2[key]);
+    const value = primitiveText(record3[key]);
     if (value !== void 0 && value.trim()) return value;
   }
   return void 0;
@@ -27450,17 +27587,17 @@ function parseCsvPreview(content) {
   const rows = [];
   let truncatedColumns = false;
   let truncatedRows = false;
-  for (const record2 of iterateCsvRecords(content, {
+  for (const record3 of iterateCsvRecords(content, {
     cellCharacterLimit: () => CSV_PREVIEW_MAX_CELL_CHARACTERS,
     truncationMarker: "\u2026"
   })) {
-    if (isBlankCsvRecord(record2)) continue;
+    if (isBlankCsvRecord(record3)) continue;
     if (rows.length >= CSV_PREVIEW_MAX_ROWS) {
       truncatedRows = true;
       break;
     }
-    if (record2.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
-    rows.push(record2.slice(0, CSV_PREVIEW_MAX_COLUMNS));
+    if (record3.length > CSV_PREVIEW_MAX_COLUMNS) truncatedColumns = true;
+    rows.push(record3.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }
   return { rows, truncatedRows, truncatedColumns };
 }

@@ -1,3 +1,4 @@
+import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority } from "../sleep-attribution";
 import {
 	HEALTHMD_HEALTH_DATA_SCHEMA,
@@ -1013,7 +1014,27 @@ function buildDayFromRows(
 	}
 
 	// Sleep
-	const sleepStages = parseSleepStages(rows).map((stage) => !authority.androidSleep && stage.stage === "light"
+	let nativeStages: NonNullable<HealthDay["sleep"]>["sleepStages"] = [];
+    let nativeSessions: NonNullable<HealthDay["sleep"]>["sleepSessions"] = [];
+    if (successorSleepDetails(authority.profile)) {
+        for (const row of rows.filter(row => normalizeLabel(row.category) === "sleep detail")) {
+            const metric = normalizeLabel(row.metric);
+            if (metric !== "sleep stage" && metric !== "sleep session") continue;
+            try {
+                const source: unknown = JSON.parse(row.value);
+                if (metric === "sleep stage") {
+                    const parsed = nativeSleepStages([source]);
+                    if (!parsed || row.unit !== "seconds" || parsed[0].startDate !== row.timestamp) return null;
+                    nativeStages.push(...parsed);
+                } else {
+                    const parsed = nativeSleepSessions([source]);
+                    if (!parsed || !authority.androidSleep || row.unit !== "json" || parsed[0].startTimeISO !== row.timestamp) return null;
+                    nativeSessions.push(...parsed);
+                }
+            } catch { return null; }
+        }
+    }
+    const sleepStages = [...nativeStages, ...parseSleepStages(rows)].map((stage) => !authority.androidSleep && stage.stage === "light"
 		? { ...stage, stage: "core" } : stage);
 	const sleepSeconds = (metric: string): number | undefined => {
 		const row = findRow(rows, [lookup("Sleep", metric)]);
@@ -1031,8 +1052,9 @@ function buildDayFromRows(
 	const coreSleep = authority.androidSleep ? undefined : sleepSeconds("Core Sleep") ?? sleepSeconds("Light Sleep") ?? sumStageSeconds(sleepStages, "core");
 	const lightSleep = authority.androidSleep ? sleepSeconds("Light Sleep") ?? sumStageSeconds(sleepStages, "light") : undefined;
 	const awakeTime = getNum(rows, "Sleep", "Awake Time") ?? sumStageSeconds(sleepStages, "awake");
-	if (sleepTotal > 0 || sleepStages.length) {
+	if (sleepTotal > 0 || sleepStages.length || nativeSessions.length) {
 		day.sleep = {
+            ...(nativeSessions.length ? { sleepSessions: nativeSessions } : {}),
 			sleepStages,
 			totalDuration: sleepTotal,
 			deepSleep,

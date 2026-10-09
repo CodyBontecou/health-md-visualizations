@@ -1,3 +1,4 @@
+import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority } from "../sleep-attribution";
 import {
 	HEALTHMD_HEALTH_DATA_SCHEMA,
@@ -325,6 +326,13 @@ export function parseJSON(content: string): HealthDay | null {
 		delete summaryRoot.medications;
 		const day = summaryRoot as unknown as HealthDay;
 		if (isRecord(parsed.sleep)) {
+            if (successorSleepDetails(authority.profile)) {
+                if (parsed.sleep.sleepStages !== undefined && !nativeSleepStages(parsed.sleep.sleepStages)) return null;
+                if (parsed.sleep.sleepSessions !== undefined) {
+                    const sessions = nativeSleepSessions(parsed.sleep.sleepSessions);
+                    if (!sessions || (!authority.androidSleep && sessions.length)) return null;
+                }
+            }
 			const stages = parsed.sleep.sleepStages;
 			day.sleep = { ...parsed.sleep, sleepStages: Array.isArray(stages)
 				? stages as NonNullable<HealthDay["sleep"]>["sleepStages"] : [] } as HealthDay["sleep"];

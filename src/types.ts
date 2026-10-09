@@ -1,3 +1,17 @@
+/** Native source facts stay separate from inferred chart quantities. */
+export interface SleepStage {
+ stage: string;
+ startDate: string;
+ endDate: string;
+ durationSeconds: number;
+ [key: string]: unknown;
+}
+export interface SleepSession {
+ startTimeISO: string;
+ endTimeISO: string;
+ [key: string]: unknown;
+}
+
 import type { HealthMdUnitMap, ParsedHealthMetricDataDictionary } from "./healthmd-schema";
 import type { UnitPreference, UnitSystem } from "./units";
 import type { WhoopDayData } from "./whoop-types";
@@ -355,12 +369,8 @@ export interface HealthDay {
 		respiratoryRateMax?: number;
 	};
 	sleep?: {
-		sleepStages: Array<{
-			stage: string;
-			startDate: string;
-			endDate: string;
-			durationSeconds: number;
-		}>;
+		sleepStages: SleepStage[];
+        sleepSessions?: SleepSession[];
 		totalDuration?: number;
 		totalDurationFormatted?: string;
 		deepSleep?: number;

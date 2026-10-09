@@ -1,3 +1,4 @@
+import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
 import { readSleepAuthority, sleepDeclaration } from "../sleep-attribution";
 import {
 	FrontmatterAliasMap,
@@ -228,6 +229,12 @@ function parseYamlBlock(lines: YamlLine[], start: number, indent: number): { val
 				continue;
 			}
 
+            // Native detail blocks carry complete JSON flow maps, including nested metadata.
+            if (rest.startsWith("{") && rest.endsWith("}")) {
+                try { arr.push(JSON.parse(rest)); } catch { arr.push(rest); }
+                i++;
+                continue;
+            }
 			const keyValue = splitYamlKeyValue(rest);
 			if (keyValue) {
 				const [key, rawValue] = keyValue;
@@ -1313,6 +1320,40 @@ export function parseMarkdown(
 	const unitSystem = explicitUnitSystem ?? (schema === HEALTHMD_HEALTH_DATA_SCHEMA && schemaVersion >= 1 ? "metric" : typeof rawUnits === "string" ? rawUnits : undefined);
 
 	const granular = parseGranularMarkdownData(parsed.body, date);
+    let nativeSessions: NonNullable<HealthDay["sleep"]>["sleepSessions"] = [];
+    if (successorSleepDetails(authority.profile)) {
+        if (fm.sleep_stage_details !== undefined) {
+            const stages = nativeSleepStages(fm.sleep_stage_details);
+            if (!stages) return null;
+            granular.sleepStages = stages;
+        }
+        if (fm.sleep_session_details !== undefined) {
+            const sessions = nativeSleepSessions(fm.sleep_session_details);
+            if (!sessions || !authority.androidSleep) return null;
+            nativeSessions = sessions;
+        }
+        for (const table of parseMarkdownTables(parsed.body)) {
+            const headers = normalizedHeaders(table);
+            const start = headers.indexOf("start (utc)"), end = headers.indexOf("end (utc)");
+            const stage = headers.indexOf("stage");
+            const context = normalizeLabel(table.context);
+            if (start < 0 || end < 0 || !["sleep stage details", "sleep session details"].includes(context)) continue;
+            if (context === "sleep stage details" && fm.sleep_stage_details === undefined) {
+                const stages = [];
+                for (const row of table.rows) {
+                    const duration = sleepInterval(row[start],row[end]);
+                    if (stage < 0 || duration === null || !row[stage]) return null;
+                    stages.push({stage:row[stage],startDate:row[start],endDate:row[end],durationSeconds:duration});
+                }
+                granular.sleepStages.push(...stages);
+            }
+            if (context === "sleep session details" && fm.sleep_session_details === undefined) {
+                const sessions = nativeSleepSessions(table.rows.map(row => ({startTimeISO:row[start],endTimeISO:row[end]})));
+                if (!sessions || !authority.androidSleep) return null;
+                nativeSessions.push(...sessions);
+            }
+        }
+    }
 	if (!authority.androidSleep) granular.sleepStages = granular.sleepStages.map((stage) => stage.stage === "light" ? { ...stage, stage: "core" } : stage);
 	if (authority.androidSleep && granular.sleepStages.some((stage) => stage.stage === "core")) return null;
 	const timeContext = authority.context;
@@ -1465,13 +1506,14 @@ export function parseMarkdown(
 	const sleepTotal = sleepHours !== undefined
 		? sleepHours * 3600
 		: (sleepSeconds ?? (derivedSleepTotal > 0 ? derivedSleepTotal : undefined));
-	if (sleepTotal !== undefined || granular.sleepStages.length) {
+	if (sleepTotal !== undefined || granular.sleepStages.length || nativeSessions.length) {
 		const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
 		const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
 		if (authority.androidSleep && getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "coreSleep") !== undefined) return null;
 		const coreH = getFirstNum(fm, ...(authority.androidSleep ? ["sleep_core_hours"] : ["sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours"]));
 		const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
 		day.sleep = {
+            ...(nativeSessions.length ? { sleepSessions: nativeSessions } : {}),
 			sleepStages: granular.sleepStages,
 			totalDuration: sleepTotal ?? derivedSleepTotal,
 			deepSleep: deepH !== undefined
