@@ -1,7 +1,7 @@
 import { HealthDay, HitRegistry, VizConfig, ResolvedTheme, RenderFn } from "../types";
 import { lerp, hsl, formatDate } from "../canvas-utils";
 import { renderStatBoxes } from "../dom-utils";
-import { sampleMinutes } from "../time-utils";
+import { sampleClock } from "../time-utils";
 
 function heartSummary(day: HealthDay) {
     const samples = (day.heart?.heartRateSamples ?? []).map(sample => sample.value).filter(Number.isFinite);
@@ -29,9 +29,10 @@ export const renderHeartTerrain: RenderFn = (
 
 	days.forEach((day) => {
 		const col: (number[] | null)[] = new Array<number[] | null>(BUCKETS).fill(null);
+		const context = day.timeContext ?? day.time_context;
+		const clock = sampleClock(context?.calendarTimezone ?? context?.calendar_timezone);
 		day.heart!.heartRateSamples.forEach((s) => {
-			const context = day.timeContext ?? day.time_context;
-			const mins = sampleMinutes(s.timestamp, context?.calendarTimezone ?? context?.calendar_timezone);
+			const mins = clock(s.timestamp);
 			if (mins === undefined) return;
 			const bucket = Math.floor(mins / 15);
 			if (bucket >= 0 && bucket < BUCKETS) {

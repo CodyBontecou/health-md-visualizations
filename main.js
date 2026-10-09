@@ -16597,24 +16597,30 @@ function formatClockTime(timestamp2) {
     minute: "2-digit"
   });
 }
-function sampleMinutes(timestamp2, calendarTimezone) {
-  var _a, _b;
-  const instant2 = new Date(timestamp2);
-  if (!Number.isFinite(instant2.getTime())) return void 0;
-  if (!calendarTimezone) return instant2.getHours() * 60 + instant2.getMinutes();
-  try {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: calendarTimezone,
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23"
-    }).formatToParts(instant2);
+function sampleClock(calendarTimezone) {
+  let formatter;
+  if (calendarTimezone) {
+    try {
+      formatter = new Intl.DateTimeFormat("en-GB", {
+        timeZone: calendarTimezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23"
+      });
+    } catch (e) {
+      return () => void 0;
+    }
+  }
+  return (timestamp2) => {
+    var _a, _b;
+    const instant2 = new Date(timestamp2);
+    if (!Number.isFinite(instant2.getTime())) return void 0;
+    if (!formatter) return instant2.getHours() * 60 + instant2.getMinutes();
+    const parts = formatter.formatToParts(instant2);
     const hour = Number((_a = parts.find((part) => part.type === "hour")) == null ? void 0 : _a.value);
     const minute = Number((_b = parts.find((part) => part.type === "minute")) == null ? void 0 : _b.value);
     return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : void 0;
-  } catch (e) {
-    return void 0;
-  }
+  };
 }
 
 // src/visualizations/heart-terrain.ts
@@ -16638,11 +16644,12 @@ var renderHeartTerrain = (ctx, data, W, H, _config, theme, statsEl, hits) => {
   const grid2 = [];
   let minBPM = 999, maxBPM = 0;
   days.forEach((day) => {
+    var _a, _b;
     const col = new Array(BUCKETS).fill(null);
+    const context = (_a = day.timeContext) != null ? _a : day.time_context;
+    const clock = sampleClock((_b = context == null ? void 0 : context.calendarTimezone) != null ? _b : context == null ? void 0 : context.calendar_timezone);
     day.heart.heartRateSamples.forEach((s) => {
-      var _a, _b;
-      const context = (_a = day.timeContext) != null ? _a : day.time_context;
-      const mins = sampleMinutes(s.timestamp, (_b = context == null ? void 0 : context.calendarTimezone) != null ? _b : context == null ? void 0 : context.calendar_timezone);
+      const mins = clock(s.timestamp);
       if (mins === void 0) return;
       const bucket = Math.floor(mins / 15);
       if (bucket >= 0 && bucket < BUCKETS) {
