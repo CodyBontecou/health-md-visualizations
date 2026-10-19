@@ -75,6 +75,7 @@ export interface WorkoutTimeSeries {
 }
 
 export interface WorkoutEntry {
+	elapsedDuration?: number;
 	type: string;
 	activityType?: string;
 	sport?: string;
@@ -300,6 +301,7 @@ export interface MindfulnessSession {
 }
 
 export interface HealthDay {
+	nativeWorkoutDetails?: import("./native-workout-details").NativeWorkoutDetail[];
 	nativeActivityDetails?: import("./native-activity-details").NativeActivityDetail[];
 	nativeCorrelationDetails?: import("./native-correlation-details").NativeCorrelationDetail[];
 	nativeQuantityDetails?: import("./native-quantity-details").NativeQuantityDetail[];

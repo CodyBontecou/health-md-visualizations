@@ -1,3 +1,4 @@
+import { attachNativeWorkoutDetails, type NativeWorkoutDetail } from "./native-workout-details";
 import { attachNativeActivityDetails, type NativeActivityDetail } from "./native-activity-details";
 import { attachNativeCorrelationDetails, type NativeCorrelationDetail } from "./native-correlation-details";
 import { attachNativeQuantityDetails, type NativeQuantityDetail } from "./native-quantity-details";
@@ -1094,6 +1095,15 @@ function mergeNativeActivity(a: NativeActivityDetail[] = [], b: NativeActivityDe
         }));
 }
 
+function mergeNativeWorkouts(a: NativeWorkoutDetail[] = [], b: NativeWorkoutDetail[] = []): NativeWorkoutDetail[] {
+    return mergeNativeSources(a, b, value => JSON.stringify([value.sample.type, value.sample.startTimeISO,
+        value.sample.endTimeISO, value.sample.duration, value.sample.elapsedDuration]), (left, right) => {
+        const sample = mergeQuantityFacts(left.sample, right.sample);
+        if (!sourceObject(sample) || typeof sample.type !== "string" || typeof sample.duration !== "number") throw new QuantitySourceConflict();
+        return {...right, sample: {...sample, type: sample.type, duration: sample.duration}};
+    });
+}
+
 /** Merge two HealthDay objects for the same date, preferring newer schema/richer fields. */
 function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 	const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
@@ -1166,6 +1176,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		whoop,
 	};
     if (successorSleepDetails(result.schema_profile)) {
+        attachNativeWorkoutDetails(result, mergeNativeWorkouts(fallback.nativeWorkoutDetails, preferred.nativeWorkoutDetails));
         attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
         attachNativeCorrelationDetails(result, mergeNativeCorrelations(fallback.nativeCorrelationDetails, preferred.nativeCorrelationDetails));
         attachNativeActivityDetails(result, mergeNativeActivity(fallback.nativeActivityDetails, preferred.nativeActivityDetails));

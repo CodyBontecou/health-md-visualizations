@@ -950,3 +950,42 @@ test('DataLoader keeps native activity source records once across format orders 
  }
  }
 });
+
+
+test('DataLoader preserves complete native workout source records in every mixed-format order',async()=>{
+ for(const [variant,folder,date] of [
+  ['apple-v11-workouts-Metric-detailed','Health','2026-03-15'],
+  ['android-v6-workouts-METRIC-true','health','2026-11-01'],
+ ]) {
+  const base=path.join(process.cwd(),'tests/fixtures/native-workouts',variant,folder,date);
+  const [json,csv,md,bases]=await Promise.all(['.json','.csv','.md','-bases.md'].map(suffix=>readFile(base+suffix,'utf8')));
+  const native=JSON.parse(json).workouts;
+  for(const contents of [{'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},
+   {'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},{'a.csv':csv,'b.md':md},
+   {'a.md':md,'b.csv':csv},{'a.md':bases,'b.md':md},{'a.md':md,'b.md':bases}]) {
+   const [day]=await loadWhoopVault(contents);
+   assert.ok(day,variant);
+   assert.deepEqual(day.workouts,native.map(sample=>({...sample,...(typeof sample.distance==='number'?{distanceMeters:sample.distance}:{})})),variant);
+   assert.deepEqual(day.nativeWorkoutDetails.map(record=>record.sample),native,variant);
+  }
+ }
+});
+
+test('DataLoader merges complementary workout provenance and rejects contradictory native quantities',async()=>{
+ const original=JSON.parse(await readFile('tests/fixtures/native-workouts/android-v6-workouts-METRIC-true/health/2026-11-01.json','utf8'));
+ const left=structuredClone(original),right=structuredClone(original);
+ left.workouts[0].metadata.left={name:'source'};
+ right.workouts[0].metadata.right={version:'revision'};
+ for(const [a,b] of [[left,right],[right,left]]){
+  const [day]=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)});
+  assert.deepEqual(day.workouts[0].metadata,{synthetic:'workout, source',left:{name:'source'},right:{version:'revision'}});
+ }
+ for(const mutation of [sample=>sample.identity.nativeId='another-workout',sample=>sample.metadata.synthetic='contradiction',sample=>sample.avgHeartRate=161.875]){
+  const changed=structuredClone(original);mutation(changed.workouts[0]);
+  for(const [a,b] of [[original,changed],[changed,original]]){
+   const {days,report}=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b),'c.json':JSON.stringify(original)},true);
+   assert.deepEqual(days,[]);
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+  }
+ }
+});

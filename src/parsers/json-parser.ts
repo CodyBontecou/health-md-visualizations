@@ -1,3 +1,4 @@
+import { attachNativeWorkoutDetails, workoutsFromJSON } from "../native-workout-details";
 import { activityDetailsFromJSON, attachNativeActivityDetails } from "../native-activity-details";
 import { attachNativeCorrelationDetails, correlationsFromJSON } from "../native-correlation-details";
 import { attachNativeQuantityDetails, quantityDetailsFromJSON } from "../native-quantity-details";
@@ -382,6 +383,9 @@ export function parseJSON(content: string): HealthDay | null {
 		Object.assign(day, normalizeMedicationFields(normalizedMedicationSource(parsed)));
 		normalizePercentageSections(day, schemaVersion);
         if (successorSleepDetails(authority.profile)) {
+            const workouts = workoutsFromJSON(parsed, authority.profile);
+            if (!workouts) return null;
+            attachNativeWorkoutDetails(day, workouts);
             const quantities = quantityDetailsFromJSON(parsed, authority.profile);
             if (!quantities) return null;
             attachNativeQuantityDetails(day, quantities);

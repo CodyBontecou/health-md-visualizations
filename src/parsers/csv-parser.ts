@@ -1,3 +1,4 @@
+import { attachNativeWorkoutDetails, nativeWorkoutDetails } from "../native-workout-details";
 import { activityRecordTimestamp, attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
 import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails } from "../native-quantity-details";
@@ -1178,6 +1179,14 @@ function buildDayFromRows(
 		day.hearing = { headphoneAudioLevel: headphone, environmentalSoundLevel: environmentalSound };
 	}
 
+    const workoutRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "workout");
+    if (workoutRows.length) {
+        try {
+            const records = nativeWorkoutDetails(workoutRows.map(row => JSON.parse(row.value)), authority.profile);
+            if (!records || records.some((record, index) => workoutRows[index].unit !== "json" || workoutRows[index].timestamp !== record.sample.startTimeISO)) return null;
+            attachNativeWorkoutDetails(day, records);
+        } catch { return null; }
+    }
     const activityRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "activity record");
     if (activityRows.length) {
         try {

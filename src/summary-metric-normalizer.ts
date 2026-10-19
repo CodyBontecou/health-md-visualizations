@@ -33,6 +33,10 @@ const BUILTIN_KEYS = new Set<string>([
 	"respiratory_rate", "respiratory_rate_avg", "respiratory_rate_min", "respiratory_rate_max", "sleep_total_hours", "sleep_bedtime", "sleep_wake",
 	"headphone_audio_db", "environmental_sound_db", "medication_count", "active_medication_count", "archived_medication_count",
 	"medication_dose_count", "medication_taken_count", "medication_skipped_count",
+    "workout_count", "workout_minutes", "workout_calories", "workout_distance_km", "workout_distance_mi",
+    "workout_avg_heart_rate", "workout_max_heart_rate", "workout_min_heart_rate", "workout_running_cadence",
+    "workout_running_stride_length", "workout_running_ground_contact", "workout_running_vertical_oscillation",
+    "workout_cycling_cadence", "workout_avg_power", "workout_max_power",
 ]);
 for (const sectionMap of Object.values(JSON_SECTION_METRIC_MAP)) {
 	for (const key of Object.values(sectionMap)) BUILTIN_KEYS.add(key);

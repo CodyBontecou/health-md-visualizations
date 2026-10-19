@@ -1,3 +1,4 @@
+import { attachNativeWorkoutDetails, nativeWorkoutDetails } from "../native-workout-details";
 import { attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
 import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions } from "../native-quantity-details";
@@ -1720,6 +1721,28 @@ export function parseMarkdown(
             const records = nativeActivityDetails(activityValues, authority.profile);
             if (!records) return null;
             attachNativeActivityDetails(day, records);
+        }
+    }
+    if (fm.native_workout_details !== undefined) {
+        const records = nativeWorkoutDetails(fm.native_workout_details, authority.profile);
+        if (!records) return null;
+        attachNativeWorkoutDetails(day, records);
+    } else {
+        const values: unknown[] = [];
+        for (const table of parseMarkdownTables(parsed.body)) {
+            if (normalizeLabel(table.context) !== "workout details") continue;
+            if (normalizedHeaders(table).join() !== "native record (json)") return null;
+            try {
+                for (const row of table.rows) {
+                    if (row.length !== 1) return null;
+                    values.push(JSON.parse(row[0]));
+                }
+            } catch { return null; }
+        }
+        if (values.length) {
+            const records = nativeWorkoutDetails(values, authority.profile);
+            if (!records) return null;
+            attachNativeWorkoutDetails(day, records);
         }
     }
     if (fm.native_quantity_details !== undefined) {
