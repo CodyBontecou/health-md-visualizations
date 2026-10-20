@@ -1028,7 +1028,7 @@ function buildDayFromRows(
             try {
                 const source: unknown = JSON.parse(row.value);
                 if (metric === "sleep stage") {
-                    const parsed = nativeSleepStages([source]);
+                    const parsed = nativeSleepStages([source], authority.profile);
                     if (!parsed || row.unit !== "seconds" || parsed[0].startDate !== row.timestamp) return null;
                     nativeStages.push(...parsed);
                 } else {

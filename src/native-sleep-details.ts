@@ -8,12 +8,14 @@ export function sleepInterval(start: unknown, end: unknown): number | null {
  const a = canonicalSourceInstant(start), b = canonicalSourceInstant(end);
  return a !== null && b !== null && b >= a ? Number(b-a)/1e9 : null;
 }
-export function nativeSleepStages(value: unknown): SleepStage[] | null {
+export function nativeSleepStages(value: unknown, profile?: string): SleepStage[] | null {
  if (!Array.isArray(value)) return null;
+ const allowed = profile === 'apple-v11' ? ['inBed', 'core', 'deep', 'rem', 'awake', 'unspecified']
+  : profile === 'android-sleep-v6' ? ['light', 'deep', 'rem', 'awake', 'wake', 'sleeping', 'unknown'] : null;
  const result: SleepStage[] = [];
  for (const item of value) {
   const source = record(item);
-  if (!source || typeof source.stage !== 'string' || !source.stage || typeof source.startDate !== 'string' || typeof source.endDate !== 'string'
+  if (!source || typeof source.stage !== 'string' || !source.stage || (allowed && !allowed.includes(source.stage)) || typeof source.startDate !== 'string' || typeof source.endDate !== 'string'
    || sleepInterval(source.startDate,source.endDate) === null
    || !exactSourceClockAgrees(source.startDate,source.exactStartTime) || !exactSourceClockAgrees(source.endDate,source.exactEndTime)
    || typeof source.durationSeconds !== 'number'

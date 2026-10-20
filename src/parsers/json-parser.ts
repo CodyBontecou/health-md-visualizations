@@ -334,7 +334,7 @@ export function parseJSON(content: string): HealthDay | null {
 		const day = summaryRoot as unknown as HealthDay;
 		if (isRecord(parsed.sleep)) {
             if (successorSleepDetails(authority.profile)) {
-                if (parsed.sleep.sleepStages !== undefined && !nativeSleepStages(parsed.sleep.sleepStages)) return null;
+                if (parsed.sleep.sleepStages !== undefined && !nativeSleepStages(parsed.sleep.sleepStages, authority.profile)) return null;
                 if (parsed.sleep.sleepSessions !== undefined) {
                     const sessions = nativeSleepSessions(parsed.sleep.sleepSessions);
                     if (!sessions || (!authority.androidSleep && sessions.length)) return null;

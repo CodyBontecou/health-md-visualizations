@@ -1,5 +1,6 @@
 import type { HealthDay } from './types';
 import { canonicalSourceInstant, exactSourceClockAgrees } from './native-source-clock';
+import { nativeSourceRecordsAgree } from './native-detail-markdown';
 
 /** Native mood observations and mindfulness sessions keep distinct source identities. */
 export interface NativeMindfulnessDetail {
@@ -52,13 +53,7 @@ export function mindfulnessDetailsFromJSON(root: Record<string, unknown>, profil
 }
 /** Two complete representations inside one note may repeat facts but cannot override them. */
 export function nativeMindfulnessDetailsAgree(a: NativeMindfulnessDetail[], b: NativeMindfulnessDetail[]): boolean {
- function ordered(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(ordered);
-  if (object(value)) return Object.fromEntries(Object.keys(value).sort().map(key => [key, ordered(value[key])]));
-  return value;
- }
- return JSON.stringify(a.map(record => JSON.stringify(ordered(record))).sort()) ===
-  JSON.stringify(b.map(record => JSON.stringify(ordered(record))).sort());
+ return nativeSourceRecordsAgree(a, b);
 }
 export function attachNativeMindfulnessDetails(day: HealthDay, records: NativeMindfulnessDetail[]): void {
  if (!records.length) return;

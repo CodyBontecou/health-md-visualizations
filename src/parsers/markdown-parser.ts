@@ -1,9 +1,11 @@
 import { attachNativeWorkoutDetails, nativeWorkoutDetails } from "../native-workout-details";
 import { attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
-import { attachNativeMindfulnessDetails, nativeMindfulnessDetails, nativeMindfulnessDetailsAgree } from "../native-mindfulness-details";
+import { attachNativeMindfulnessDetails, nativeMindfulnessDetails } from "../native-mindfulness-details";
 import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
+import { parseNativeDetailCell, nativeSourceRecordsAgree } from "../native-detail-markdown";
+import { canonicalSourceInstant } from "../native-source-clock";
 import { readSleepAuthority, sleepDeclaration } from "../sleep-attribution";
 import {
 	FrontmatterAliasMap,
@@ -19,6 +21,8 @@ import {
 	HealthDay,
 	MoodEntry,
 	RawCaptureStatus,
+	SleepStage,
+	SleepSession,
 	TimeSeriesSample,
 	WorkoutEntry,
 	WorkoutHeartRateZone,
@@ -716,6 +720,98 @@ function normalizedHeaders(table: MarkdownTable): string[] {
 	return table.headers.map((header) => normalizeLabel(header.replace(/[*_`]/g, "")));
 }
 
+interface NativeRepresentation<T> { records: T[]; complete: boolean }
+function reconcileNativeRepresentations<T>(representations: NativeRepresentation<T>[], projection: (record: T) => unknown): T[] | null {
+    const present = representations.filter(value => value.records.length);
+    if (!present.length) return [];
+    const projected = present[0].records.map(projection);
+    if (present.some(value => !nativeSourceRecordsAgree(value.records.map(projection), projected))) return null;
+    const complete = present.filter(value => value.complete);
+    if (complete.some(value => !nativeSourceRecordsAgree(value.records, complete[0].records))) return null;
+    return (complete[0] ?? present[0]).records;
+}
+
+function nativeJSONSection<T>(frontmatter: unknown, tables: MarkdownTable[], heading: string,
+    validate: (value: unknown) => T[] | null): T[] | null {
+    const representations: NativeRepresentation<T>[] = [];
+    if (frontmatter !== undefined) {
+        const records = validate(frontmatter);
+        if (!records) return null;
+        representations.push({records, complete: true});
+    }
+    for (const table of tables.filter(value => normalizeLabel(value.context) === heading)) {
+        if (normalizedHeaders(table).join() !== 'native record (json)') return null;
+        try {
+            const values = table.rows.map(row => {
+                if (row.length !== 1) throw new Error('Invalid native record row');
+                return parseNativeDetailCell(row[0]);
+            });
+            if (!values.length) continue;
+            const records = validate(values);
+            if (!records) return null;
+            representations.push({records, complete: true});
+        } catch { return null; }
+    }
+    return reconcileNativeRepresentations(representations, value => value);
+}
+
+function nativeSleepMarkdown(frontmatter: Record<string, unknown>, tables: MarkdownTable[], profile: string | undefined): {
+    stages: SleepStage[]; sessions: SleepSession[]; hasStages: boolean;
+} | null {
+    const stageRepresentations: NativeRepresentation<SleepStage>[] = [];
+    const sessionRepresentations: NativeRepresentation<SleepSession>[] = [];
+    let hasStages = frontmatter.sleep_stage_details !== undefined;
+    if (hasStages) {
+        const records = nativeSleepStages(frontmatter.sleep_stage_details, profile);
+        if (!records) return null;
+        stageRepresentations.push({records, complete: true});
+    }
+    if (frontmatter.sleep_session_details !== undefined) {
+        const records = nativeSleepSessions(frontmatter.sleep_session_details);
+        if (!records || profile !== 'android-sleep-v6') return null;
+        sessionRepresentations.push({records, complete: true});
+    }
+    const stageProjection = (value: SleepStage) => ({stage: value.stage,
+        start: canonicalSourceInstant(value.startDate)?.toString(), end: canonicalSourceInstant(value.endDate)?.toString()});
+    const sessionProjection = (value: SleepSession) => ({
+        start: canonicalSourceInstant(value.startTimeISO)?.toString(), end: canonicalSourceInstant(value.endTimeISO)?.toString()});
+    for (const table of tables) {
+        const heading = normalizeLabel(table.context);
+        if (heading !== 'sleep stage details' && heading !== 'sleep session details') continue;
+        const stage = heading === 'sleep stage details';
+        if (!stage && profile !== 'android-sleep-v6') return null;
+        if (stage) hasStages = true;
+        const headers = normalizedHeaders(table);
+        const base = stage ? ['start (utc)', 'end (utc)', 'stage'] : ['start (utc)', 'end (utc)'];
+        const complete = headers.join() === [...base, 'native record (json)'].join();
+        if (!complete && headers.join() !== base.join()) return null;
+        try {
+            const stages: SleepStage[] = [], sessions: SleepSession[] = [];
+            for (const row of table.rows) {
+                if (row.length !== headers.length) return null;
+                if (stage) {
+                    const duration = sleepInterval(row[0], row[1]);
+                    if (duration === null) return null;
+                    const projected = {startDate: row[0], endDate: row[1], stage: row[2], durationSeconds: duration};
+                    const records = nativeSleepStages([complete ? parseNativeDetailCell(row[3]) : projected], profile);
+                    if (!records || !nativeSourceRecordsAgree([stageProjection(records[0])], [stageProjection(projected)])) return null;
+                    stages.push(records[0]);
+                } else {
+                    const projected = {startTimeISO: row[0], endTimeISO: row[1]};
+                    const records = nativeSleepSessions([complete ? parseNativeDetailCell(row[2]) : projected]);
+                    if (!records || !nativeSourceRecordsAgree([sessionProjection(records[0])], [sessionProjection(projected)])) return null;
+                    sessions.push(records[0]);
+                }
+            }
+            if (stage) stageRepresentations.push({records: stages, complete});
+            else sessionRepresentations.push({records: sessions, complete});
+        } catch { return null; }
+    }
+    const stages = reconcileNativeRepresentations(stageRepresentations, stageProjection);
+    const sessions = reconcileNativeRepresentations(sessionRepresentations, sessionProjection);
+    return stages && sessions ? {stages, sessions, hasStages} : null;
+}
+
 function samplesFromTimeValueTable(
 	table: MarkdownTable,
 	date: string,
@@ -1327,37 +1423,10 @@ export function parseMarkdown(
 	const granular = parseGranularMarkdownData(parsed.body, date);
     let nativeSessions: NonNullable<HealthDay["sleep"]>["sleepSessions"] = [];
     if (successorSleepDetails(authority.profile)) {
-        if (fm.sleep_stage_details !== undefined) {
-            const stages = nativeSleepStages(fm.sleep_stage_details);
-            if (!stages) return null;
-            granular.sleepStages = stages;
-        }
-        if (fm.sleep_session_details !== undefined) {
-            const sessions = nativeSleepSessions(fm.sleep_session_details);
-            if (!sessions || !authority.androidSleep) return null;
-            nativeSessions = sessions;
-        }
-        for (const table of parseMarkdownTables(parsed.body)) {
-            const headers = normalizedHeaders(table);
-            const start = headers.indexOf("start (utc)"), end = headers.indexOf("end (utc)");
-            const stage = headers.indexOf("stage");
-            const context = normalizeLabel(table.context);
-            if (start < 0 || end < 0 || !["sleep stage details", "sleep session details"].includes(context)) continue;
-            if (context === "sleep stage details" && fm.sleep_stage_details === undefined) {
-                const stages = [];
-                for (const row of table.rows) {
-                    const duration = sleepInterval(row[start],row[end]);
-                    if (stage < 0 || duration === null || !row[stage]) return null;
-                    stages.push({stage:row[stage],startDate:row[start],endDate:row[end],durationSeconds:duration});
-                }
-                granular.sleepStages.push(...stages);
-            }
-            if (context === "sleep session details" && fm.sleep_session_details === undefined) {
-                const sessions = nativeSleepSessions(table.rows.map(row => ({startTimeISO:row[start],endTimeISO:row[end]})));
-                if (!sessions || !authority.androidSleep) return null;
-                nativeSessions.push(...sessions);
-            }
-        }
+        const native = nativeSleepMarkdown(fm, parseMarkdownTables(parsed.body), authority.profile);
+        if (!native) return null;
+        if (native.hasStages) granular.sleepStages = native.stages;
+        nativeSessions = native.sessions;
     }
 	if (!authority.androidSleep) granular.sleepStages = granular.sleepStages.map((stage) => stage.stage === "light" ? { ...stage, stage: "core" } : stage);
 	if (authority.androidSleep && granular.sleepStages.some((stage) => stage.stage === "core")) return null;
@@ -1702,74 +1771,20 @@ export function parseMarkdown(
         if (!records) return null;
         attachNativeCorrelationDetails(day, records);
     }
-    const mindfulnessValues: unknown[] = [];
-    for (const table of parseMarkdownTables(parsed.body)) {
-        const heading = normalizeLabel(table.context);
-        if (!["state of mind details", "mindfulness session details"].includes(heading)) continue;
-        if (heading !== (authority.profile === "apple-v11" ? "state of mind details" : "mindfulness session details") ||
-            normalizedHeaders(table).join() !== "native record (json)") return null;
-        try {
-            for (const row of table.rows) {
-                if (row.length !== 1) return null;
-                // Code spans preserve JSON backslashes when Obsidian renders/copies the cell.
-                const cell = row[0];
-                const json = cell.startsWith('`') && cell.endsWith('`') ? cell.slice(1, -1) : cell;
-                mindfulnessValues.push(JSON.parse(json));
-            }
-        } catch { return null; }
-    }
-    if (fm.native_mindfulness_details !== undefined || mindfulnessValues.length) {
-        const frontmatterRecords = fm.native_mindfulness_details === undefined ? []
-            : nativeMindfulnessDetails(fm.native_mindfulness_details, authority.profile);
-        const tableRecords = nativeMindfulnessDetails(mindfulnessValues, authority.profile);
-        if (!frontmatterRecords || !tableRecords || (frontmatterRecords.length && tableRecords.length &&
-            !nativeMindfulnessDetailsAgree(frontmatterRecords, tableRecords))) return null;
-        attachNativeMindfulnessDetails(day, tableRecords.length ? tableRecords : frontmatterRecords);
-    }
-    const activityValues: unknown[] = [];
-    if (fm.native_activity_details !== undefined) {
-        const records = nativeActivityDetails(fm.native_activity_details, authority.profile);
-        if (!records) return null;
-        attachNativeActivityDetails(day, records);
-    } else {
-        for (const table of parseMarkdownTables(parsed.body)) {
-            if (normalizeLabel(table.context) !== "activity record details") continue;
-            if (normalizedHeaders(table).join() !== "native record (json)") return null;
-            try {
-                for (const row of table.rows) {
-                    if (row.length !== 1) return null;
-                    activityValues.push(JSON.parse(row[0]));
-                }
-            } catch { return null; }
-        }
-        if (activityValues.length) {
-            const records = nativeActivityDetails(activityValues, authority.profile);
-            if (!records) return null;
-            attachNativeActivityDetails(day, records);
-        }
-    }
-    if (fm.native_workout_details !== undefined) {
-        const records = nativeWorkoutDetails(fm.native_workout_details, authority.profile);
-        if (!records) return null;
-        attachNativeWorkoutDetails(day, records);
-    } else {
-        const values: unknown[] = [];
-        for (const table of parseMarkdownTables(parsed.body)) {
-            if (normalizeLabel(table.context) !== "workout details") continue;
-            if (normalizedHeaders(table).join() !== "native record (json)") return null;
-            try {
-                for (const row of table.rows) {
-                    if (row.length !== 1) return null;
-                    values.push(JSON.parse(row[0]));
-                }
-            } catch { return null; }
-        }
-        if (values.length) {
-            const records = nativeWorkoutDetails(values, authority.profile);
-            if (!records) return null;
-            attachNativeWorkoutDetails(day, records);
-        }
-    }
+    const nativeTables = parseMarkdownTables(parsed.body);
+    const mindfulnessHeading = authority.profile === 'apple-v11' ? 'state of mind details' : 'mindfulness session details';
+    const foreignMindfulnessHeading = authority.profile === 'apple-v11' ? 'mindfulness session details' : 'state of mind details';
+    if (nativeTables.some(table => normalizeLabel(table.context) === foreignMindfulnessHeading)) return null;
+    const mindfulness = nativeJSONSection(fm.native_mindfulness_details, nativeTables, mindfulnessHeading,
+        value => nativeMindfulnessDetails(value, authority.profile));
+    const activity = nativeJSONSection(fm.native_activity_details, nativeTables, 'activity record details',
+        value => nativeActivityDetails(value, authority.profile));
+    const nativeWorkouts = nativeJSONSection(fm.native_workout_details, nativeTables, 'workout details',
+        value => nativeWorkoutDetails(value, authority.profile));
+    if (!mindfulness || !activity || !nativeWorkouts) return null;
+    attachNativeMindfulnessDetails(day, mindfulness);
+    attachNativeActivityDetails(day, activity);
+    attachNativeWorkoutDetails(day, nativeWorkouts);
     if (fm.native_quantity_details !== undefined) {
         const records = nativeQuantityDetails(fm.native_quantity_details, authority.profile);
         if (!records) return null;
