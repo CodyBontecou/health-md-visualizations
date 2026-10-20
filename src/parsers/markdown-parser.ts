@@ -1,6 +1,6 @@
 import { attachNativeWorkoutDetails, nativeWorkoutDetails } from "../native-workout-details";
 import { attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
-import { attachNativeMindfulnessDetails, nativeMindfulnessDetails } from "../native-mindfulness-details";
+import { attachNativeMindfulnessDetails, nativeMindfulnessDetails, nativeMindfulnessDetailsAgree } from "../native-mindfulness-details";
 import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
@@ -1703,26 +1703,25 @@ export function parseMarkdown(
         attachNativeCorrelationDetails(day, records);
     }
     const mindfulnessValues: unknown[] = [];
-    if (fm.native_mindfulness_details !== undefined) {
-        const records = nativeMindfulnessDetails(fm.native_mindfulness_details, authority.profile);
-        if (!records) return null;
-        attachNativeMindfulnessDetails(day, records);
-    } else {
-        for (const table of parseMarkdownTables(parsed.body)) {
-            if (!["state of mind details", "mindfulness session details"].includes(normalizeLabel(table.context))) continue;
-            if (normalizedHeaders(table).join() !== "native record (json)") return null;
-            try {
-                for (const row of table.rows) {
-                    if (row.length !== 1) return null;
-                    mindfulnessValues.push(JSON.parse(row[0]));
-                }
-            } catch { return null; }
-        }
-        if (mindfulnessValues.length) {
-            const records = nativeMindfulnessDetails(mindfulnessValues, authority.profile);
-            if (!records) return null;
-            attachNativeMindfulnessDetails(day, records);
-        }
+    for (const table of parseMarkdownTables(parsed.body)) {
+        const heading = normalizeLabel(table.context);
+        if (!["state of mind details", "mindfulness session details"].includes(heading)) continue;
+        if (heading !== (authority.profile === "apple-v11" ? "state of mind details" : "mindfulness session details") ||
+            normalizedHeaders(table).join() !== "native record (json)") return null;
+        try {
+            for (const row of table.rows) {
+                if (row.length !== 1) return null;
+                mindfulnessValues.push(JSON.parse(row[0]));
+            }
+        } catch { return null; }
+    }
+    if (fm.native_mindfulness_details !== undefined || mindfulnessValues.length) {
+        const frontmatterRecords = fm.native_mindfulness_details === undefined ? []
+            : nativeMindfulnessDetails(fm.native_mindfulness_details, authority.profile);
+        const tableRecords = nativeMindfulnessDetails(mindfulnessValues, authority.profile);
+        if (!frontmatterRecords || !tableRecords || (frontmatterRecords.length && tableRecords.length &&
+            !nativeMindfulnessDetailsAgree(frontmatterRecords, tableRecords))) return null;
+        attachNativeMindfulnessDetails(day, tableRecords.length ? tableRecords : frontmatterRecords);
     }
     const activityValues: unknown[] = [];
     if (fm.native_activity_details !== undefined) {

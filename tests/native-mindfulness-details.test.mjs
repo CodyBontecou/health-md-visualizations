@@ -87,3 +87,26 @@ test('the native mindfulness corpus retains exact captured bytes', async () => {
   assert.equal(createHash('sha256').update(await readFile(path.join(root, file))).digest('hex'), digest, file);
  }
 });
+
+test('Markdown reconciles redundant mindfulness details and rejects a contradictory frontmatter shadow', async () => {
+ const r = await readers();
+ for (const platform of ['apple-v11', 'android-v6']) {
+  const folder = `${root}/${platform}-mindfulness-true/${platform === 'apple-v11' ? 'Health' : 'health'}`;
+  const date = platform === 'apple-v11' ? '2026-03-14' : '2026-11-01';
+  const markdown = await readFile(`${folder}/${date}.md`, 'utf8');
+  const native = r.parseJSON(await readFile(`${folder}/${date}.json`, 'utf8')).nativeMindfulnessDetails;
+  for (const records of [[], native]) {
+   const field = records.length ? `native_mindfulness_details:\n  - ${JSON.stringify(records[0])}` : 'native_mindfulness_details: []';
+   const both = markdown.replace('\n---\n', `\n${field}\n---\n`);
+   const day = r.parseMarkdown(both);
+   assert.ok(day, platform);
+   assert.deepEqual(day.nativeMindfulnessDetails, native, platform);
+  }
+  const conflicting = structuredClone(native[0]); conflicting.sample.metadata.synthetic = 'contradiction';
+  const both = markdown.replace('\n---\n', `\nnative_mindfulness_details:\n  - ${JSON.stringify(conflicting)}\n---\n`);
+  assert.equal(r.parseMarkdown(both), null, platform);
+  const wrongHeading = markdown.replace(platform === 'apple-v11' ? 'State of Mind Details' : 'Mindfulness Session Details',
+   platform === 'apple-v11' ? 'Mindfulness Session Details' : 'State of Mind Details');
+  assert.equal(r.parseMarkdown(wrongHeading), null, platform);
+ }
+});

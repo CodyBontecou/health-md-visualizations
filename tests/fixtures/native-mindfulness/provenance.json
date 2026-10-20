@@ -4,7 +4,7 @@
   "synthetic_post_capture_inputs": true,
   "real_provider_capture": false,
   "runtime_source_sha256": {
-    "apps/apple/HealthMd/Shared/Core/HealthMdRenderInputAdapter.swift": "04b3e487abbbf85abdd01684e28d1d1d837c43b2fde3706ffb885a4032b806bd",
+    "apps/apple/HealthMd/Shared/Core/HealthMdRenderInputAdapter.swift": "55d6043f6307a3b0616e20927c823864c38bf93b7a7f98577f3b004550c1164c",
     "apps/apple/HealthMd/Shared/Core/HealthMdSemanticInputAdapter.swift": "3192f00468985961884ba9c373deb10d7cbcee219eeb4a18fa3584f7e7ec19a0",
     "apps/apple/HealthMd/Shared/ExportEngine/AppleLooseDailyExportPlanner.swift": "f1a3e6c77b4bfea2198ce9baa986d843377d0dd6fb734846e2e6b55026a529cf",
     "apps/apple/HealthMd/Shared/Export/JSONExporter.swift": "f24504c627e2acbdcc18f97e38314e893b16efd0f0a7e3f9dc6202d93dbca848",
@@ -34,7 +34,8 @@
     "apple-v11-mindfulness-true/Health/2026-03-14.json": "76c15981c6a78a9722229e6ecdda9907f6c9ec26e290529c82971b55f8bf27b8",
     "apple-v11-mindfulness-true/Health/2026-03-14.md": "0fa8d3cead39a4ed2faa3c3dc7a571054cbdbe12c0ed17e0b7741384c8308379"
   },
-  "producer_source_commit": "3801b5857025fb1cdfff812d4a89dc0115d70158",
+  "producer_source_commit": "fc7f9d80b19b4fbd1281cd2115522dbbcd62431e",
   "capture_build_base_commit": "6fcbcf42d1bb6adffdbc381d8dfb5693b8a02f0a",
-  "producer_source_snapshot_committed": true
+  "producer_source_snapshot_committed": true,
+  "valid_artifact_bytes_unchanged_after_interval_review_fix": true
 }
