@@ -1,16 +1,16 @@
 {
-  "producer_base_commit": "6fcbcf42d1bb6adffdbc381d8dfb5693b8a02f0a",
+  "producer_base_commit": "5a817bfb33b073bfddaf6b3b5b6d6d4c007398c4",
   "capture_working_tree_dirty": true,
   "synthetic_post_capture_inputs": true,
   "real_provider_capture": false,
   "runtime_source_sha256": {
-    "apps/apple/HealthMd/Shared/Core/HealthMdRenderInputAdapter.swift": "55d6043f6307a3b0616e20927c823864c38bf93b7a7f98577f3b004550c1164c",
+    "apps/apple/HealthMd/Shared/Core/HealthMdRenderInputAdapter.swift": "8f4475e0f2db1f4472c1f0a246c26c1ce9d801779b5108d586b51d4dd79b4ad7",
     "apps/apple/HealthMd/Shared/Core/HealthMdSemanticInputAdapter.swift": "3192f00468985961884ba9c373deb10d7cbcee219eeb4a18fa3584f7e7ec19a0",
     "apps/apple/HealthMd/Shared/ExportEngine/AppleLooseDailyExportPlanner.swift": "f1a3e6c77b4bfea2198ce9baa986d843377d0dd6fb734846e2e6b55026a529cf",
     "apps/apple/HealthMd/Shared/Export/JSONExporter.swift": "f24504c627e2acbdcc18f97e38314e893b16efd0f0a7e3f9dc6202d93dbca848",
     "apps/apple/HealthMd/Shared/Export/ExportDataSnapshot.swift": "5e257233191c53a486a24d7e01dd4ed825b0ed62da283596209780515320ab10",
     "apps/apple/HealthMd/Shared/Models/HealthData.swift": "93ee7565028c03485c7321fa097ea4ba456efa301b9a1b88419a5a5e0821ab9d",
-    "apps/android/app/src/main/java/com/healthmd/domain/render/HealthMdRenderInputAdapter.kt": "be4f0c5b2939361cc4d4b7df3559925402659a9803be7fb7884bcc3a2c05103d",
+    "apps/android/app/src/main/java/com/healthmd/domain/render/HealthMdRenderInputAdapter.kt": "6127cdaaba3d29152184127e5db1c6a7632e4ea4c1f59cb892daa86bbe1a33c4",
     "apps/android/app/src/main/java/com/healthmd/domain/exportengine/DailyAggregateExportPlanner.kt": "1b2dfb4aab9f1fbf1390c9671551f984423d724cf8a1cdead798a1429fff13e8",
     "apps/android/app/src/main/java/com/healthmd/data/export/JsonExporter.kt": "ec0d1b349a5aaab0fbe0da3c3eefcb62c8d12a49efc31e998350dd939a4206c2",
     "apps/android/app/src/main/java/com/healthmd/data/export/WakeDateJsonDocument.kt": "9a005e89dbbbe8cbeef9113e675150f2873309226d97f31264dbba37a24cc43b",
@@ -20,22 +20,32 @@
     "android-v6-mindfulness-false/health/2026-11-01-bases.md": "d9032c3f4535c30f8a7363eea8bbe2880fb106b3036d888b167b968bda836711",
     "android-v6-mindfulness-false/health/2026-11-01.csv": "83a310ecdf8b62aac8f9e603d7f982423ca6e6433c261488a476f486034613e6",
     "android-v6-mindfulness-false/health/2026-11-01.json": "d6f9a573e35df479f5a87a2d758690edfeb4a7932098437155ed9a432c626350",
-    "android-v6-mindfulness-false/health/2026-11-01.md": "348eeecbde42e5bab2876f210a1db282021da6596083263fa4a615fb6aea4818",
+    "android-v6-mindfulness-false/health/2026-11-01.md": "9465489f61fbc536a52e9f47b704d23d6e845cd40a98c0c5004c0103fde94d25",
     "android-v6-mindfulness-true/health/2026-11-01-bases.md": "d9032c3f4535c30f8a7363eea8bbe2880fb106b3036d888b167b968bda836711",
     "android-v6-mindfulness-true/health/2026-11-01.csv": "83a310ecdf8b62aac8f9e603d7f982423ca6e6433c261488a476f486034613e6",
     "android-v6-mindfulness-true/health/2026-11-01.json": "d6f9a573e35df479f5a87a2d758690edfeb4a7932098437155ed9a432c626350",
-    "android-v6-mindfulness-true/health/2026-11-01.md": "39f45d3644ed4be4572f6ef18aa0977f3015cebfd2220ef7c9dd6768316fe562",
+    "android-v6-mindfulness-true/health/2026-11-01.md": "6e69d032b75f561b8ab0a7092f450e9357c71b081503b0d5a5b2e0d569a712f0",
     "apple-v11-mindfulness-false/Health/2026-03-14-bases.md": "1a43831621be36c7d968f5427018d11de2e74bbd332c2d81bdea0cf4fc311be4",
     "apple-v11-mindfulness-false/Health/2026-03-14.csv": "fbfbe966ee0994183a027355a21cd9da951aabde7273d685a66fae599916e0f9",
     "apple-v11-mindfulness-false/Health/2026-03-14.json": "76c15981c6a78a9722229e6ecdda9907f6c9ec26e290529c82971b55f8bf27b8",
-    "apple-v11-mindfulness-false/Health/2026-03-14.md": "36762fdd089aa193cfbf7c163cde029982df1e0c16e5903d5c2347a7c72fff4c",
+    "apple-v11-mindfulness-false/Health/2026-03-14.md": "4c1d04b5f4a784fc232ecf21f21b50cb6bf20806328278cc9aec1c7bbefd27ff",
     "apple-v11-mindfulness-true/Health/2026-03-14-bases.md": "1a43831621be36c7d968f5427018d11de2e74bbd332c2d81bdea0cf4fc311be4",
     "apple-v11-mindfulness-true/Health/2026-03-14.csv": "fbfbe966ee0994183a027355a21cd9da951aabde7273d685a66fae599916e0f9",
     "apple-v11-mindfulness-true/Health/2026-03-14.json": "76c15981c6a78a9722229e6ecdda9907f6c9ec26e290529c82971b55f8bf27b8",
-    "apple-v11-mindfulness-true/Health/2026-03-14.md": "0fa8d3cead39a4ed2faa3c3dc7a571054cbdbe12c0ed17e0b7741384c8308379"
+    "apple-v11-mindfulness-true/Health/2026-03-14.md": "f80efef143078e241b717a554e138f8dec9ffe4fbebb76f95a5d06290327c0a9"
   },
-  "producer_source_commit": "fc7f9d80b19b4fbd1281cd2115522dbbcd62431e",
-  "capture_build_base_commit": "6fcbcf42d1bb6adffdbc381d8dfb5693b8a02f0a",
+  "producer_source_commit": "431bab4952a8813922660375f6a7e4a6c86a8020",
+  "capture_build_base_commit": "5a817bfb33b073bfddaf6b3b5b6d6d4c007398c4",
   "producer_source_snapshot_committed": true,
-  "valid_artifact_bytes_unchanged_after_interval_review_fix": true
+  "valid_artifact_bytes_unchanged_after_interval_review_fix": true,
+  "markdown_copy_correction": {
+    "previous_producer_source_commit": "fc7f9d80b19b4fbd1281cd2115522dbbcd62431e",
+    "changed_artifacts": [
+      "android-v6-mindfulness-false/health/2026-11-01.md",
+      "android-v6-mindfulness-true/health/2026-11-01.md",
+      "apple-v11-mindfulness-false/Health/2026-03-14.md",
+      "apple-v11-mindfulness-true/Health/2026-03-14.md"
+    ],
+    "reason": "Literal code spans preserve JSON backslashes through rendering and copy; source facts and all other artifact bytes are unchanged."
+  }
 }

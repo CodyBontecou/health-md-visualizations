@@ -1711,7 +1711,10 @@ export function parseMarkdown(
         try {
             for (const row of table.rows) {
                 if (row.length !== 1) return null;
-                mindfulnessValues.push(JSON.parse(row[0]));
+                // Code spans preserve JSON backslashes when Obsidian renders/copies the cell.
+                const cell = row[0];
+                const json = cell.startsWith('`') && cell.endsWith('`') ? cell.slice(1, -1) : cell;
+                mindfulnessValues.push(JSON.parse(json));
             }
         } catch { return null; }
     }

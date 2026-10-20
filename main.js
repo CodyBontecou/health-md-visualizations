@@ -14980,7 +14980,9 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
     try {
       for (const row of table.rows) {
         if (row.length !== 1) return null;
-        mindfulnessValues.push(JSON.parse(row[0]));
+        const cell = row[0];
+        const json = cell.startsWith("`") && cell.endsWith("`") ? cell.slice(1, -1) : cell;
+        mindfulnessValues.push(JSON.parse(json));
       }
     } catch (e) {
       return null;

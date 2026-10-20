@@ -106,6 +106,20 @@ test('JSON cannot inject consumer-only native mindfulness authority', async () =
  }
 });
 
+test('Markdown accepts native JSON code spans and historical plain table cells', async () => {
+ const r = await readers();
+ for (const platform of ['apple-v11', 'android-v6']) {
+  const folder = `${root}/${platform}-mindfulness-true/${platform === 'apple-v11' ? 'Health' : 'health'}`;
+  const date = platform === 'apple-v11' ? '2026-03-14' : '2026-11-01';
+  const markdown = await readFile(`${folder}/${date}.md`, 'utf8');
+  const plain = markdown.replace(/\| `(.+)` \|/g, '| $1 |');
+  const wrapped = plain.replace(/\| (\{.+\}) \|/g, '| `$1` |');
+  const source = r.parseJSON(await readFile(`${folder}/${date}.json`, 'utf8')).nativeMindfulnessDetails;
+  for (const text of [plain, wrapped]) assert.deepEqual(r.parseMarkdown(text)?.nativeMindfulnessDetails, source);
+  assert.equal(r.parseMarkdown(wrapped.replace('` |', ' |')), null);
+ }
+});
+
 test('Markdown reconciles redundant mindfulness details and rejects a contradictory frontmatter shadow', async () => {
  const r = await readers();
  for (const platform of ['apple-v11', 'android-v6']) {
