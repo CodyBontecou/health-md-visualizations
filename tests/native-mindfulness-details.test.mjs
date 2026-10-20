@@ -13,7 +13,7 @@ async function readers() {
  if (module) return module;
  temporary = await mkdtemp(path.join(os.tmpdir(), 'healthmd-mindfulness-reader-'));
  const outfile = path.join(temporary, 'reader.mjs');
- await build({stdin: {contents: ["export * from './src/native-mindfulness-details.ts';",
+ await build({stdin: {contents: ["export * from './src/native-mindfulness-details.ts';", "export * from './src/mood-utils.ts';",
   ...['json', 'csv', 'markdown'].map(name => `export * from './src/parsers/${name}-parser.ts';`)].join('\n'),
   resolveDir: process.cwd(), loader: 'ts'}, bundle: true, platform: 'node', format: 'esm', outfile, logLevel: 'silent'});
  return module = await import(pathToFileURL(outfile).href);
@@ -49,6 +49,9 @@ test('actual native mindfulness artifacts retain distinct complete source record
    assert.deepEqual(detail.sample, samples[0], file);
    assert.equal(detail.sample.metadata.synthetic, 'mind, source');
    if (apple) {
+    const summary = r.getMoodDaySummary(day);
+    assert.equal(summary.entries.length, 1, `${file}: one native observation must render once`);
+    assert.equal(summary.averageValence, samples[0].valence, file);
     assert.equal(detail.sample.valence, -0.123456789);
     assert.deepEqual(detail.sample.labels, ['Calm|alert', 'quoted "label"']);
     assert.equal(day.mindfulness.sessions, undefined);

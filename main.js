@@ -12256,8 +12256,10 @@ function createMoodSummary(entries) {
   };
 }
 function getMoodDaySummary(day) {
+  var _a;
   const dayRecord = day;
-  const entries = dedupeMoodEntries([
+  const nativeMoods = (_a = day.nativeMindfulnessDetails) == null ? void 0 : _a.filter((record5) => record5.metric === "state_of_mind");
+  const entries = dedupeMoodEntries((nativeMoods == null ? void 0 : nativeMoods.length) ? nativeMoods.flatMap((record5) => moodEntriesFromUnknown(record5.sample, day.date)) : [
     ...moodEntriesFromUnknown(dayRecord.mood, day.date),
     ...moodEntriesFromUnknown(dayRecord.stateOfMind, day.date),
     ...moodEntriesFromUnknown(dayRecord.state_of_mind, day.date),
