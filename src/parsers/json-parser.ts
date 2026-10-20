@@ -329,6 +329,8 @@ export function parseJSON(content: string): HealthDay | null {
 		const summaryRoot = { ...parsed };
 		delete summaryRoot.diagnostics;
 		delete summaryRoot.medications;
+		// This is consumer state, populated only from validated native source fields.
+		delete summaryRoot.nativeMindfulnessDetails;
 		const day = summaryRoot as unknown as HealthDay;
 		if (isRecord(parsed.sleep)) {
             if (successorSleepDetails(authority.profile)) {

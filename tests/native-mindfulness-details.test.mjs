@@ -91,6 +91,21 @@ test('the native mindfulness corpus retains exact captured bytes', async () => {
  }
 });
 
+test('JSON cannot inject consumer-only native mindfulness authority', async () => {
+ const r = await readers();
+ const successor = JSON.parse(await readFile(`${root}/apple-v11-mindfulness-true/Health/2026-03-14.json`, 'utf8'));
+ delete successor.mindfulness;
+ const legacy = {type: 'health-data', date: '2026-03-14'};
+ for (const source of [legacy, successor]) {
+  for (const injected of [[{metric: 'state_of_mind', sample: {valence: 1}}], {malformed: true}]) {
+   const day = r.parseJSON(JSON.stringify({...source, mood: {entries: [{valence: -0.5}]}, nativeMindfulnessDetails: injected}));
+   assert.ok(day);
+   assert.equal(day.nativeMindfulnessDetails, undefined);
+   assert.equal(r.getMoodDaySummary(day).averageValence, -0.5);
+  }
+ }
+});
+
 test('Markdown reconciles redundant mindfulness details and rejects a contradictory frontmatter shadow', async () => {
  const r = await readers();
  for (const platform of ['apple-v11', 'android-v6']) {

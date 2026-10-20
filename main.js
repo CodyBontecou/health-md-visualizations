@@ -12506,6 +12506,7 @@ function parseJSON(content) {
     const summaryRoot = { ...parsed };
     delete summaryRoot.diagnostics;
     delete summaryRoot.medications;
+    delete summaryRoot.nativeMindfulnessDetails;
     const day = summaryRoot;
     if (isRecord4(parsed.sleep)) {
       if (successorSleepDetails(authority.profile)) {
