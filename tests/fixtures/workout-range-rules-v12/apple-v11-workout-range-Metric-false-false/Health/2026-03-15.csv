@@ -1,0 +1,24 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-03-15,Metadata,schema,healthmd.health_data,,
+2026-03-15,Metadata,schema_version,11,,
+2026-03-15,Metadata,schema_profile,apple-v11,,
+2026-03-15,Metadata,unit_system,metric,,
+2026-03-15,Metadata,time_context.calendar_timezone,GMT,,
+2026-03-15,Metadata,time_context.timestamp_timezone,UTC,,
+2026-03-15,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-03-15,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-03-15,Metadata,time_context.sleep_interval_clipping,none,,
+2026-03-15,Raw HealthKit,Raw Capture Status,not_requested,status,
+2026-03-15,Workouts,Workout Avg Heart Rate,100,bpm,
+2026-03-15,Workouts,Workout Max Heart Rate,260,bpm,
+2026-03-15,Workouts,Workout Min Heart Rate,50,bpm,
+2026-03-15,Workouts,Workout Running Cadence,180,spm,
+2026-03-15,Workouts,Workout Running Stride Length,1,m,
+2026-03-15,Workouts,Workout Running Ground Contact,200,ms,
+2026-03-15,Workouts,Workout Running Vertical Oscillation,6,cm,
+2026-03-15,Workouts,Workout Cycling Cadence,80,rpm,
+2026-03-15,Workouts,Workout Avg Power,100,W,
+2026-03-15,Workouts,Workout Max Power,400,W,
+2026-03-15,Native Detail,Workout,"{""metric"":""workout"",""sample"":{""avgGroundContactTime"":200,""avgHeartRate"":100,""avgPower"":100,""avgRunningCadence"":180,""avgStrideLength"":1,""avgVerticalOscillation"":6,""duration"":600,""durationFormatted"":""10m"",""elapsedDuration"":600,""endTimeISO"":""2026-03-15T00:10:00.000000000Z"",""id"":""94651962-A356-407A-B18E-D015B9B279BB"",""maxHeartRate"":260,""maxPower"":400,""minHeartRate"":50,""sport"":""running"",""startTime"":""00:00"",""startTimeISO"":""2026-03-15T00:00:00.000000000Z"",""type"":""Running""}}",json,2026-03-15T00:00:00.000000000Z
+2026-03-15,Native Detail,Workout,"{""metric"":""workout"",""sample"":{""avgCyclingCadence"":80,""avgPower"":100,""duration"":1200,""durationFormatted"":""20m"",""elapsedDuration"":1200,""endTimeISO"":""2026-03-15T00:40:00.000000000Z"",""id"":""DD62E176-162F-4F45-AEC1-F35688117112"",""sport"":""cycling"",""startTime"":""00:20"",""startTimeISO"":""2026-03-15T00:20:00.000000000Z"",""type"":""Cycling""}}",json,2026-03-15T00:20:00.000000000Z
+2026-03-15,Native Detail,Workout,"{""metric"":""workout"",""sample"":{""duration"":1800,""durationFormatted"":""30m"",""elapsedDuration"":1800,""endTimeISO"":""2026-03-15T01:30:00.000000000Z"",""id"":""86A413B4-F7CA-453A-996D-91D08B712E22"",""sport"":""running"",""startTime"":""01:00"",""startTimeISO"":""2026-03-15T01:00:00.000000000Z"",""type"":""Running""}}",json,2026-03-15T01:00:00.000000000Z

@@ -365,10 +365,11 @@ function buildRollupSummary(record: Record<string, unknown>): HealthRollupSummar
 	if ((schemaVersion === 9 || schemaVersion === 10 || schemaVersion === 11) && (
 		sourceSchema !== HEALTHMD_HEALTH_DATA_SCHEMA
 		|| sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION)
-		|| rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION)
+		|| (schemaVersion === 11 ? rollupRulesVersion !== 11 && rollupRulesVersion !== 12 : rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)
 	)) return null;
 	const generatedAt = parsedGeneratedAt.value;
 	const sourceDates = parsedSourceDates.value;
+	if (schemaVersion === 11 && rollupPeriod !== "range") return null;
 	const authority = schemaVersion === 11 ? sleepRangeAuthority(record, calendarTimezone) : {};
 	if (!authority) return null;
 
@@ -510,7 +511,9 @@ export function parseRollupMarkdown(
 	if (!summary) return null;
 	if (cachedFrontmatter && (summary.schemaVersion === 11 || readOptionalSchemaVersion(frontmatter).version === 11)) {
 		const physical = buildRollupSummary(frontmatter);
-		if (!physical || physical.schemaVersion !== summary.schemaVersion || physical.schema_profile !== summary.schema_profile
+		if (!physical || physical.rollupRulesVersion !== summary.rollupRulesVersion
+            || physical.sourceSchemaVersion !== summary.sourceSchemaVersion
+            || physical.schemaVersion !== summary.schemaVersion || physical.schema_profile !== summary.schema_profile
 			|| physical.source_schema_profile !== summary.source_schema_profile
 			|| JSON.stringify(physical.timeContext) !== JSON.stringify(summary.timeContext)) return null;
 	}
@@ -619,7 +622,7 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 		|| sourceSchemaVersionIndex < 0
 		|| sourceSchemaVersion !== (schemaVersion === 11 ? 11 : schemaVersion === 10 ? 10 : V9_SOURCE_SCHEMA_VERSION)
 		|| rollupRulesVersionIndex < 0
-		|| rollupRulesVersion !== (schemaVersion === 11 ? 11 : V9_ROLLUP_RULES_VERSION)
+		|| (schemaVersion === 11 ? rollupRulesVersion !== 11 && rollupRulesVersion !== 12 : rollupRulesVersion !== V9_ROLLUP_RULES_VERSION)
 	)) return null;
 	const rollupPeriod = normalizePeriod(csvValue(firstRow, periodIndex));
 	const periodId = csvValue(firstRow, periodIdIndex);
@@ -631,6 +634,7 @@ export function parseRollupCSV(content: string): HealthRollupSummary | null {
 
 	const authorityHeaders = CSV_CONTRACT_ALIASES.slice(-6);
 	const authorityIndexes = authorityHeaders.map((aliases) => indexOfHeader(header, ...aliases));
+	if (schemaVersion === 11 && rollupPeriod !== "range") return null;
 	const authority = schemaVersion === 11 ? sleepRangeAuthority({
 		schema_profile: csvValue(firstRow, authorityIndexes[0]), source_schema_profile: csvValue(firstRow, authorityIndexes[1]),
 		time_context: { calendar_timezone: calendarTimezone,

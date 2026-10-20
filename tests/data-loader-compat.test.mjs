@@ -989,3 +989,29 @@ test('DataLoader merges complementary workout provenance and rejects contradicto
   }
  }
 });
+
+
+test("DataLoader omits conflicting successor range-rule authorities in every scan order", async () => {
+    const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+    const original = JSON.parse(await readFile("tests/fixtures/rollup-summary-v11/range-v11.json", "utf8"));
+    const corrected = { ...original, rollup_rules_version: 12 };
+    for (const values of [[original, corrected, corrected], [corrected, original, corrected], [corrected, corrected, original], [corrected, corrected, corrected]]) {
+        const files = values.map((_, index) => new TFile(`Health/Rollups/${index}.json`));
+        const rollupsFolder = new TFolder("Health/Rollups", files);
+        const root = new TFolder("Health", [rollupsFolder]);
+        rollupsFolder.parent = root;
+        for (const file of files) file.parent = rollupsFolder;
+        const contents = new Map(files.map((file, index) => [file.path, JSON.stringify(values[index])]));
+        const loader = new DataLoader({ getAbstractFileByPath: (name) => name === "Health" ? root : name === "Health/Rollups" ? rollupsFolder : files.find(file => file.path === name),
+            read: async (file) => contents.get(file.path) }, { dataFolder: "Health", filePattern: "*", dataFormat: "auto", dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" });
+        const rollups = await loader.loadRollups();
+        if (values.some(value => value.rollup_rules_version === 11)) {
+            assert.deepEqual(rollups, []);
+            assert.ok(loader.getLastLoadReport().warnings.some(warning => warning.includes("range rules") && warning.includes("ambiguous rollup data")));
+        } else {
+            assert.equal(rollups.length, 1);
+            assert.equal(rollups[0].rollupRulesVersion, 12);
+            assert.equal(loader.getLastLoadReport().warnings.length, 0);
+        }
+    }
+});

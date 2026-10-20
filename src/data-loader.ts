@@ -743,8 +743,10 @@ function dedupeRollups(rollups: HealthRollupSummary[], warnings: string[]): Heal
 		const key = rollupKey(rollup);
 		if (conflictingPeriods.has(key)) continue;
 		const existing = byPeriod.get(key);
-		if (existing && !sleepAuthoritiesAgree(existing, rollup)) {
-			warnings.push(`${rollup.periodId}: conflicting sleep attribution/profile; ambiguous rollup data was omitted.`);
+		if (existing && (!sleepAuthoritiesAgree(existing, rollup)
+            || ((schemaVersionOf(existing) === 11 || schemaVersionOf(rollup) === 11)
+                && existing.rollupRulesVersion !== rollup.rollupRulesVersion))) {
+			warnings.push(`${rollup.periodId}: conflicting sleep attribution/profile or range rules; ambiguous rollup data was omitted.`);
 			conflictingPeriods.add(key);
 			byPeriod.delete(key);
 		} else byPeriod.set(key, existing ? mergeRollups(existing, rollup) : rollup);

@@ -126,3 +126,16 @@ test("roll-up explorer identifies native wake-date sleep ownership and its captu
 	assert.match(text, /8.25/);
 	assert.doesNotMatch(text, /Night begins/);
 });
+
+test("roll-up explorer renders measured workout range rules with readable metric labels", async () => {
+    const { parseRollupJSON, renderRollupExplorer } = await loadModule();
+    const range = parseRollupJSON(await readFile(path.join(process.cwd(),
+        "tests/fixtures/workout-range-rules-v12/apple-v11-workout-range-Metric-true-true/Health/Rollups/Range/2026-03-15_to_2026-03-16.json"), "utf8"));
+    assert.ok(range);
+    assert.equal(range.rollupRulesVersion, 12);
+    const text = renderWithPeriod(renderRollupExplorer, [range], "range");
+    assert.match(text, /Workout Avg Heart Rate/);
+    assert.match(text, /175/);
+    assert.match(text, /Coverage 100%/);
+    assert.match(text, /Morning ends/);
+});
