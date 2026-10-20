@@ -1015,3 +1015,35 @@ test("DataLoader omits conflicting successor range-rule authorities in every sca
         }
     }
 });
+
+test('DataLoader preserves complete native mindfulness facts in every mixed-format order', async () => {
+ for (const platform of ['apple-v11', 'android-v6']) for (const metadata of [true, false]) {
+  const folder = `tests/fixtures/native-mindfulness/${platform}-mindfulness-${metadata}/${platform === 'apple-v11' ? 'Health' : 'health'}`;
+  const date = platform === 'apple-v11' ? '2026-03-14' : '2026-11-01';
+  const names = [`${date}.json`, `${date}.csv`, `${date}.md`, `${date}-bases.md`];
+  const values = await Promise.all(names.map(name => readFile(`${folder}/${name}`, 'utf8')));
+  const json = JSON.parse(values[0]), expected = json.mindfulness[platform === 'apple-v11' ? 'stateOfMindEntries' : 'sessions'];
+  for (const order of [[0,1,2,3],[3,2,1,0],[1,2,3,0],[2,3,0,1],[0,3,1,2],[2,1,0,3]]) {
+   const contents = Object.fromEntries(order.map((index, i) => [`${i}-${names[index]}`, values[index]]));
+   const [day] = await loadWhoopVault(contents);
+   assert.ok(day, folder + order);
+   assert.deepEqual(day.nativeMindfulnessDetails.map(record => record.sample), expected, folder + order);
+   assert.equal(day.sourcePaths.length, 4);
+  }
+ }
+});
+
+test('DataLoader omits contradictory native mood and mindfulness sources without later resurrection', async () => {
+ for (const platform of ['apple-v11', 'android-v6']) {
+  const folder = `tests/fixtures/native-mindfulness/${platform}-mindfulness-true/${platform === 'apple-v11' ? 'Health' : 'health'}`;
+  const date = platform === 'apple-v11' ? '2026-03-14' : '2026-11-01';
+  const source = JSON.parse(await readFile(`${folder}/${date}.json`, 'utf8'));
+  const changed = structuredClone(source), sample = changed.mindfulness[platform === 'apple-v11' ? 'stateOfMindEntries' : 'sessions'][0];
+  sample.metadata.synthetic = 'contradictory source';
+  for (const [a,b] of [[source,changed],[changed,source]]) {
+   const {days,report} = await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b),'c.json':JSON.stringify(source)}, true);
+   assert.deepEqual(days, []);
+   assert.ok(report.warnings.some(warning => warning.includes('conflicting native source facts')));
+  }
+ }
+});

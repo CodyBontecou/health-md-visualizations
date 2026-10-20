@@ -1,0 +1,40 @@
+{
+  "producer_base_commit": "6fcbcf42d1bb6adffdbc381d8dfb5693b8a02f0a",
+  "capture_working_tree_dirty": true,
+  "synthetic_post_capture_inputs": true,
+  "real_provider_capture": false,
+  "runtime_source_sha256": {
+    "apps/apple/HealthMd/Shared/Core/HealthMdRenderInputAdapter.swift": "04b3e487abbbf85abdd01684e28d1d1d837c43b2fde3706ffb885a4032b806bd",
+    "apps/apple/HealthMd/Shared/Core/HealthMdSemanticInputAdapter.swift": "3192f00468985961884ba9c373deb10d7cbcee219eeb4a18fa3584f7e7ec19a0",
+    "apps/apple/HealthMd/Shared/ExportEngine/AppleLooseDailyExportPlanner.swift": "f1a3e6c77b4bfea2198ce9baa986d843377d0dd6fb734846e2e6b55026a529cf",
+    "apps/apple/HealthMd/Shared/Export/JSONExporter.swift": "f24504c627e2acbdcc18f97e38314e893b16efd0f0a7e3f9dc6202d93dbca848",
+    "apps/apple/HealthMd/Shared/Export/ExportDataSnapshot.swift": "5e257233191c53a486a24d7e01dd4ed825b0ed62da283596209780515320ab10",
+    "apps/apple/HealthMd/Shared/Models/HealthData.swift": "93ee7565028c03485c7321fa097ea4ba456efa301b9a1b88419a5a5e0821ab9d",
+    "apps/android/app/src/main/java/com/healthmd/domain/render/HealthMdRenderInputAdapter.kt": "be4f0c5b2939361cc4d4b7df3559925402659a9803be7fb7884bcc3a2c05103d",
+    "apps/android/app/src/main/java/com/healthmd/domain/exportengine/DailyAggregateExportPlanner.kt": "1b2dfb4aab9f1fbf1390c9671551f984423d724cf8a1cdead798a1429fff13e8",
+    "apps/android/app/src/main/java/com/healthmd/data/export/JsonExporter.kt": "ec0d1b349a5aaab0fbe0da3c3eefcb62c8d12a49efc31e998350dd939a4206c2",
+    "apps/android/app/src/main/java/com/healthmd/data/export/WakeDateJsonDocument.kt": "9a005e89dbbbe8cbeef9113e675150f2873309226d97f31264dbba37a24cc43b",
+    "apps/android/app/src/main/java/com/healthmd/domain/model/HealthData.kt": "4ba251bb8ec605d6abc0b6548e432653390007c0903cf93472c8c05aaa23c48f"
+  },
+  "files": {
+    "android-v6-mindfulness-false/health/2026-11-01-bases.md": "d9032c3f4535c30f8a7363eea8bbe2880fb106b3036d888b167b968bda836711",
+    "android-v6-mindfulness-false/health/2026-11-01.csv": "83a310ecdf8b62aac8f9e603d7f982423ca6e6433c261488a476f486034613e6",
+    "android-v6-mindfulness-false/health/2026-11-01.json": "d6f9a573e35df479f5a87a2d758690edfeb4a7932098437155ed9a432c626350",
+    "android-v6-mindfulness-false/health/2026-11-01.md": "348eeecbde42e5bab2876f210a1db282021da6596083263fa4a615fb6aea4818",
+    "android-v6-mindfulness-true/health/2026-11-01-bases.md": "d9032c3f4535c30f8a7363eea8bbe2880fb106b3036d888b167b968bda836711",
+    "android-v6-mindfulness-true/health/2026-11-01.csv": "83a310ecdf8b62aac8f9e603d7f982423ca6e6433c261488a476f486034613e6",
+    "android-v6-mindfulness-true/health/2026-11-01.json": "d6f9a573e35df479f5a87a2d758690edfeb4a7932098437155ed9a432c626350",
+    "android-v6-mindfulness-true/health/2026-11-01.md": "39f45d3644ed4be4572f6ef18aa0977f3015cebfd2220ef7c9dd6768316fe562",
+    "apple-v11-mindfulness-false/Health/2026-03-14-bases.md": "1a43831621be36c7d968f5427018d11de2e74bbd332c2d81bdea0cf4fc311be4",
+    "apple-v11-mindfulness-false/Health/2026-03-14.csv": "fbfbe966ee0994183a027355a21cd9da951aabde7273d685a66fae599916e0f9",
+    "apple-v11-mindfulness-false/Health/2026-03-14.json": "76c15981c6a78a9722229e6ecdda9907f6c9ec26e290529c82971b55f8bf27b8",
+    "apple-v11-mindfulness-false/Health/2026-03-14.md": "36762fdd089aa193cfbf7c163cde029982df1e0c16e5903d5c2347a7c72fff4c",
+    "apple-v11-mindfulness-true/Health/2026-03-14-bases.md": "1a43831621be36c7d968f5427018d11de2e74bbd332c2d81bdea0cf4fc311be4",
+    "apple-v11-mindfulness-true/Health/2026-03-14.csv": "fbfbe966ee0994183a027355a21cd9da951aabde7273d685a66fae599916e0f9",
+    "apple-v11-mindfulness-true/Health/2026-03-14.json": "76c15981c6a78a9722229e6ecdda9907f6c9ec26e290529c82971b55f8bf27b8",
+    "apple-v11-mindfulness-true/Health/2026-03-14.md": "0fa8d3cead39a4ed2faa3c3dc7a571054cbdbe12c0ed17e0b7741384c8308379"
+  },
+  "producer_source_commit": "3801b5857025fb1cdfff812d4a89dc0115d70158",
+  "capture_build_base_commit": "6fcbcf42d1bb6adffdbc381d8dfb5693b8a02f0a",
+  "producer_source_snapshot_committed": true
+}

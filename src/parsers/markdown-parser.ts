@@ -1,5 +1,6 @@
 import { attachNativeWorkoutDetails, nativeWorkoutDetails } from "../native-workout-details";
 import { attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
+import { attachNativeMindfulnessDetails, nativeMindfulnessDetails } from "../native-mindfulness-details";
 import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
@@ -1701,6 +1702,28 @@ export function parseMarkdown(
         if (!records) return null;
         attachNativeCorrelationDetails(day, records);
     }
+    const mindfulnessValues: unknown[] = [];
+    if (fm.native_mindfulness_details !== undefined) {
+        const records = nativeMindfulnessDetails(fm.native_mindfulness_details, authority.profile);
+        if (!records) return null;
+        attachNativeMindfulnessDetails(day, records);
+    } else {
+        for (const table of parseMarkdownTables(parsed.body)) {
+            if (!["state of mind details", "mindfulness session details"].includes(normalizeLabel(table.context))) continue;
+            if (normalizedHeaders(table).join() !== "native record (json)") return null;
+            try {
+                for (const row of table.rows) {
+                    if (row.length !== 1) return null;
+                    mindfulnessValues.push(JSON.parse(row[0]));
+                }
+            } catch { return null; }
+        }
+        if (mindfulnessValues.length) {
+            const records = nativeMindfulnessDetails(mindfulnessValues, authority.profile);
+            if (!records) return null;
+            attachNativeMindfulnessDetails(day, records);
+        }
+    }
     const activityValues: unknown[] = [];
     if (fm.native_activity_details !== undefined) {
         const records = nativeActivityDetails(fm.native_activity_details, authority.profile);
@@ -1771,6 +1794,6 @@ export function parseMarkdown(
 
 	// Only return if we found at least some health data beyond just a date
 	const hasData =
-		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop;
+		day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop || day.nativeMindfulnessDetails?.length;
 	return hasData ? day : null;
 }

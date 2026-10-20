@@ -1,4 +1,5 @@
 import { attachNativeWorkoutDetails, workoutsFromJSON } from "../native-workout-details";
+import { attachNativeMindfulnessDetails, mindfulnessDetailsFromJSON } from "../native-mindfulness-details";
 import { activityDetailsFromJSON, attachNativeActivityDetails } from "../native-activity-details";
 import { attachNativeCorrelationDetails, correlationsFromJSON } from "../native-correlation-details";
 import { attachNativeQuantityDetails, quantityDetailsFromJSON } from "../native-quantity-details";
@@ -395,6 +396,9 @@ export function parseJSON(content: string): HealthDay | null {
             const activity = activityDetailsFromJSON(parsed, authority.profile);
             if (!activity) return null;
             attachNativeActivityDetails(day, activity);
+            const mindfulness = mindfulnessDetailsFromJSON(parsed, authority.profile);
+            if (!mindfulness) return null;
+            attachNativeMindfulnessDetails(day, mindfulness);
         }
 		attachCanonicalMetrics(day);
 

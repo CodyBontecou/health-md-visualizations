@@ -1,5 +1,6 @@
 import { attachNativeWorkoutDetails, nativeWorkoutDetails } from "../native-workout-details";
 import { activityRecordTimestamp, attachNativeActivityDetails, nativeActivityDetails } from "../native-activity-details";
+import { mindfulnessRecordTimestamp, attachNativeMindfulnessDetails, nativeMindfulnessDetails } from "../native-mindfulness-details";
 import { attachNativeCorrelationDetails, nativeCorrelationDetails } from "../native-correlation-details";
 import { attachNativeQuantityDetails, nativeQuantityDetails } from "../native-quantity-details";
 import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
@@ -1185,6 +1186,14 @@ function buildDayFromRows(
             const records = nativeWorkoutDetails(workoutRows.map(row => JSON.parse(row.value)), authority.profile);
             if (!records || records.some((record, index) => workoutRows[index].unit !== "json" || workoutRows[index].timestamp !== record.sample.startTimeISO)) return null;
             attachNativeWorkoutDetails(day, records);
+        } catch { return null; }
+    }
+    const mindfulnessRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "mindfulness record");
+    if (mindfulnessRows.length) {
+        try {
+            const records = nativeMindfulnessDetails(mindfulnessRows.map(row => JSON.parse(row.value)), authority.profile);
+            if (!records || records.some((record, index) => mindfulnessRows[index].unit !== "json" || mindfulnessRows[index].timestamp !== mindfulnessRecordTimestamp(record))) return null;
+            attachNativeMindfulnessDetails(day, records);
         } catch { return null; }
     }
     const activityRows = rows.filter(row => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "activity record");

@@ -1,4 +1,5 @@
 import { attachNativeWorkoutDetails, type NativeWorkoutDetail } from "./native-workout-details";
+import { attachNativeMindfulnessDetails, type NativeMindfulnessDetail } from "./native-mindfulness-details";
 import { attachNativeActivityDetails, type NativeActivityDetail } from "./native-activity-details";
 import { attachNativeCorrelationDetails, type NativeCorrelationDetail } from "./native-correlation-details";
 import { attachNativeQuantityDetails, type NativeQuantityDetail } from "./native-quantity-details";
@@ -1097,6 +1098,15 @@ function mergeNativeActivity(a: NativeActivityDetail[] = [], b: NativeActivityDe
         }));
 }
 
+function mergeNativeMindfulness(a: NativeMindfulnessDetail[] = [], b: NativeMindfulnessDetail[] = []): NativeMindfulnessDetail[] {
+    return mergeNativeSources(a, b, value => JSON.stringify([value.metric, value.sample.id ?? null,
+        value.sample.timestamp ?? value.sample.startTimeISO, value.sample.endDate ?? value.sample.endTimeISO]), (left, right) => {
+        const source = mergeQuantityFacts(left.sample, right.sample);
+        if (!sourceObject(source)) throw new QuantitySourceConflict();
+        return {...right, sample: source};
+    });
+}
+
 function mergeNativeWorkouts(a: NativeWorkoutDetail[] = [], b: NativeWorkoutDetail[] = []): NativeWorkoutDetail[] {
     return mergeNativeSources(a, b, value => JSON.stringify([value.sample.type, value.sample.startTimeISO,
         value.sample.endTimeISO, value.sample.duration, value.sample.elapsedDuration]), (left, right) => {
@@ -1182,6 +1192,7 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
         attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
         attachNativeCorrelationDetails(result, mergeNativeCorrelations(fallback.nativeCorrelationDetails, preferred.nativeCorrelationDetails));
         attachNativeActivityDetails(result, mergeNativeActivity(fallback.nativeActivityDetails, preferred.nativeActivityDetails));
+        attachNativeMindfulnessDetails(result, mergeNativeMindfulness(fallback.nativeMindfulnessDetails, preferred.nativeMindfulnessDetails));
     }
     return result;
 }

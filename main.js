@@ -9706,12 +9706,70 @@ function attachNativeWorkoutDetails(day, records) {
   }));
 }
 
-// src/native-activity-details.ts
+// src/native-mindfulness-details.ts
 function object2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
+function strings(value) {
+  return value === void 0 || Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+function mindfulnessRecordTimestamp(record5) {
+  return String(record5.sample[record5.metric === "state_of_mind" ? "timestamp" : "startTimeISO"]);
+}
+function nativeMindfulnessDetails(value, profile) {
+  if (!Array.isArray(value) || profile !== "apple-v11" && profile !== "android-sleep-v6") return null;
+  const records = [], identities = /* @__PURE__ */ new Set();
+  for (const item of value) {
+    if (!object2(item) || !object2(item.sample)) return null;
+    const apple = profile === "apple-v11", sample = item.sample;
+    if (item.metric !== (apple ? "state_of_mind" : "mindfulness_session")) return null;
+    const start = sample[apple ? "timestamp" : "startTimeISO"], end = sample[apple ? "endDate" : "endTimeISO"];
+    const first = canonicalSourceInstant(start), last = canonicalSourceInstant(end);
+    if (first === null || last === null || last < first || !apple && last === first) return null;
+    if (apple) {
+      if (typeof sample.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sample.id) || typeof sample.valence !== "number" || !Number.isFinite(sample.valence) || sample.valence < -1 || sample.valence > 1 || !["Momentary Emotion", "Daily Mood", "Unknown"].includes(String(sample.kind)) || !strings(sample.labels) || !strings(sample.associations)) return null;
+      if (sample.valencePercent !== void 0 && (typeof sample.valencePercent !== "number" || !Number.isSafeInteger(sample.valencePercent) || sample.valencePercent !== Math.trunc((sample.valence + 1) / 2 * 100))) return null;
+      if (identities.has(sample.id.toLowerCase())) return null;
+      identities.add(sample.id.toLowerCase());
+    } else if (sample.exactStartTime === void 0 || sample.exactEndTime === void 0 || !exactSourceClockAgrees(start, sample.exactStartTime) || !exactSourceClockAgrees(end, sample.exactEndTime)) return null;
+    records.push({ metric: apple ? "state_of_mind" : "mindfulness_session", sample: { ...sample } });
+  }
+  return records;
+}
+function mindfulnessDetailsFromJSON(root, profile) {
+  if (!object2(root.mindfulness)) return [];
+  const field = profile === "apple-v11" ? "stateOfMindEntries" : "sessions";
+  const foreign = profile === "apple-v11" ? "sessions" : "stateOfMindEntries";
+  if (root.mindfulness[foreign] !== void 0) return null;
+  const samples = root.mindfulness[field];
+  if (samples === void 0) return [];
+  if (!Array.isArray(samples)) return null;
+  return nativeMindfulnessDetails(samples.map((sample) => ({ metric: profile === "apple-v11" ? "state_of_mind" : "mindfulness_session", sample })), profile);
+}
+function attachNativeMindfulnessDetails(day, records) {
+  if (!records.length) return;
+  day.nativeMindfulnessDetails = records;
+  const moods = records.filter((record5) => record5.metric === "state_of_mind").map(({ sample }) => ({
+    ...sample,
+    timestamp: String(sample.timestamp),
+    endDate: String(sample.endDate),
+    kind: String(sample.kind),
+    valence: Number(sample.valence)
+  }));
+  const sessions = records.filter((record5) => record5.metric === "mindfulness_session").map(({ sample }) => ({
+    ...sample,
+    startTime: String(sample.startTimeISO),
+    endTime: String(sample.endTimeISO)
+  }));
+  day.mindfulness = { ...day.mindfulness, ...moods.length ? { stateOfMindEntries: moods } : {}, ...sessions.length ? { sessions } : {} };
+}
+
+// src/native-activity-details.ts
+function object3(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 function exactPublicClock(value) {
-  if (!object2(value) || typeof value.epochSecond !== "number" || !Number.isSafeInteger(value.epochSecond) || typeof value.nano !== "number" || !Number.isInteger(value.nano) || value.nano < 0 || value.nano >= 1e9) return null;
+  if (!object3(value) || typeof value.epochSecond !== "number" || !Number.isSafeInteger(value.epochSecond) || typeof value.nano !== "number" || !Number.isInteger(value.nano) || value.nano < 0 || value.nano >= 1e9) return null;
   try {
     const whole = new Date(value.epochSecond * 1e3).toISOString().slice(0, 19);
     const fraction = value.nano ? "." + String(value.nano).padStart(9, "0").replace(/0+$/, "") : "";
@@ -9728,7 +9786,7 @@ function nativeActivityDetails(value, profile) {
   if (profile !== "android-sleep-v6" || !Array.isArray(value)) return null;
   const result = [];
   for (const item of value) {
-    if (!object2(item) || !object2(item.sample)) return null;
+    if (!object3(item) || !object3(item.sample)) return null;
     const sample = item.sample;
     const steps = item.metric === "steps_interval";
     if (!steps && item.metric !== "activity_intensity_interval" || item.unit !== (steps ? "steps" : "seconds")) return null;
@@ -9748,7 +9806,7 @@ function nativeActivityDetails(value, profile) {
   return result;
 }
 function activityDetailsFromJSON(root, profile) {
-  if (!object2(root.activity)) return [];
+  if (!object3(root.activity)) return [];
   if (profile !== "android-sleep-v6") return root.activity.stepSamples !== void 0 || root.activity.activityIntensity !== void 0 ? null : [];
   const records = [];
   for (const [field, metric, unit] of [["stepSamples", "steps_interval", "steps"], ["activityIntensity", "activity_intensity_interval", "seconds"]]) {
@@ -10699,15 +10757,15 @@ function parseYamlishList(value) {
   }).filter((line) => line.text && !line.text.startsWith("#"));
   if (!lines.length) return void 0;
   if (!lines.some((line) => line.text.startsWith("- "))) {
-    const object4 = {};
+    const object5 = {};
     let hasKeys = false;
     for (const line of lines) {
       const pair = splitYamlKeyValue(line.text);
       if (!pair) return void 0;
-      object4[pair[0]] = parseScalar(pair[1]);
+      object5[pair[0]] = parseScalar(pair[1]);
       hasKeys = true;
     }
-    return hasKeys ? [object4] : void 0;
+    return hasKeys ? [object5] : void 0;
   }
   const result = [];
   let current = null;
@@ -11576,7 +11634,7 @@ var WHOOP_ZONE_KEYS = [
 ];
 
 // src/whoop-data.ts
-function object3(value) {
+function object4(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
 }
 function text(value, limit2 = 256) {
@@ -11676,7 +11734,7 @@ function workout(raw) {
     altitude_change_meters: number(raw.altitude_change_meters, -Number.MAX_VALUE),
     percent_recorded: percent(raw.percent_recorded)
   }) };
-  const zones = object3(raw.zone_durations);
+  const zones = object4(raw.zone_durations);
   if (zones) {
     const values = defined(Object.fromEntries(WHOOP_ZONE_KEYS.map((key) => [key, duration(zones[key])])));
     if (Object.keys(values).length) result.zone_durations = values;
@@ -11700,7 +11758,7 @@ function empty(source, status) {
   return { source, captureStatus: status, cycles: [], recoveries: [], sleep: [], workouts: [], resources: [], notes: [] };
 }
 function resource(value) {
-  const raw = object3(value);
+  const raw = object4(value);
   if (!raw || !["cycles", "recovery", "sleep", "workouts", "body"].includes(String(raw.resource)) || !["success", "failure", "cancelled", "skipped", "unsupported"].includes(String(raw.status)) || duration(raw.record_count) === void 0) return void 0;
   return { resource: raw.resource, status: raw.status, record_count: raw.record_count };
 }
@@ -11715,7 +11773,7 @@ function validRecord(key, raw) {
 function setRecords(result, key, values, cycleSteps = true) {
   const mapped = [];
   for (const value of values.slice(0, 1e4)) {
-    const raw = object3(value);
+    const raw = object4(value);
     if (!raw || !validRecord(key, raw)) {
       result.notes.push(`Invalid WHOOP ${key} record omitted.`);
       continue;
@@ -11739,7 +11797,7 @@ function finalize(result) {
   return result;
 }
 function parseWhoopSection(value) {
-  const raw = object3(value);
+  const raw = object4(value);
   if (!raw || raw.schema !== "healthmd.provider.whoop_daily" || raw.schema_version !== 1 && raw.schema_version !== 2 || !capture(raw.capture_status)) return void 0;
   const result = empty("typed", capture(raw.capture_status));
   if (result.captureStatus === "not_requested") return result;
@@ -11749,7 +11807,7 @@ function parseWhoopSection(value) {
     else result.notes.push(`WHOOP ${key} collection unavailable.`);
   }
   if (Array.isArray(raw.resources)) result.resources = raw.resources.map(resource).filter((row) => !!row);
-  const profile = object3(raw.body);
+  const profile = object4(raw.body);
   if ((profile == null ? void 0 : profile.source_kind) === "current_profile_snapshot") result.body = body(profile);
   if (Array.isArray(raw.warnings) && raw.warnings.length) result.notes.push("WHOOP producer reported capture warnings.");
   return finalize(result);
@@ -11848,7 +11906,7 @@ function parseWhoopCsv(rows) {
   }
   result.resources = providerRows.filter((row) => label(row.category) === "whoop capture" && label(row.metric) === "resource result").map((row) => resource(decode(row))).filter((row) => !!row);
   const profile = providerRows.find((row) => label(row.category) === "whoop body" && label(row.metric) === "body snapshot");
-  const profileValue = profile ? object3(decode(profile)) : void 0;
+  const profileValue = profile ? object4(decode(profile)) : void 0;
   if ((profileValue == null ? void 0 : profileValue.source_kind) === "current_profile_snapshot") result.body = body(profileValue);
   if (hasStructured && ![...result.cycles, ...result.recoveries, ...result.sleep, ...result.workouts].some((record5) => record5.projection)) {
     result.notes = result.notes.filter((note2) => !note2.startsWith("Single-record scalar"));
@@ -12499,6 +12557,9 @@ function parseJSON(content) {
       const activity = activityDetailsFromJSON(parsed, authority.profile);
       if (!activity) return null;
       attachNativeActivityDetails(day, activity);
+      const mindfulness = mindfulnessDetailsFromJSON(parsed, authority.profile);
+      if (!mindfulness) return null;
+      attachNativeMindfulnessDetails(day, mindfulness);
     }
     attachCanonicalMetrics(day);
     const moodSummary2 = getMoodDaySummary(day);
@@ -13487,6 +13548,16 @@ function buildDayFromRows(date, rows, metadataRows = [], dictionary, captureCoun
       const records = nativeWorkoutDetails(workoutRows.map((row) => JSON.parse(row.value)), authority.profile);
       if (!records || records.some((record5, index) => workoutRows[index].unit !== "json" || workoutRows[index].timestamp !== record5.sample.startTimeISO)) return null;
       attachNativeWorkoutDetails(day, records);
+    } catch (e) {
+      return null;
+    }
+  }
+  const mindfulnessRows = rows.filter((row) => normalizeLabel(row.category) === "native detail" && normalizeLabel(row.metric) === "mindfulness record");
+  if (mindfulnessRows.length) {
+    try {
+      const records = nativeMindfulnessDetails(mindfulnessRows.map((row) => JSON.parse(row.value)), authority.profile);
+      if (!records || records.some((record5, index) => mindfulnessRows[index].unit !== "json" || mindfulnessRows[index].timestamp !== mindfulnessRecordTimestamp(record5))) return null;
+      attachNativeMindfulnessDetails(day, records);
     } catch (e) {
       return null;
     }
@@ -14553,7 +14624,7 @@ function captureSummaryFromFrontmatter(fm) {
   };
 }
 function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L;
   const parsed = parseFrontmatter(content);
   let fm = applyFrontmatterAliases(
     mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter),
@@ -14890,6 +14961,30 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
     if (!records) return null;
     attachNativeCorrelationDetails(day, records);
   }
+  const mindfulnessValues = [];
+  if (fm.native_mindfulness_details !== void 0) {
+    const records = nativeMindfulnessDetails(fm.native_mindfulness_details, authority.profile);
+    if (!records) return null;
+    attachNativeMindfulnessDetails(day, records);
+  } else {
+    for (const table of parseMarkdownTables(parsed.body)) {
+      if (!["state of mind details", "mindfulness session details"].includes(normalizeLabel2(table.context))) continue;
+      if (normalizedHeaders(table).join() !== "native record (json)") return null;
+      try {
+        for (const row of table.rows) {
+          if (row.length !== 1) return null;
+          mindfulnessValues.push(JSON.parse(row[0]));
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+    if (mindfulnessValues.length) {
+      const records = nativeMindfulnessDetails(mindfulnessValues, authority.profile);
+      if (!records) return null;
+      attachNativeMindfulnessDetails(day, records);
+    }
+  }
   const activityValues = [];
   if (fm.native_activity_details !== void 0) {
     const records = nativeActivityDetails(fm.native_activity_details, authority.profile);
@@ -14961,7 +15056,7 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
     attachNativeQuantityDetails(day, records);
   }
   attachCanonicalMetrics(day, canonicalMetricsFromFlatRecord(fm, unitsMap));
-  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop;
+  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop || ((_L = day.nativeMindfulnessDetails) == null ? void 0 : _L.length);
   return hasData ? day : null;
 }
 
@@ -16497,6 +16592,21 @@ function mergeNativeActivity(a = [], b = []) {
     }
   ));
 }
+function mergeNativeMindfulness(a = [], b = []) {
+  return mergeNativeSources(a, b, (value) => {
+    var _a, _b, _c;
+    return JSON.stringify([
+      value.metric,
+      (_a = value.sample.id) != null ? _a : null,
+      (_b = value.sample.timestamp) != null ? _b : value.sample.startTimeISO,
+      (_c = value.sample.endDate) != null ? _c : value.sample.endTimeISO
+    ]);
+  }, (left, right) => {
+    const source = mergeQuantityFacts(left.sample, right.sample);
+    if (!sourceObject(source)) throw new QuantitySourceConflict();
+    return { ...right, sample: source };
+  });
+}
 function mergeNativeWorkouts(a = [], b = []) {
   return mergeNativeSources(a, b, (value) => JSON.stringify([
     value.sample.type,
@@ -16583,6 +16693,7 @@ function mergeDays(a, b) {
     attachNativeQuantityDetails(result, mergeNativeQuantities(fallback.nativeQuantityDetails, preferred.nativeQuantityDetails));
     attachNativeCorrelationDetails(result, mergeNativeCorrelations(fallback.nativeCorrelationDetails, preferred.nativeCorrelationDetails));
     attachNativeActivityDetails(result, mergeNativeActivity(fallback.nativeActivityDetails, preferred.nativeActivityDetails));
+    attachNativeMindfulnessDetails(result, mergeNativeMindfulness(fallback.nativeMindfulnessDetails, preferred.nativeMindfulnessDetails));
   }
   return result;
 }

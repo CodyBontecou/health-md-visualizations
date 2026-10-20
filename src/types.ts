@@ -301,6 +301,7 @@ export interface MindfulnessSession {
 }
 
 export interface HealthDay {
+	nativeMindfulnessDetails?: import("./native-mindfulness-details").NativeMindfulnessDetail[];
 	nativeWorkoutDetails?: import("./native-workout-details").NativeWorkoutDetail[];
 	nativeActivityDetails?: import("./native-activity-details").NativeActivityDetail[];
 	nativeCorrelationDetails?: import("./native-correlation-details").NativeCorrelationDetail[];
