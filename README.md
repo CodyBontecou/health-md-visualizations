@@ -92,7 +92,7 @@ Open **Settings → Health.md Visualizations**:
 
 Nested folders are opt-in so existing vaults keep working unchanged. In any nested mode, including custom templates, files directly under the data folder are still loaded, which lets you migrate from flat exports gradually.
 
-The plugin watches your data folder and automatically refreshes its cache when files are added, modified, or deleted.
+The plugin watches your data folder and refreshes open Reading views when exports are added, modified, deleted, or moved. Keep a dashboard open in Reading view to see new exports without reopening the note.
 
 ### Visualization appearance
 
