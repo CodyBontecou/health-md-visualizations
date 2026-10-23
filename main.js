@@ -29,9 +29,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// node_modules/leaflet/dist/leaflet-src.js
+// ../obsidian-consumer/node_modules/leaflet/dist/leaflet-src.js
 var require_leaflet_src = __commonJS({
-  "node_modules/leaflet/dist/leaflet-src.js"(exports, module2) {
+  "../obsidian-consumer/node_modules/leaflet/dist/leaflet-src.js"(exports, module2) {
     (function(global, factory) {
       typeof exports === "object" && typeof module2 !== "undefined" ? factory(exports) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, factory(global.leaflet = {}));
     })(exports, function(exports2) {
@@ -26412,6 +26412,7 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
     this.drawCallbacks = /* @__PURE__ */ new Set();
+    this.dataRefreshTimer = null;
   }
   registerDraw(fn) {
     this.drawCallbacks.add(fn);
@@ -26433,27 +26434,19 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
       (leaf) => new HealthMdSourceFileView(leaf)
     );
     this.registerExtensions(HEALTH_MD_SOURCE_EXTENSIONS, HEALTH_MD_SOURCE_VIEW_TYPE);
-    this.registerEvent(
-      this.app.vault.on("create", (file) => {
-        if (file.path.startsWith(this.settings.dataFolder + "/")) {
-          this.dataLoader.invalidate();
-        }
-      })
-    );
-    this.registerEvent(
-      this.app.vault.on("modify", (file) => {
-        if (file.path.startsWith(this.settings.dataFolder + "/")) {
-          this.dataLoader.invalidate();
-        }
-      })
-    );
-    this.registerEvent(
-      this.app.vault.on("delete", (file) => {
-        if (file.path.startsWith(this.settings.dataFolder + "/")) {
-          this.dataLoader.invalidate();
-        }
-      })
-    );
+    const refresh = (file) => this.scheduleDataRefresh(file.path);
+    this.registerEvent(this.app.vault.on("create", refresh));
+    this.registerEvent(this.app.vault.on("modify", refresh));
+    this.registerEvent(this.app.vault.on("delete", refresh));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      this.scheduleDataRefresh(file.path);
+      this.scheduleDataRefresh(oldPath);
+    }));
+    this.registerEvent(this.app.metadataCache.on("changed", (file) => this.scheduleDataRefresh(file.path)));
+    this.register(() => {
+      if (this.dataRefreshTimer !== null) window.clearTimeout(this.dataRefreshTimer);
+      this.dataRefreshTimer = null;
+    });
     this.addCommand({
       id: "insert-health-chart",
       name: "Insert health visualization",
@@ -26487,6 +26480,17 @@ var HealthMdPlugin = class extends import_obsidian5.Plugin {
   }
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+  scheduleDataRefresh(path) {
+    const folder = this.settings.dataFolder.replace(/\/+$/g, "");
+    if (path !== folder && !path.startsWith(folder + "/")) return;
+    this.dataLoader.invalidate();
+    if (this.dataRefreshTimer !== null) window.clearTimeout(this.dataRefreshTimer);
+    this.dataRefreshTimer = window.setTimeout(() => {
+      this.dataRefreshTimer = null;
+      this.dataLoader.invalidate();
+      this.refreshViews();
+    }, 200);
   }
   refreshViews() {
     this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
