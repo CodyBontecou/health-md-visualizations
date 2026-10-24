@@ -1,0 +1,15 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-03-14,Metadata,schema,healthmd.health_data,,
+2026-03-14,Metadata,schema_version,11,,
+2026-03-14,Metadata,schema_profile,apple-v11,,
+2026-03-14,Metadata,unit_system,metric,,
+2026-03-14,Metadata,time_context.calendar_timezone,America/New_York,,
+2026-03-14,Metadata,time_context.timestamp_timezone,UTC,,
+2026-03-14,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-03-14,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-03-14,Metadata,time_context.sleep_interval_clipping,none,,
+2026-03-14,Raw HealthKit,Raw Capture Status,not_requested,status,
+2026-03-14,Mindfulness,Mood Entries,1,entries,
+2026-03-14,Mindfulness,Mood Entries,"[calm|alert, quoted-""label""]",,
+2026-03-14,Mindfulness,Mood Entries,[work-<test>],,
+2026-03-14,Native Detail,Mindfulness Record,"{""metric"":""state_of_mind"",""sample"":{""associations"":[""Work <test>""],""displayTime"":""21:00"",""endDate"":""2026-03-15T01:00:00.625000000Z"",""id"":""622C563B-D30C-4C45-A02B-20E45894377A"",""kind"":""Momentary Emotion"",""labels"":[""Calm|alert"",""quoted \""label\""""],""metadata"":{""synthetic"":""mind, source""},""timestamp"":""2026-03-15T01:00:00.125000000Z"",""valence"":-0.123456789,""valenceDescription"":""Neutral"",""valencePercent"":43}}",json,2026-03-15T01:00:00.125000000Z

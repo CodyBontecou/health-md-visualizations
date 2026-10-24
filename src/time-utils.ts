@@ -35,3 +35,27 @@ export function formatClockTime(timestamp: string | undefined): string | undefin
 		minute: "2-digit",
 	});
 }
+
+/** Project instants into the export calendar; legacy records retain local-clock behavior. */
+export function sampleClock(calendarTimezone?: string): (timestamp: string) => number | undefined {
+	let formatter: Intl.DateTimeFormat | undefined;
+	if (calendarTimezone) {
+		try {
+			formatter = new Intl.DateTimeFormat("en-GB", {
+				timeZone: calendarTimezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+			});
+		} catch {
+			// An invalid declared calendar must not silently acquire the viewer's timezone.
+			return () => undefined;
+		}
+	}
+	return timestamp => {
+		const instant = new Date(timestamp);
+		if (!Number.isFinite(instant.getTime())) return undefined;
+		if (!formatter) return instant.getHours() * 60 + instant.getMinutes();
+		const parts = formatter.formatToParts(instant);
+		const hour = Number(parts.find(part => part.type === "hour")?.value);
+		const minute = Number(parts.find(part => part.type === "minute")?.value);
+		return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : undefined;
+	};
+}

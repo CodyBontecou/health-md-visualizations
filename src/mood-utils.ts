@@ -365,7 +365,12 @@ export function createMoodSummary(entries: MoodEntry[]): NonNullable<HealthDay["
 
 export function getMoodDaySummary(day: HealthDay): MoodDaySummary {
 	const dayRecord = day as unknown as Record<string, unknown>;
-	const entries = dedupeMoodEntries([
+	// Validated source observations supersede legacy display-summary aliases.
+	// Otherwise CSV/Bases emotion-label summaries become extra synthetic samples.
+	const nativeMoods = day.nativeMindfulnessDetails?.filter(record => record.metric === "state_of_mind");
+	const entries = dedupeMoodEntries(nativeMoods?.length
+		? nativeMoods.flatMap(record => moodEntriesFromUnknown(record.sample, day.date))
+		: [
 		...moodEntriesFromUnknown(dayRecord.mood, day.date),
 		...moodEntriesFromUnknown(dayRecord.stateOfMind, day.date),
 		...moodEntriesFromUnknown(dayRecord.state_of_mind, day.date),

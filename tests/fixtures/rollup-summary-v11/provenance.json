@@ -1,0 +1,17 @@
+{
+  "producer_repository": "https://github.com/CodyBontecou/health-md",
+  "producer_revision": "3cb2a6b1f41675c301e5c3fe7eac35fb74770b4c",
+  "native_test": "AppleWakeDateExportPlannerTests.testWakeDateRangeSummaryPreservesFailedBoundsAndSuccessfulEmptyDay",
+  "core_test": "sleep_range_summary::apple_wake_date_range_preserves_requested_bounds_empty_days_and_public_authority",
+  "scope": "synthetic native local-range and shared-core control artifacts; not physical-provider, production-route or release qualification",
+  "sha256": {
+    "native-apple-v11-bases.md": "a748740552dba6ee560ab51cddebed9755c27d9b77f373b17c886a8689928db5",
+    "native-apple-v11.csv": "c5e34ac849a05bb420b03f0802aee2080e21a20d492fc810942b63290cff81ca",
+    "native-apple-v11.json": "724fa0a3edf2e6cdd99e3e2a869107f4715a7e41f8eecc676186b9304b3673dd",
+    "native-apple-v11.md": "cae5768f67e2ef9cd3022bf896718e4aaa7c7613861fa55036a9e6725c9148de",
+    "range-v11-bases.md": "5978d440d427435330ef4b6f4d106f1188e5fb4c1952613db55b5bfe08c2b3e2",
+    "range-v11.csv": "a5a1857e0b0b13f0b2d6005c3b1cab18f10b180071c76c1c681d032311367d0d",
+    "range-v11.json": "cf6ee5f811c9bebc602c850fe396dda6f4e769a69aa62b8253c416d0a856ddfe",
+    "range-v11.md": "48bc6d302a2aefcdf1c9956ec1fcc5db3b2f0b15f1b05ed0d39f1e2223f6b9e3"
+  }
+}

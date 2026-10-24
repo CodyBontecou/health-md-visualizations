@@ -1,0 +1,15 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-11-01,Metadata,schema,healthmd.health_data,,
+2026-11-01,Metadata,schema_version,6,,
+2026-11-01,Metadata,schema_profile,android-sleep-v6,,
+2026-11-01,Metadata,unit_system,metric,,
+2026-11-01,Metadata,time_context.calendar_timezone,UTC,,
+2026-11-01,Metadata,time_context.timestamp_timezone,UTC,,
+2026-11-01,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-11-01,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-11-01,Metadata,time_context.sleep_interval_clipping,none,,
+2026-11-01,Native Detail,Quantity Sample,"{""metric"":""heart_rate"",""unit"":""bpm"",""sample"":{""timestamp"":""2026-11-01T01:30:00.123456789Z"",""value"":72.125,""metadata"":{""synthetic"":""quantity-source""},""exactTime"":{""iso8601"":""2026-11-01T01:30:00.123456789Z"",""epochSecond"":1793496600,""nano"":123456789,""offset"":""Z""},""identity"":{""nativeId"":""synthetic-quantity"",""isSynthetic"":false}}}",json,2026-11-01T01:30:00.123456789Z
+2026-11-01,Native Detail,Quantity Sample,"{""metric"":""hrv_rmssd"",""unit"":""ms"",""sample"":{""timestamp"":""2026-11-01T01:30:00.123456789Z"",""value"":31.875,""metadata"":{""synthetic"":""quantity-source""},""exactTime"":{""iso8601"":""2026-11-01T01:30:00.123456789Z"",""epochSecond"":1793496600,""nano"":123456789,""offset"":""Z""},""identity"":{""nativeId"":""synthetic-quantity"",""isSynthetic"":false}}}",json,2026-11-01T01:30:00.123456789Z
+2026-11-01,Native Detail,Quantity Sample,"{""metric"":""blood_oxygen"",""unit"":""ratio_0_1"",""sample"":{""timestamp"":""2026-11-01T01:30:00.123456789Z"",""value"":0.97125,""metadata"":{""synthetic"":""quantity-source""},""exactTime"":{""iso8601"":""2026-11-01T01:30:00.123456789Z"",""epochSecond"":1793496600,""nano"":123456789,""offset"":""Z""},""identity"":{""nativeId"":""synthetic-quantity"",""isSynthetic"":false}}}",json,2026-11-01T01:30:00.123456789Z
+2026-11-01,Native Detail,Quantity Sample,"{""metric"":""blood_glucose"",""unit"":""mg/dL"",""sample"":{""timestamp"":""2026-11-01T01:30:00.123456789Z"",""value"":101.875,""metadata"":{""synthetic"":""quantity-source""},""exactTime"":{""iso8601"":""2026-11-01T01:30:00.123456789Z"",""epochSecond"":1793496600,""nano"":123456789,""offset"":""Z""},""identity"":{""nativeId"":""synthetic-quantity"",""isSynthetic"":false}}}",json,2026-11-01T01:30:00.123456789Z
+2026-11-01,Native Detail,Quantity Sample,"{""metric"":""respiratory_rate"",""unit"":""breaths/min"",""sample"":{""timestamp"":""2026-11-01T01:30:00.123456789Z"",""value"":16.125,""metadata"":{""synthetic"":""quantity-source""},""exactTime"":{""iso8601"":""2026-11-01T01:30:00.123456789Z"",""epochSecond"":1793496600,""nano"":123456789,""offset"":""Z""},""identity"":{""nativeId"":""synthetic-quantity"",""isSynthetic"":false}}}",json,2026-11-01T01:30:00.123456789Z

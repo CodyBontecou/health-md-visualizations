@@ -1,3 +1,10 @@
+import { attachNativeWorkoutDetails, workoutsFromJSON } from "../native-workout-details";
+import { attachNativeMindfulnessDetails, mindfulnessDetailsFromJSON } from "../native-mindfulness-details";
+import { activityDetailsFromJSON, attachNativeActivityDetails } from "../native-activity-details";
+import { attachNativeCorrelationDetails, correlationsFromJSON } from "../native-correlation-details";
+import { attachNativeQuantityDetails, quantityDetailsFromJSON } from "../native-quantity-details";
+import { nativeSleepStages, nativeSleepSessions, successorSleepDetails } from "../native-sleep-details";
+import { readSleepAuthority } from "../sleep-attribution";
 import {
 	HEALTHMD_HEALTH_DATA_SCHEMA,
 	HEALTHMD_RECORD_ARCHIVE_SCHEMA,
@@ -20,7 +27,6 @@ import {
 	HealthDay,
 	HealthMdCaptureSummary,
 	HealthMdQueryStatusCounts,
-	HealthMdTimeContext,
 	RawCaptureStatus,
 	RoutePoint,
 } from "../types";
@@ -204,18 +210,6 @@ function buildCaptureSummary(
 	};
 }
 
-function normalizedTimeContext(value: unknown): HealthMdTimeContext | undefined {
-	if (!isRecord(value)) return undefined;
-	const calendarTimezone = stringValue(value.calendar_timezone ?? value.calendarTimezone);
-	const timestampTimezone = stringValue(value.timestamp_timezone ?? value.timestampTimezone);
-	if (!calendarTimezone && !timestampTimezone) return undefined;
-	return {
-		calendarTimezone,
-		timestampTimezone,
-		calendar_timezone: calendarTimezone,
-		timestamp_timezone: timestampTimezone,
-	};
-}
 
 function normalizePercent(value: unknown): number | undefined {
 	const number = numberValue(value);
@@ -326,11 +320,30 @@ export function parseJSON(content: string): HealthDay | null {
 		if (parsed.type !== "health-data" || typeof parsed.date !== "string" || !parsed.date) return null;
 		if (typeof parsed.schema === "string" && parsed.schema !== HEALTHMD_HEALTH_DATA_SCHEMA) return null;
 
+		const authority = readSleepAuthority(parsed);
+		if (!authority) return null;
+		if (authority.androidSleep && isRecord(parsed.sleep)
+			&& (parsed.sleep.coreSleep !== undefined || parsed.sleep.coreSleepFormatted !== undefined || parsed.sleep.sleep_core_hours !== undefined
+				|| (Array.isArray(parsed.sleep.sleepStages) && parsed.sleep.sleepStages.some((stage) => isRecord(stage) && stage.stage === "core")))) return null;
 		const diagnostics = parsed.diagnostics;
 		const summaryRoot = { ...parsed };
 		delete summaryRoot.diagnostics;
 		delete summaryRoot.medications;
+		// This is consumer state, populated only from validated native source fields.
+		delete summaryRoot.nativeMindfulnessDetails;
 		const day = summaryRoot as unknown as HealthDay;
+		if (isRecord(parsed.sleep)) {
+            if (successorSleepDetails(authority.profile)) {
+                if (parsed.sleep.sleepStages !== undefined && !nativeSleepStages(parsed.sleep.sleepStages, authority.profile)) return null;
+                if (parsed.sleep.sleepSessions !== undefined) {
+                    const sessions = nativeSleepSessions(parsed.sleep.sleepSessions);
+                    if (!sessions || (!authority.androidSleep && sessions.length)) return null;
+                }
+            }
+			const stages = parsed.sleep.sleepStages;
+			day.sleep = { ...parsed.sleep, sleepStages: Array.isArray(stages)
+				? stages as NonNullable<HealthDay["sleep"]>["sleepStages"] : [] } as HealthDay["sleep"];
+		}
 		// Do not trust a consumer-only `whoop` root field in an export.
 		delete day.whoop;
 		const whoop = parseWhoopSection(isRecord(parsed.providers) ? parsed.providers.whoop : undefined);
@@ -350,7 +363,11 @@ export function parseJSON(content: string): HealthDay | null {
 		}
 		if (isUnitMap(parsed.units)) day.units = parsed.units;
 
-		const timeContext = normalizedTimeContext(parsed.time_context);
+		if (authority.profile) {
+			day.schemaProfile = authority.profile;
+			day.schema_profile = authority.profile;
+		}
+		const timeContext = authority.context;
 		if (timeContext) {
 			day.timeContext = timeContext;
 			day.time_context = timeContext;
@@ -368,6 +385,23 @@ export function parseJSON(content: string): HealthDay | null {
 
 		Object.assign(day, normalizeMedicationFields(normalizedMedicationSource(parsed)));
 		normalizePercentageSections(day, schemaVersion);
+        if (successorSleepDetails(authority.profile)) {
+            const workouts = workoutsFromJSON(parsed, authority.profile);
+            if (!workouts) return null;
+            attachNativeWorkoutDetails(day, workouts);
+            const quantities = quantityDetailsFromJSON(parsed, authority.profile);
+            if (!quantities) return null;
+            attachNativeQuantityDetails(day, quantities);
+            const correlations = correlationsFromJSON(parsed, authority.profile);
+            if (!correlations) return null;
+            attachNativeCorrelationDetails(day, correlations);
+            const activity = activityDetailsFromJSON(parsed, authority.profile);
+            if (!activity) return null;
+            attachNativeActivityDetails(day, activity);
+            const mindfulness = mindfulnessDetailsFromJSON(parsed, authority.profile);
+            if (!mindfulness) return null;
+            attachNativeMindfulnessDetails(day, mindfulness);
+        }
 		attachCanonicalMetrics(day);
 
 		const moodSummary = getMoodDaySummary(day);

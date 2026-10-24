@@ -1,0 +1,5 @@
+# Native paired blood-pressure preparation
+
+Eight verbatim synthetic artifacts from the actual AppleLooseDailyExportPlanner and HealthMdRustDailyAggregatePlanner using the real packaged/host Rust core. Both values are selected, with no blood-pressure summary aggregates. Apple retains correlation UUID, end instant, source revision, device and metadata; Android retains native identity, exact nanosecond instant/offset, measurement location, body position, source and metadata. CSV/Bases retain the full native objects; Markdown projects the paired values and available interval clocks. Android has no source end instant and no Apple interval is fabricated.
+
+Capture controls: AppleWakeDateExportPlannerTests.testSelectedBloodPressurePairWithoutSummariesReachesEveryFormat; HostCoreDailyAggregatePlannerTest.pairedBloodPressureWithoutSummariesReachesConcretePlannerAcrossEveryFormat. The latter mutates caller-owned lists/metadata after request capture to qualify immutable preparation. Both controls verify one-sided selection omits the complete pair. Production Morning ends remains gated. Historical fixtures are unchanged.

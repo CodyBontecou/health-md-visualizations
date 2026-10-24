@@ -1,3 +1,17 @@
+/** Native source facts stay separate from inferred chart quantities. */
+export interface SleepStage {
+ stage: string;
+ startDate: string;
+ endDate: string;
+ durationSeconds: number;
+ [key: string]: unknown;
+}
+export interface SleepSession {
+ startTimeISO: string;
+ endTimeISO: string;
+ [key: string]: unknown;
+}
+
 import type { HealthMdUnitMap, ParsedHealthMetricDataDictionary } from "./healthmd-schema";
 import type { UnitPreference, UnitSystem } from "./units";
 import type { WhoopDayData } from "./whoop-types";
@@ -61,6 +75,7 @@ export interface WorkoutTimeSeries {
 }
 
 export interface WorkoutEntry {
+	elapsedDuration?: number;
 	type: string;
 	activityType?: string;
 	sport?: string;
@@ -108,6 +123,12 @@ export interface WorkoutEntry {
 export type RawCaptureStatus = "complete" | "partial" | "not_requested" | "legacy_unavailable";
 
 export interface HealthMdTimeContext {
+	sleepDayAttribution?: "morning_ends";
+	sleep_day_attribution?: "morning_ends";
+	sleepOwnerDayRule?: "session_end_date";
+	sleep_owner_day_rule?: "session_end_date";
+	sleepIntervalClipping?: "none";
+	sleep_interval_clipping?: "none";
 	calendarTimezone?: string;
 	timestampTimezone?: string;
 	calendar_timezone?: string;
@@ -153,6 +174,12 @@ export interface HealthRollupMetric {
 }
 
 export interface HealthRollupSummary {
+	schemaProfile?: string;
+	schema_profile?: string;
+	sourceSchemaProfile?: string;
+	source_schema_profile?: string;
+	timeContext?: HealthMdTimeContext;
+	time_context?: HealthMdTimeContext;
 	type: "health_rollup";
 	schema: string;
 	schemaVersion?: number;
@@ -274,6 +301,13 @@ export interface MindfulnessSession {
 }
 
 export interface HealthDay {
+	nativeMindfulnessDetails?: import("./native-mindfulness-details").NativeMindfulnessDetail[];
+	nativeWorkoutDetails?: import("./native-workout-details").NativeWorkoutDetail[];
+	nativeActivityDetails?: import("./native-activity-details").NativeActivityDetail[];
+	nativeCorrelationDetails?: import("./native-correlation-details").NativeCorrelationDetail[];
+	nativeQuantityDetails?: import("./native-quantity-details").NativeQuantityDetail[];
+	schemaProfile?: string;
+	schema_profile?: string;
 	type: string;
 	date: string;
 	/** Health.md export schema identifier, e.g. healthmd.health_data. */
@@ -303,6 +337,8 @@ export interface HealthDay {
 	/** Scalar daily summary values keyed by Health.md canonical metric key. */
 	canonicalMetrics?: Record<string, HealthMetricScalar>;
 	activity?: {
+		stepSamples?: Record<string, unknown>[];
+		activityIntensity?: Record<string, unknown>[];
 		steps?: number;
 		walkingRunningDistanceKm?: number;
 		activeCalories?: number;
@@ -319,9 +355,9 @@ export interface HealthDay {
 		walkingRunningDistance?: number;
 	};
 	heart?: {
-		averageHeartRate: number;
-		heartRateMin: number;
-		heartRateMax: number;
+		averageHeartRate?: number;
+		heartRateMin?: number;
+		heartRateMax?: number;
 		heartRateSamples: Array<{ timestamp: string; value: number }>;
 		hrvSamples?: Array<{ timestamp: string; value: number }>;
 		hrv?: number;
@@ -329,7 +365,9 @@ export interface HealthDay {
 		walkingHeartRateAverage?: number;
 	};
 	vitals?: {
+	bloodPressureSamples?: import("./native-correlation-details").NativeCorrelationDetail["sample"][];
 		bloodOxygenSamples?: Array<{ timestamp: string; value: number; percent?: number }>;
+		bloodGlucoseSamples?: TimeSeriesSample[];
 		respiratoryRateSamples?: Array<{ timestamp: string; value: number }>;
 		bloodOxygenPercent?: number;
 		respiratoryRate?: number;
@@ -341,19 +379,16 @@ export interface HealthDay {
 		respiratoryRateMax?: number;
 	};
 	sleep?: {
-		sleepStages: Array<{
-			stage: string;
-			startDate: string;
-			endDate: string;
-			durationSeconds: number;
-		}>;
-		totalDuration: number;
+		sleepStages: SleepStage[];
+        sleepSessions?: SleepSession[];
+		totalDuration?: number;
 		totalDurationFormatted?: string;
-		deepSleep: number;
+		deepSleep?: number;
 		deepSleepFormatted?: string;
-		remSleep: number;
+		remSleep?: number;
 		remSleepFormatted?: string;
-		coreSleep: number;
+		coreSleep?: number;
+		lightSleep?: number;
 		coreSleepFormatted?: string;
 		awakeTime?: number;
 		awakeTimeFormatted?: string;
