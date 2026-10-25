@@ -8,6 +8,7 @@ import {
 	PluginSettingTab,
 	Setting,
 	TFile,
+	TAbstractFile,
 	TFolder,
 	normalizePath,
 } from "obsidian";
@@ -100,6 +101,7 @@ export default class HealthMdPlugin extends Plugin {
 	settings: HealthMdSettings = DEFAULT_SETTINGS;
 	dataLoader!: DataLoader;
 	private drawCallbacks = new Set<() => void>();
+	private dataRefreshTimer: number | null = null;
 
 	registerDraw(fn: () => void): () => void {
 		this.drawCallbacks.add(fn);
@@ -127,28 +129,21 @@ export default class HealthMdPlugin extends Plugin {
 		);
 		this.registerExtensions(HEALTH_MD_SOURCE_EXTENSIONS, HEALTH_MD_SOURCE_VIEW_TYPE);
 
-		// Invalidate cache when files change in the data folder
-		this.registerEvent(
-			this.app.vault.on("create", (file) => {
-				if (file.path.startsWith(this.settings.dataFolder + "/")) {
-					this.dataLoader.invalidate();
-				}
-			})
-		);
-		this.registerEvent(
-			this.app.vault.on("modify", (file) => {
-				if (file.path.startsWith(this.settings.dataFolder + "/")) {
-					this.dataLoader.invalidate();
-				}
-			})
-		);
-		this.registerEvent(
-			this.app.vault.on("delete", (file) => {
-				if (file.path.startsWith(this.settings.dataFolder + "/")) {
-					this.dataLoader.invalidate();
-				}
-			})
-		);
+		// Re-render open reading views after native exports change their source files.
+		const refresh = (file: TAbstractFile) => this.scheduleDataRefresh(file.path);
+		this.registerEvent(this.app.vault.on("create", refresh));
+		this.registerEvent(this.app.vault.on("modify", refresh));
+		this.registerEvent(this.app.vault.on("delete", refresh));
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+			this.scheduleDataRefresh(file.path);
+			this.scheduleDataRefresh(oldPath);
+		}));
+		// Markdown frontmatter can be indexed after the vault modify event.
+		this.registerEvent(this.app.metadataCache.on("changed", (file) => this.scheduleDataRefresh(file.path)));
+		this.register(() => {
+			if (this.dataRefreshTimer !== null) window.clearTimeout(this.dataRefreshTimer);
+			this.dataRefreshTimer = null;
+		});
 
 		this.addCommand({
 			id: "insert-health-chart",
@@ -242,6 +237,18 @@ export default class HealthMdPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	private scheduleDataRefresh(path: string): void {
+		const folder = this.settings.dataFolder.replace(/\/+$/g, "");
+		if (path !== folder && !path.startsWith(folder + "/")) return;
+		this.dataLoader.invalidate();
+		if (this.dataRefreshTimer !== null) window.clearTimeout(this.dataRefreshTimer);
+		this.dataRefreshTimer = window.setTimeout(() => {
+			this.dataRefreshTimer = null;
+			this.dataLoader.invalidate();
+			this.refreshViews();
+		}, 200);
 	}
 
 	refreshViews(): void {

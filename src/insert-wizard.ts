@@ -12,6 +12,9 @@ import {
 	VISUALIZATION_CATEGORIES,
 } from "./visualization-catalog";
 
+// Preserve the catalog exports consumed by the Health.md website bundler.
+export { VISUALIZATION_CATALOG, VISUALIZATION_CATEGORIES } from "./visualization-catalog";
+
 const DATE_OR_DATETIME_INPUT =
 	/^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 const DATE_INPUT = /^\d{4}-\d{2}-\d{2}$/;
