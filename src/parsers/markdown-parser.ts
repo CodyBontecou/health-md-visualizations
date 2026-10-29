@@ -35,7 +35,7 @@ import {
 	stringArrayFromUnknown,
 } from "../mood-utils";
 import { hasMedicationData, normalizeMedicationFields } from "../medication-utils";
-import { parseWhoopFlat } from "../whoop-data";
+import { parseWhoopFlat, parseCompleteWhoopSource, whoopFlatFactsAgree } from "../whoop-data";
 import { attachCanonicalMetrics, canonicalMetricsFromFlatRecord } from "../summary-metric-normalizer";
 
 interface ParsedFrontmatter {
@@ -1461,8 +1461,26 @@ export function parseMarkdown(
 	if (workouts.length) day.workouts = workouts;
 
 	Object.assign(day, normalizeMedicationFields(fm));
-	const whoop = parseWhoopFlat(fm);
-	if (whoop) day.whoop = whoop;
+    const providerTables = parseMarkdownTables(parsed.body).filter(table => normalizeLabel(table.context) === 'whoop source facts');
+    if (providerTables.length && successorSleepDetails(authority.profile)) {
+        if (authority.profile !== 'apple-v11') return null;
+        let native: ReturnType<typeof parseCompleteWhoopSource> = null;
+        for (const table of providerTables) {
+            if (normalizedHeaders(table).join() !== 'native provider (json)' || table.rows.length !== 1 || table.rows[0].length !== 1) return null;
+            let source: ReturnType<typeof parseCompleteWhoopSource>;
+            try { source = parseCompleteWhoopSource(parseNativeDetailCell(table.rows[0][0])); }
+            catch { return null; }
+            if (!source || !whoopFlatFactsAgree(source.providers, fm)) return null;
+            if (native && !nativeSourceRecordsAgree([native.providers], [source.providers])) return null;
+            native = source;
+        }
+        if (!native) return null;
+        day.providers = native.providers;
+        day.whoop = native.whoop;
+    } else {
+        const whoop = parseWhoopFlat(fm);
+        if (whoop) day.whoop = whoop;
+    }
 
 	// --- Activity ---
 	// Bases keys: steps, active_calories, exercise_minutes, walking_running_km, vo2_max, etc.

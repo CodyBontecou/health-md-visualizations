@@ -1,0 +1,21 @@
+{
+  "synthetic": true,
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_revision": "e3ee5db05a03bddc6c86021e6a3149ffade626b2",
+  "producer_test": "AppleWakeDateExportPlannerTests/testTypedWHOOPFactsReachAllLocalMorningFormatsWithoutChangingAppleMetrics",
+  "detail_policy": "summary",
+  "metadata_variants": [
+    true,
+    false
+  ],
+  "sha256": {
+    "false/2026-03-15-bases.md": "f135f63b1e6338cda8a51f14c190137faf62e19093d0bbc90daca80818c03857",
+    "false/2026-03-15.csv": "986d4a967d6046d32b75206fc9bd4451f1dcad9fe1c94d089518391b8b223beb",
+    "false/2026-03-15.json": "a5ea747fd02e7410bc911e2feb4d29dbe5a856db6488a215ebaab258577a1974",
+    "false/2026-03-15.md": "67fd74fc8fd8512190ffdabf2a34c52e9406dc9926ff4cdc8f858af36f90bfa1",
+    "true/2026-03-15-bases.md": "108991938ace7540b450a15219b8b7d8aca2a11f6e969a9dc1cab3006819d51c",
+    "true/2026-03-15.csv": "986d4a967d6046d32b75206fc9bd4451f1dcad9fe1c94d089518391b8b223beb",
+    "true/2026-03-15.json": "a5ea747fd02e7410bc911e2feb4d29dbe5a856db6488a215ebaab258577a1974",
+    "true/2026-03-15.md": "7f9e0026b10bfdfa68b564bd6061ab74808d29c85cb53785683fbc996ccfcd89"
+  }
+}

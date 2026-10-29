@@ -341,3 +341,101 @@ test("WHOOP catalog, registry, generated dashboard and examples cover all four c
 	const need = VISUALIZATION_CATALOG.find((option) => option.type === "whoop-sleep-need");
 	assert.deepEqual(need.exportSources, ["daily-json", "daily-csv"]);
 });
+
+const sourceFixture = (metadata, suffix) => readFile(path.join(process.cwd(),
+    'tests/fixtures/apple-v11-whoop-source', String(metadata), `2026-03-15${suffix}`), 'utf8');
+
+function sourceRow(content) {
+    return content.split('\n').find(line => line.startsWith('| `{') && line.includes('healthmd.provider.whoop_daily'));
+}
+function sourceTable(value) {
+    const json = JSON.stringify(value).replace(/[|`<>&]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+    return `\n## WHOOP Source Facts\n\n| Native Provider (JSON) |\n|---|\n| \`${json}\` |\n`;
+}
+
+test('native Apple-v11 WHOOP fixture bytes retain producer provenance', async () => {
+    const root = path.join(process.cwd(), 'tests/fixtures/apple-v11-whoop-source');
+    const provenance = JSON.parse(await readFile(path.join(root, 'provenance.json'), 'utf8'));
+    assert.equal(provenance.synthetic, true);
+    assert.match(provenance.producer_revision, /^[a-f0-9]{40}$/);
+    assert.equal(Object.keys(provenance.sha256).length, 8);
+    const { createHash } = await import('node:crypto');
+    for (const [name, digest] of Object.entries(provenance.sha256)) {
+        assert.equal(createHash('sha256').update(await readFile(path.join(root, name))).digest('hex'), digest, name);
+    }
+});
+
+test('Morning ends Markdown and Bases retain complete WHOOP facts with and without metadata', async () => {
+    const { parseJSON, parseMarkdown } = await loadModule();
+    for (const metadata of [true, false]) {
+        const json = parseJSON(await sourceFixture(metadata, '.json'));
+        assert.ok(json?.whoop);
+        for (const suffix of ['.md', '-bases.md']) {
+            const day = parseMarkdown(await sourceFixture(metadata, suffix));
+            assert.ok(day, `${metadata} ${suffix}`);
+            assert.ok(day.providers, 'complete native provider facts must remain available');
+            assert.deepEqual(day.providers, json.providers);
+            assert.deepEqual(day.whoop, json.whoop);
+            assert.equal(day.activity?.steps, metadata || suffix === '-bases.md' ? 1 : undefined);
+            assert.equal(day.heart?.hrv, undefined);
+        }
+    }
+});
+
+test('complete WHOOP source cells reject malformed, unknown and conflicting representations', async () => {
+    const { parseMarkdown } = await loadModule();
+    const base = await sourceFixture(false, '.md');
+    const row = sourceRow(base);
+    assert.ok(row);
+    const source = JSON.parse(row.slice(3, -3));
+    assert.ok(parseMarkdown(base + sourceTable(source)), 'identical redundant source tables are allowed');
+    for (const transform of [
+        value => { value.whoop.schema_version = 999; },
+        value => { value.whoop.resources[0].record_count += 1; },
+        value => { value.whoop.resources.push(value.whoop.resources[0]); },
+        value => { value.whoop.cycles = 'invalid'; },
+        value => { value.whoop.cycles[0].start_time = 'invalid'; },
+    ]) {
+        const invalid = structuredClone(source); transform(invalid);
+        assert.equal(parseMarkdown(base.replace(row, sourceTable(invalid).trim().split('\n').at(-1))), null);
+    }
+    const conflict = structuredClone(source); conflict.whoop.cycles[0].strain_score += 1;
+    assert.equal(parseMarkdown(base + sourceTable(conflict)), null);
+    assert.equal(parseMarkdown(base.replace(row, '| `{broken` |')), null);
+    assert.equal(parseMarkdown(base.replace('| Native Provider (JSON) |', '| Unknown |')), null);
+});
+
+test('redundant flat WHOOP facts cannot contradict complete source cells', async () => {
+    const { parseMarkdown } = await loadModule();
+    const base = await sourceFixture(true, '-bases.md');
+    assert.ok(parseMarkdown(base));
+    assert.equal(parseMarkdown(base.replace('whoop_hrv_rmssd_ms: 54.3', 'whoop_hrv_rmssd_ms: 55.3')), null);
+    assert.equal(parseMarkdown(base.replace('whoop_capture_status: "complete"', 'whoop_capture_status: "not_requested"')), null);
+});
+
+test('historical WHOOP notes do not acquire successor source-cell constraints', async () => {
+    const { parseMarkdown } = await loadModule();
+    const legacy = await fixture('provider-day-bases.md');
+    const day = parseMarkdown(legacy + '\n## WHOOP Source Facts\n\n| Native Provider (JSON) |\n|---|\n| user notes |\n');
+    assert.ok(day);
+    assert.equal(day.whoop.source, 'frontmatter');
+    assert.equal(day.providers, undefined);
+});
+
+test('complete source cells keep not-requested, empty and failed provider capture states distinct', async () => {
+    const { parseMarkdown } = await loadModule();
+    const base = (await sourceFixture(false, '.md')).split('## WHOOP')[0];
+    for (const status of ['not_requested', 'complete', 'partial']) {
+        const whoop = {schema:'healthmd.provider.whoop_daily',schema_version:1,capture_status:status,
+            fetched_at:status === 'not_requested' ? null : '2026-03-15T18:00:00.000000000Z',
+            cycles:[],recoveries:[],sleep:[],workouts:[],warnings:[],resources:status === 'not_requested' ? [] : [{
+                resource:'cycles',status:status === 'complete' ? 'success' : 'failure',record_count:0,
+                ...(status === 'partial' ? {error:{code:'permission_denied',message:'Synthetic permission failure',retryable:false,http_status_code:403}} : {})
+            }]};
+        const day = parseMarkdown(base + sourceTable({whoop}));
+        assert.ok(day);
+        assert.equal(day.whoop.captureStatus, status);
+        assert.deepEqual(day.providers, {whoop});
+        assert.equal(day.whoop.cycles.length, 0);
+    }
+});

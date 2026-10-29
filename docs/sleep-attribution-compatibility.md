@@ -33,3 +33,10 @@ Successor CSV `Sleep Detail` rows read the complete native stage/session JSON ob
 Malformed native arrays, invalid calendar dates, reversed intervals and conflicting CSV start timestamps reject rather than silently dropping details. Historical detail parsing remains unchanged. Duplicate-format loading retains the complete native array when the display-only array describes the same intervals; it does not invent fields or combine unrelated sessions.
 
 Verbatim four-format parent/stage fixtures come from producer revision `868018383e04fc37b5e7e52d9ec85fd5f3a96ad6`; `tests/fixtures/sleep-native-parents/provenance.json` records their byte digests. Synthetic Health Connect SDK-boundary input spans the New York DST fold/local noon and a separate nap. Real native/host Rust writers produced the fixtures. This qualifies reader preparation and mock-vault loading, not installation in a real vault, physical-provider execution or production enablement.
+
+
+## Complete WHOOP facts in Apple-v11 notes
+
+Apple-v11 Markdown and Bases may append a `WHOOP Source Facts` table with one `Native Provider (JSON)` literal code cell. The reader retains the complete independently versioned object in `HealthDay.providers`, alongside the existing safe WHOOP visualization model. This includes metadata-off notes and fields absent from flat scalar summaries. Provider capture timestamps, identities and source facts retain provider meaning; they do not become Apple sleep ownership or canonical Apple metrics.
+
+The complete section validates the supported nested schema identity, collection shapes, resource counts and capture state. Redundant `whoop_*` frontmatter and duplicate complete tables must agree. Conflicting complete provider captures across files omit the ambiguous date without allowing a later file to restore it. Historical flat-only notes keep their existing interpretation; a matching heading in an older profile does not acquire successor authority. Full-source support does not add Android typed-provider embedding. Metadata-off readable Apple metric summaries retain their existing reader coverage; the complete provider section does not infer absent Apple metrics.

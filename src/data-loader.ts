@@ -1,3 +1,4 @@
+import { nativeSourceRecordsAgree } from "./native-detail-markdown";
 import { attachNativeWorkoutDetails, type NativeWorkoutDetail } from "./native-workout-details";
 import { attachNativeMindfulnessDetails, type NativeMindfulnessDetail } from "./native-mindfulness-details";
 import { attachNativeActivityDetails, type NativeActivityDetail } from "./native-activity-details";
@@ -1118,6 +1119,10 @@ function mergeNativeWorkouts(a: NativeWorkoutDetail[] = [], b: NativeWorkoutDeta
 
 /** Merge two HealthDay objects for the same date, preferring newer schema/richer fields. */
 function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
+    if (successorSleepDetails(a.schema_profile) && a.providers?.whoop !== undefined && b.providers?.whoop !== undefined
+        && !nativeSourceRecordsAgree([a.providers.whoop], [b.providers.whoop])) {
+        throw new QuantitySourceConflict("conflicting native provider facts");
+    }
 	const preferred = dayDetailScore(b) >= dayDetailScore(a) ? b : a;
 	const fallback = preferred === b ? a : b;
 	const schemaVersion = Math.max(schemaVersionOf(a), schemaVersionOf(b));

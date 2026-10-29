@@ -1047,3 +1047,40 @@ test('DataLoader omits contradictory native mood and mindfulness sources without
   }
  }
 });
+
+test('DataLoader retains complete Morning ends WHOOP facts across format orders', async () => {
+    for (const metadata of [true, false]) {
+        const root = `tests/fixtures/apple-v11-whoop-source/${metadata}/2026-03-15`;
+        const names = ['.json', '.csv', '.md', '-bases.md'];
+        const values = await Promise.all(names.map(suffix => readFile(root + suffix, 'utf8')));
+        const expected = JSON.parse(values[0]).providers;
+        for (const order of [[0,1,2,3], [3,2,1,0], [1,2,3,0], [2,3,0,1]]) {
+            const contents = Object.fromEntries(order.map((index, i) => [`${i}-2026-03-15${names[index]}`, values[index]]));
+            const [day] = await loadWhoopVault(contents);
+            assert.ok(day, `${metadata} ${order}`);
+            assert.deepEqual(day.providers, expected);
+            assert.equal(day.whoop.source, 'typed');
+            assert.equal(day.whoop.sleep[0].id, '202');
+            assert.equal(day.activity.steps, 1);
+            assert.equal(day.sourcePaths.length, 4);
+        }
+    }
+});
+
+test('DataLoader omits conflicting complete WHOOP captures without later resurrection', async () => {
+    const root = 'tests/fixtures/apple-v11-whoop-source/false/2026-03-15';
+    const json = await readFile(root + '.json', 'utf8');
+    const markdown = await readFile(root + '.md', 'utf8');
+    const row = markdown.split('\n').find(line => line.startsWith('| `{') && line.includes('healthmd.provider.whoop_daily'));
+    const source = JSON.parse(row.slice(3, -3));
+    source.whoop.cycles[0].strain_score += 1;
+    const conflicting = markdown.replace(row, `| \`${JSON.stringify(source)}\` |`);
+    for (const contents of [
+        {'a.json':json, 'b.md':conflicting, 'c.json':json},
+        {'a.md':conflicting, 'b.json':json, 'c.md':markdown},
+    ]) {
+        const {days, report} = await loadWhoopVault(contents, true);
+        assert.deepEqual(days, []);
+        assert.ok(report.warnings.some(warning => warning.includes('conflicting native source facts')));
+    }
+});
