@@ -1047,17 +1047,19 @@ function buildDayFromRows(
 		const value = Number(row.value);
 		return Number.isFinite(value) ? value * (row.unit.startsWith("hour") ? 3600 : 1) : undefined;
 	};
+	const successorSleep = authority.profile === "apple-v11" || authority.androidSleep;
+	const stageSummary = (stage: string) => successorSleep ? undefined : sumStageSeconds(sleepStages, stage);
 	const sleepTotal = sleepSeconds("Total Duration") ?? sleepSeconds("Total Sleep") ??
-		sleepStages
+		(successorSleep ? undefined : sleepStages
 			.filter((stage) => stage.stage !== "awake")
-			.reduce((sum, stage) => sum + stage.durationSeconds, 0);
-	const deepSleep = sleepSeconds("Deep Sleep") ?? sumStageSeconds(sleepStages, "deep");
-	const remSleep = sleepSeconds("REM Sleep") ?? sumStageSeconds(sleepStages, "rem");
+			.reduce((sum, stage) => sum + stage.durationSeconds, 0));
+	const deepSleep = sleepSeconds("Deep Sleep") ?? stageSummary("deep");
+	const remSleep = sleepSeconds("REM Sleep") ?? stageSummary("rem");
 	if (authority.androidSleep && (sleepSeconds("Core Sleep") !== undefined || sleepStages.some((stage) => stage.stage === "core"))) return null;
-	const coreSleep = authority.androidSleep ? undefined : sleepSeconds("Core Sleep") ?? sleepSeconds("Light Sleep") ?? sumStageSeconds(sleepStages, "core");
-	const lightSleep = authority.androidSleep ? sleepSeconds("Light Sleep") ?? sumStageSeconds(sleepStages, "light") : undefined;
-	const awakeTime = getNum(rows, "Sleep", "Awake Time") ?? sumStageSeconds(sleepStages, "awake");
-	if (sleepTotal > 0 || sleepStages.length || nativeSessions.length) {
+	const coreSleep = authority.androidSleep ? undefined : sleepSeconds("Core Sleep") ?? sleepSeconds("Light Sleep") ?? stageSummary("core");
+	const lightSleep = authority.androidSleep ? sleepSeconds("Light Sleep") ?? stageSummary("light") : undefined;
+	const awakeTime = (successorSleep ? sleepSeconds("Awake Time") : getNum(rows, "Sleep", "Awake Time")) ?? stageSummary("awake");
+	if ((successorSleep ? [sleepTotal, deepSleep, remSleep, coreSleep, lightSleep, awakeTime].some(value => value !== undefined) || getString(rows, "Sleep", "Bedtime") !== undefined || getString(rows, "Sleep", "Wake Time") !== undefined : (sleepTotal ?? 0) > 0) || sleepStages.length || nativeSessions.length) {
 		day.sleep = {
             ...(nativeSessions.length ? { sleepSessions: nativeSessions } : {}),
 			sleepStages,
@@ -1066,10 +1068,10 @@ function buildDayFromRows(
 			remSleep,
 			coreSleep, ...(authority.androidSleep ? { lightSleep } : {}),
 			awakeTime,
-			bedtime: getString(rows, "Sleep", "Bedtime") ?? sleepStages[0]?.startDate ?? "",
-			bedtimeISO: findRow(rows, [lookup("Sleep", "Bedtime")])?.timestamp || sleepStages[0]?.startDate,
-			wakeTime: getString(rows, "Sleep", "Wake Time") ?? sleepStages[sleepStages.length - 1]?.endDate ?? "",
-			wakeTimeISO: findRow(rows, [lookup("Sleep", "Wake Time")])?.timestamp || sleepStages[sleepStages.length - 1]?.endDate,
+			bedtime: getString(rows, "Sleep", "Bedtime") ?? (successorSleep ? undefined : sleepStages[0]?.startDate) ?? "",
+			bedtimeISO: findRow(rows, [lookup("Sleep", "Bedtime")])?.timestamp || (successorSleep ? undefined : sleepStages[0]?.startDate),
+			wakeTime: getString(rows, "Sleep", "Wake Time") ?? (successorSleep ? undefined : sleepStages[sleepStages.length - 1]?.endDate) ?? "",
+			wakeTimeISO: findRow(rows, [lookup("Sleep", "Wake Time")])?.timestamp || (successorSleep ? undefined : sleepStages[sleepStages.length - 1]?.endDate),
 		};
 	}
 

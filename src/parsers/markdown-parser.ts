@@ -1603,13 +1603,14 @@ export function parseMarkdown(
 	const sleepTotal = sleepHours !== undefined
 		? sleepHours * 3600
 		: (sleepSeconds ?? (derivedSleepTotal !== undefined && derivedSleepTotal > 0 ? derivedSleepTotal : undefined));
-	if (sleepTotal !== undefined || granular.sleepStages.length || nativeSessions.length) {
-		const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
-		const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
-		const lightH = getFirstNum(fm, "sleep_light_hours", "sleepLightHours");
-		if (authority.androidSleep && getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "coreSleep") !== undefined) return null;
-		const coreH = getFirstNum(fm, ...(authority.androidSleep ? ["sleep_core_hours"] : ["sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours"]));
-		const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
+
+	const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
+	const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
+	const lightH = getFirstNum(fm, "sleep_light_hours", "sleepLightHours");
+	if (authority.androidSleep && getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "coreSleep") !== undefined) return null;
+	const coreH = getFirstNum(fm, ...(authority.androidSleep ? ["sleep_core_hours"] : ["sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours"]));
+	const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
+	if (sleepTotal !== undefined || (successorSleep && ([deepH, remH, lightH, coreH, awakeH].some(value => value !== undefined) || getFirstStr(fm, "sleep_bedtime", "sleep_wake") !== undefined)) || granular.sleepStages.length || nativeSessions.length) {
 		day.sleep = {
             ...(nativeSessions.length ? { sleepSessions: nativeSessions } : {}),
 			sleepStages: granular.sleepStages,

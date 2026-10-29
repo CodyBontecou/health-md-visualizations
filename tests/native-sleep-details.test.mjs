@@ -164,3 +164,26 @@ test('native metadata-off summary cells match SDK totals without losing full sta
   }
  }
 });
+
+
+test('successor CSV never derives missing sleep summaries and retains independent zero and stage-only summaries', async () => {
+ const module = await readers();
+ for (const metadata of ['true', 'false']) {
+  const csv = await readFile(path.join(process.cwd(), 'tests/fixtures/native-sleep-exact-summary', metadata, '2026-11-01.csv'), 'utf8');
+  const onlyStages = csv.split('\n').filter(line => !line.startsWith('2026-11-01,Sleep,')).join('\n');
+  const day = module.parseCSV(onlyStages)[0];
+  assert.ok(day.sleep.sleepStages.length > 0);
+  for (const key of ['totalDuration', 'deepSleep', 'remSleep', 'coreSleep', 'awakeTime', 'bedtimeISO', 'wakeTimeISO']) assert.equal(day.sleep[key], undefined, key);
+  const noStages = onlyStages.split('\n').filter(line => !line.startsWith('2026-11-01,Sleep Detail,')).join('\n');
+  const zero = module.parseCSV(noStages + '\n2026-11-01,Sleep,Total Sleep,0,hours,\n')[0];
+  assert.equal(zero.sleep.totalDuration, 0);
+  const awake = module.parseCSV(noStages + '\n2026-11-01,Sleep,Awake Time,0.25,hours,\n')[0];
+  assert.equal(awake.sleep.totalDuration, undefined);
+  assert.equal(awake.sleep.awakeTime, 900);
+ }
+ const markdown = await readFile(path.join(process.cwd(), 'tests/fixtures/native-sleep-exact-summary/false/2026-11-01.md'), 'utf8');
+ const justRem = markdown.slice(0, markdown.indexOf('## Sleep Stage Details')).replace(/^> Sleep summary facts:.*$/m, '> Sleep summary facts: `{"sleep_rem_hours":0.25}`');
+ const parsed = module.parseMarkdown(justRem);
+ assert.equal(parsed.sleep.totalDuration, undefined);
+ assert.equal(parsed.sleep.remSleep, 900);
+});
