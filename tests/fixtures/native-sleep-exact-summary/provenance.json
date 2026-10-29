@@ -1,0 +1,16 @@
+{
+  "synthetic": true,
+  "producer_base_revision": "fa7d1a24ccb359ab4a2389f8d8baab728c488295",
+  "producer_worktree_sha256": "4c55770c8a1734d85af1dbe7fe6e54cc0fc411e22ed31e5a3b31fc05df83c122",
+  "producer_test": "AppleWakeDateExportPlannerTests/testCapturedWakeDateSleepDetailsReachConcretePlannerAcrossEveryFormat",
+  "sha256": {
+    "false/2026-11-01-bases.md": "c0195b0ec784ac9fc5b29de9a00fcf44c5bb0c09328cc7f6f29b4d22b9cba60d",
+    "false/2026-11-01.csv": "28abb6d1d0dc04ff5dc00048d355f9cf8a54134d15f4aa662ad5fdc8fc158f85",
+    "false/2026-11-01.json": "0bdac08badd50edede1a5130b7ebd329fb7b9dc7bf5f21182604de69b7b87b52",
+    "false/2026-11-01.md": "a77209ee6bedd5f692e9504cd376d7f4fd676c2d43f822248e425681be273b7c",
+    "true/2026-11-01-bases.md": "c0195b0ec784ac9fc5b29de9a00fcf44c5bb0c09328cc7f6f29b4d22b9cba60d",
+    "true/2026-11-01.csv": "28abb6d1d0dc04ff5dc00048d355f9cf8a54134d15f4aa662ad5fdc8fc158f85",
+    "true/2026-11-01.json": "0bdac08badd50edede1a5130b7ebd329fb7b9dc7bf5f21182604de69b7b87b52",
+    "true/2026-11-01.md": "ee9860ea9b58866646a2bb4bb9787e560a9d1969ed2e8899a5a10597eab6c401"
+  }
+}

@@ -107,3 +107,60 @@ test('native Apple stage selection retains exact clocks and platform identities 
   }
  }
 });
+
+
+test('successor Markdown uses exact selected summary facts and never overlapping stage inference', async () => {
+ const module = await readers();
+ for (const profile of ['apple-v11', 'android-sleep-v6']) {
+  const header = '> Health.md sleep attribution: `morning_ends` (Morning ends); whole sessions by wake-up date.\n'
+   + '> Profile: `' + profile + '`; calendar timezone: `America/New_York`; timestamp timezone: `UTC`; owner rule: `session_end_date`; clipping: `none`.\n';
+  let body = '\n# Health Data — 2026-11-01\n\n## Sleep\n- **Total Sleep:** 20.83 hours\n'
+   + '\n## Sleep Stage Details\n| Start (UTC) | End (UTC) | Stage |\n|---|---|---|\n'
+   + '| 2026-10-31T23:30:00.125Z | 2026-11-01T20:20:00.125Z | inBed |\n'
+   + '| 2026-10-31T23:30:00.125Z | 2026-11-01T20:20:00.125Z | rem |\n';
+  if (profile === 'android-sleep-v6') body = body.replace('inBed', 'sleeping');
+  const facts = {sleep_total_hours: 75000 / 3600, sleep_rem_hours: 75000 / 3600, sleep_bedtime:1170, sleep_wake:920};
+  const parse = value => module.parseMarkdown(header + '> Sleep summary facts: `' + value + '`\n' + body);
+  const value = parse(JSON.stringify(facts));
+  assert.ok(value);
+  assert.equal(value.sleep.bedtime, "19:30");
+  assert.equal(value.sleep.wakeTime, "15:20");
+  assert.ok(Math.abs(value.sleep.totalDuration - 75000) < 1e-8);
+  assert.ok(Math.abs(value.sleep.remSleep - 75000) < 1e-8);
+  assert.equal(parse('{"sleep_total_hours":1.25}').sleep.totalDuration, 4500, 'SDK totals remain independent of stage sums');
+  assert.equal(parse('{"sleep_rem_hours":0.25}').sleep.totalDuration, undefined, 'a partial stage summary does not authorize total sleep');
+  assert.equal(parse('{"sleep_rem_hours":0.25}').sleep.remSleep, 900);
+  for (const noSummary of [parse('{}'), module.parseMarkdown(header + body)]) {
+   assert.equal(noSummary.sleep.totalDuration, undefined);
+   assert.equal(noSummary.sleep.remSleep, undefined);
+   assert.equal(noSummary.sleep.coreSleep, undefined);
+   assert.equal(noSummary.sleep.bedtimeISO, undefined);
+   assert.equal(noSummary.sleep.wakeTimeISO, undefined);
+  }
+  for (const malformed of ['{"sleep_total_hours":-1}', '{"sleep_total_hours":"20"}', '{"unknown":1}', '{"sleep_bedtime":"25:00"}', '{"sleep_total_hours":1,"sleep_total_hours":2}']) {
+   assert.equal(parse(malformed), null, malformed);
+  }
+  assert.equal(module.parseMarkdown(header + '> Sleep summary facts: `{}`\n> Sleep summary facts: `{}`\n' + body), null);
+  assert.equal(module.parseMarkdown('> Sleep summary facts: `{}`\n' + body), null);
+ }
+});
+
+
+test('native metadata-off summary cells match SDK totals without losing full stage facts', async () => {
+ const module = await readers();
+ const root = path.join(process.cwd(), 'tests/fixtures/native-sleep-exact-summary');
+ const provenance = JSON.parse(await readFile(path.join(root, 'provenance.json'), 'utf8'));
+ for (const [name, hash] of Object.entries(provenance.sha256)) assert.equal(createHash('sha256').update(await readFile(path.join(root, name))).digest('hex'), hash);
+ for (const metadata of ['true', 'false']) {
+  const base = path.join(root, metadata, '2026-11-01');
+  const native = module.parseJSON(await readFile(base + '.json', 'utf8'));
+  for (const [suffix, parse] of [['.csv', module.parseCSV], ['.md', module.parseMarkdown], ['-bases.md', module.parseMarkdown]]) {
+   const value = parse(await readFile(base + suffix, 'utf8'));
+   const day = Array.isArray(value) ? value[0] : value;
+   assert.ok(day, metadata + suffix);
+   assert.ok(Math.abs(day.sleep.totalDuration - native.sleep.totalDuration) < 1e-8, metadata + suffix);
+   assert.deepEqual(day.sleep.sleepStages, native.sleep.sleepStages, metadata + suffix);
+   assert.equal(day.sleep.lightSleep, undefined);
+  }
+ }
+});

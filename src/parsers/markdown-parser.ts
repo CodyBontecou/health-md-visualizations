@@ -6,7 +6,7 @@ import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
 import { parseNativeDetailCell, nativeSourceRecordsAgree } from "../native-detail-markdown";
 import { canonicalSourceInstant } from "../native-source-clock";
-import { readSleepAuthority, sleepDeclaration } from "../sleep-attribution";
+import { readSleepAuthority, sleepDeclaration, sleepSummaryFacts } from "../sleep-attribution";
 import {
 	FrontmatterAliasMap,
 	HEALTHMD_HEALTH_DATA_SCHEMA,
@@ -1393,13 +1393,17 @@ export function parseMarkdown(
 	if (declaration) {
 		if (Object.keys(fm).some((key) => ["schema", "schema_version", "schema_profile", "time_context"].includes(key))) return null;
 		fm = { ...fm, ...declaration };
-		for (const [label, key] of [["Total Sleep", "sleep_total_hours"], ["Deep Sleep", "sleep_deep_hours"],
-			["REM Sleep", "sleep_rem_hours"], ["Core Sleep", "sleep_core_hours"], ["Light Sleep", "sleep_light_hours"],
-			["Awake Time", "sleep_awake_hours"], ["In Bed", "sleep_in_bed_hours"]]) {
-			const match = new RegExp(`${label}: ([0-9.eE+-]+) (?:hour|hours)`).exec(parsed.body);
-			if (match) fm[key] = Number(match[1]);
+		const facts = sleepSummaryFacts(parsed.body);
+		if (facts === null || (facts && declaration.schema_profile === "apple-v11" && facts.sleep_light_hours !== undefined)) return null;
+		if (facts) {
+			fm = { ...fm, ...facts };
+			for (const key of ["sleep_bedtime", "sleep_wake"]) {
+				const minutes = facts[key];
+				if (typeof minutes === "number") fm[key] = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+			}
 		}
 	}
+	if (!declaration && sleepSummaryFacts(parsed.body) !== undefined) return null;
 	const authority = readSleepAuthority(fm);
 	if (!authority) return null;
 
@@ -1592,15 +1596,17 @@ export function parseMarkdown(
 		"totalDuration",
 		"total_duration"
 	);
-	const derivedSleepTotal = granular.sleepStages
+	const successorSleep = authority.profile === "apple-v11" || authority.androidSleep;
+	const derivedSleepTotal = successorSleep ? undefined : granular.sleepStages
 		.filter((stage) => stage.stage !== "awake")
 		.reduce((sum, stage) => sum + stage.durationSeconds, 0);
 	const sleepTotal = sleepHours !== undefined
 		? sleepHours * 3600
-		: (sleepSeconds ?? (derivedSleepTotal > 0 ? derivedSleepTotal : undefined));
+		: (sleepSeconds ?? (derivedSleepTotal !== undefined && derivedSleepTotal > 0 ? derivedSleepTotal : undefined));
 	if (sleepTotal !== undefined || granular.sleepStages.length || nativeSessions.length) {
 		const deepH = getFirstNum(fm, "sleep_deep_hours", "sleepDeepHours", "deep_sleep_hours");
 		const remH = getFirstNum(fm, "sleep_rem_hours", "sleepRemHours", "rem_sleep_hours");
+		const lightH = getFirstNum(fm, "sleep_light_hours", "sleepLightHours");
 		if (authority.androidSleep && getFirstNum(fm, "sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "coreSleep") !== undefined) return null;
 		const coreH = getFirstNum(fm, ...(authority.androidSleep ? ["sleep_core_hours"] : ["sleep_core_hours", "sleepCoreHours", "core_sleep_hours", "sleep_light_hours", "sleepLightHours"]));
 		const awakeH = getFirstNum(fm, "sleep_awake_hours", "sleepAwakeHours", "awake_time_hours");
@@ -1610,17 +1616,17 @@ export function parseMarkdown(
 			totalDuration: sleepTotal ?? derivedSleepTotal,
 			deepSleep: deepH !== undefined
 				? deepH * 3600
-				: (getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep") ?? sumStageSeconds(granular.sleepStages, "deep")),
+				: (getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep") ?? (successorSleep ? undefined : sumStageSeconds(granular.sleepStages, "deep"))),
 			remSleep: remH !== undefined
 				? remH * 3600
-				: (getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep") ?? sumStageSeconds(granular.sleepStages, "rem")),
-			...(authority.androidSleep ? { lightSleep: (getFirstNum(fm, "sleep_light_hours", "sleepLightHours") ?? 0) * 3600 } : {}),
+				: (getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep") ?? (successorSleep ? undefined : sumStageSeconds(granular.sleepStages, "rem"))),
+			...(authority.androidSleep ? { lightSleep: lightH === undefined ? undefined : lightH * 3600 } : {}),
 			coreSleep: authority.androidSleep ? undefined : coreH !== undefined
 				? coreH * 3600
-				: (getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light") ?? sumStageSeconds(granular.sleepStages, "core")),
+				: (getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light") ?? (successorSleep ? undefined : sumStageSeconds(granular.sleepStages, "core"))),
 			awakeTime: awakeH !== undefined
 				? awakeH * 3600
-				: (getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time") ?? sumStageSeconds(granular.sleepStages, "awake")),
+				: (getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time") ?? (successorSleep ? undefined : sumStageSeconds(granular.sleepStages, "awake"))),
 			bedtime:
 				getFirstStr(
 					fm,
@@ -1631,7 +1637,7 @@ export function parseMarkdown(
 					"sleep_start",
 					"sleep_start_time",
 					"sleep_session_start"
-				) ?? granular.sleepStages[0]?.startDate ?? "",
+				) ?? (successorSleep ? undefined : granular.sleepStages[0]?.startDate) ?? "",
 			bedtimeISO:
 				getFirstStr(
 					fm,
@@ -1641,7 +1647,7 @@ export function parseMarkdown(
 					"bed_time_iso",
 					"sleep_start_iso",
 					"sleep_session_start_iso"
-				) ?? granular.sleepStages[0]?.startDate,
+				) ?? (successorSleep ? undefined : granular.sleepStages[0]?.startDate),
 			wakeTime:
 				getFirstStr(
 					fm,
@@ -1654,7 +1660,7 @@ export function parseMarkdown(
 					"sleep_end",
 					"sleep_end_time",
 					"sleep_session_end"
-				) ?? granular.sleepStages[granular.sleepStages.length - 1]?.endDate ?? "",
+				) ?? (successorSleep ? undefined : granular.sleepStages[granular.sleepStages.length - 1]?.endDate) ?? "",
 			wakeTimeISO:
 				getFirstStr(
 					fm,
@@ -1666,7 +1672,7 @@ export function parseMarkdown(
 					"wake_iso",
 					"sleep_end_iso",
 					"sleep_session_end_iso"
-				) ?? granular.sleepStages[granular.sleepStages.length - 1]?.endDate,
+				) ?? (successorSleep ? undefined : granular.sleepStages[granular.sleepStages.length - 1]?.endDate),
 		};
 	}
 

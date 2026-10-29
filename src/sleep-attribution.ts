@@ -97,3 +97,28 @@ export function sleepDeclaration(body: string): Record<string, unknown> | null |
 			sleep_owner_day_rule: "session_end_date", sleep_interval_clipping: "none" },
 	};
 }
+
+/** Exact, selected SDK summaries, independent of optional source stage detail. */
+export function sleepSummaryFacts(body: string): Record<string, unknown> | null | undefined {
+ const marker = "> Sleep summary facts:";
+ const lines = body.split("\n").filter(line => line.includes(marker));
+ if (!lines.length) return undefined;
+ if (lines.length !== 1 || !lines[0].startsWith(marker + " `") || !lines[0].endsWith("`")) return null;
+ try {
+  const facts = record(JSON.parse(lines[0].slice((marker + " `").length, -1)));
+  if (!facts) return null;
+  const numeric = ["sleep_total_hours", "sleep_deep_hours", "sleep_rem_hours", "sleep_core_hours", "sleep_light_hours", "sleep_awake_hours", "sleep_in_bed_hours"];
+  const clocks = ["sleep_bedtime", "sleep_wake"];
+  for (const [key, value] of Object.entries(facts)) {
+   if (numeric.includes(key)) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+   } else if (clocks.includes(key)) {
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value >= 1440) return null;
+   } else return null;
+  }
+  // Duplicate JSON properties must not silently override summary authority.
+  const keys = [...lines[0].matchAll(/"((?:\\.|[^"\\])*)"\s*:/g)].map(match => JSON.parse('"' + match[1] + '"'));
+  if (new Set(keys).size !== keys.length) return null;
+  return facts;
+ } catch { return null; }
+}

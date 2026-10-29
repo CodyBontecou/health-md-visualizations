@@ -2319,7 +2319,8 @@ test("wake-date CSV and Markdown preserve profile, Light and exact source clocks
 	const noMetadata = "# 2026-08-10\n\n> Health.md sleep attribution: `morning_ends` (Morning ends); whole sessions by wake-up date.\n"
 		+ "> Profile: `android-sleep-v6`; calendar timezone: `America/New_York`; timestamp timezone: `UTC`; owner rule: `session_end_date`; clipping: `none`.\n\n"
 		+ "## Sleep\n- Total Sleep: 7.75 hours\n- Light Sleep: 4.25 hours\n";
-	const note = parseMarkdown(noMetadata);
+	const note = parseMarkdown(noMetadata + "> Sleep summary facts: `{\"sleep_total_hours\":7.75,\"sleep_light_hours\":4.25}`\n");
+	assert.equal(parseMarkdown(noMetadata), null, "rounded human prose is not successor summary authority");
 	assert.equal(note?.schema_profile, "android-sleep-v6");
 	assert.equal(note?.sleep?.lightSleep, 15300);
 	assert.equal(parseMarkdown(noMetadata.replace("clipping: `none`", "clipping: `noon`")), null);
