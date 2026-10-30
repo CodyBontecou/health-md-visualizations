@@ -1125,3 +1125,22 @@ test('Morning individual annotations do not upgrade historical notes or hide con
   }
  }
 });
+
+test('native Daily Note capture and exact daily JSON coexist in either scan order',async()=>{
+ const root='tests/fixtures/native-daily-note-capture/';
+ for(const mode of ['frontmatter','sections']) {
+  const note=await readFile(root+mode+'.md','utf8');
+  const json=await readFile(root+mode+'.json','utf8');
+  for(const reverse of [false,true]) {
+   const sources=reverse?{'journal.md':note,'daily.json':json}:{'daily.json':json,'journal.md':note};
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1);
+   assert.equal(days[0].date,'2026-03-08');
+   assert.equal(days[0].schema_profile,'apple-v11');
+   assert.equal(days[0].sleep.totalDuration,93600.5);
+   assert.equal(days[0].sleep.deepSleep,undefined);
+   assert.equal(days[0].activity.steps,42);
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')));
+  }
+ }
+});

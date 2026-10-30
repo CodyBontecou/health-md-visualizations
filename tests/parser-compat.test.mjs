@@ -2512,3 +2512,63 @@ test('individual annotation names do not reserve custom metric keys on daily exp
  assert.equal(actual.schema_profile,'apple-v11');
  assert.deepEqual(actual,parseMarkdown(daily));
 });
+
+test('scoped daily-note capture never adopts personal or retained historical facts', async()=>{
+ const {parseMarkdown,parseJSON}=await loadParsers();
+ const record=await readFile('tests/fixtures/native-individual-capture/basic/Health/2026-03-08.json','utf8');
+ const metadata=JSON.stringify(JSON.stringify({kind:'healthmd_daily_capture',version:1,record_json:record}));
+ const note=`---\ntitle: Personal journal\ndate: 1999-01-01\nsleep_deep_hours: 9\nhealthmd_injection_kind: daily_capture_v1\nhealthmd_daily_injection_v1: ${metadata}\n---\n# My journal\n## Thoughts\nMy thoughts.\n`;
+ assert.deepEqual(parseMarkdown(note),parseJSON(record));
+ assert.equal(parseMarkdown(note).date,'2026-03-08');
+ assert.equal(parseMarkdown(note).sleep.deepSleep,undefined);
+ for (const broken of [
+  note.replace('daily_capture_v1','daily_capture_v2'),
+  note.replace(metadata,'42'),
+  note.replace(metadata,JSON.stringify('{broken')),
+  note.replace(metadata,JSON.stringify(JSON.stringify({kind:'healthmd_daily_capture',version:2,record_json:record}))),
+  note.replace(metadata,JSON.stringify(JSON.stringify({kind:'healthmd_daily_capture',version:1,record_json:record,extra:true}))),
+  note.replace(metadata,JSON.stringify(JSON.stringify({kind:'healthmd_daily_capture',version:1,record_json:record.replaceAll('apple-v11','apple-v8')}))),
+ ]) assert.equal(parseMarkdown(broken),null);
+ assert.equal(parseMarkdown(note,{healthmd_daily_injection_v1:'stale cached record'}),null);
+ const personal='---\ndate: 1999-01-01\nsteps: 10\n---\nMy journal';
+ const spoof={healthmd_injection_kind:'daily_capture_v1',healthmd_daily_injection_v1:JSON.stringify({kind:'healthmd_daily_capture',version:1,record_json:record})};
+ assert.equal(parseMarkdown(personal,spoof)?.schema_profile,undefined);
+});
+
+test('scoped daily-note grammar preserves distinct Android successor source semantics',async()=>{
+ const {parseMarkdown,parseJSON}=await loadParsers();
+ const source=await readFile('tests/fixtures/sleep-successor/android-sleep-v6-dst/2026-11-01.json','utf8');
+ const metadata=JSON.stringify(JSON.stringify({kind:'healthmd_daily_capture',version:1,record_json:source}));
+ const note=`---\ndate: 1999-01-01\nsleep_core_hours: 12\nhealthmd_injection_kind: daily_capture_v1\nhealthmd_daily_injection_v1: ${metadata}\n---\nPersonal text\n`;
+ const actual=parseMarkdown(note);
+ assert.deepEqual(actual,parseJSON(source));
+ assert.equal(actual.schema_profile,'android-sleep-v6');
+ assert.equal(actual.sleep.coreSleep,undefined);
+});
+
+test('native daily-note injections retain exact scoped source bytes and ignore historical fields',async()=>{
+ const {parseMarkdown,parseJSON}=await loadParsers();
+ const root='tests/fixtures/native-daily-note-capture/';
+ const provenance=JSON.parse(await readFile(root+'provenance.json','utf8'));
+ const {createHash}=await import('node:crypto');
+ for(const [name,digest] of Object.entries(provenance.files))
+  assert.equal(createHash('sha256').update(await readFile(root+name)).digest('hex'),digest);
+ for(const mode of ['frontmatter','sections']) {
+  const note=await readFile(root+mode+'.md','utf8');
+  const source=await readFile(root+mode+'.json','utf8');
+  const actual=parseMarkdown(note);
+  assert.deepEqual(actual,parseJSON(source));
+  assert.equal(actual.sleep.totalDuration,93600.5);
+  assert.equal(actual.sleep.deepSleep,undefined);
+  assert.equal(actual.activity.steps,42);
+  assert.ok(note.includes('sleep_deep_hours: 9 # historical field'));
+  assert.ok(note.includes('# Personal title\nKeep my introduction.'));
+ }
+ const replaced=await readFile(root+'night-replacement.md','utf8');
+ // This personal note has no root date: clearing the scope cannot invent one.
+ assert.equal(parseMarkdown(replaced),null);
+ const night=parseMarkdown(replaced.replace('---\n','---\ndate: 2026-03-08\n'));
+ assert.ok(night);
+ assert.equal(night.schema_profile,undefined);
+ assert.equal(night.timeContext?.sleep_day_attribution,undefined);
+});

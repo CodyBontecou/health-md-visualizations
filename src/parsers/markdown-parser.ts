@@ -7,6 +7,7 @@ import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDe
 import { parseNativeDetailCell, nativeSourceRecordsAgree } from "../native-detail-markdown";
 import { canonicalSourceInstant } from "../native-source-clock";
 import { readSleepAuthority, readIndividualCaptureAuthority, sleepDeclaration, sleepSummaryFacts } from "../sleep-attribution";
+import { parseJSON } from "./json-parser";
 import {
 	FrontmatterAliasMap,
 	HEALTHMD_HEALTH_DATA_SCHEMA,
@@ -1383,6 +1384,27 @@ export function parseMarkdown(
 	dictionaryUnits?: HealthMdUnitMap
 ): HealthDay | null {
 	const parsed = parseFrontmatter(content);
+	// A daily-note injection owns one explicit capture, not the surrounding
+	// personal/historical fields. Only on-disk identity may activate this path;
+	// a metadata cache or metric alias cannot manufacture capture authority.
+	const raw = parsed.frontmatter ?? {};
+	if (raw.healthmd_injection_kind !== undefined && raw.healthmd_injection_kind !== null) {
+		if (raw.healthmd_injection_kind !== "daily_capture_v1") return null;
+		for (const key of ["healthmd_injection_kind", "healthmd_daily_injection_v1"]) {
+			if (cachedFrontmatter?.[key] !== undefined && cachedFrontmatter[key] !== raw[key]) return null;
+		}
+		const value = raw.healthmd_daily_injection_v1;
+		if (typeof value !== "string" || value.length > 64 * 1024 * 1024) return null;
+		try {
+			const envelope = JSON.parse(value) as Record<string, unknown>;
+			if (!envelope || envelope.kind !== "healthmd_daily_capture" || envelope.version !== 1
+				|| typeof envelope.record_json !== "string"
+				|| Object.keys(envelope).sort().join(",") !== "kind,record_json,version") return null;
+			const capture = parseJSON(envelope.record_json);
+			if (!capture || !["apple-v11", "android-sleep-v6"].includes(capture.schema_profile ?? "")) return null;
+			return capture;
+		} catch { return null; }
+	}
 	let fm = applyFrontmatterAliases(
 		mergeFrontmatter(parsed.frontmatter ?? {}, cachedFrontmatter),
 		frontmatterAliases

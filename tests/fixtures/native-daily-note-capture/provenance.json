@@ -1,0 +1,14 @@
+{
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_commit": "5f10ba4b9cd10b7afd533e2faac8edf51e20a17f",
+  "producer_test": "MorningDailyNoteTests.preparedInjectionScopesAuthorityAndPreservesPersonalContent(sections:)",
+  "configuration": "iOS Simulator packaged core; synthetic HealthKit; America/New_York spring DST; whole26h+0.5s sleep; scoped summary/sections; later Night begins invalidation; production orchestration not admitted",
+  "injector_sha256": "de4689a1f55314dd38ad85b9d0c8760a1942a99853f75537670df4ffeb1d5c14",
+  "files": {
+    "frontmatter.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "frontmatter.md": "20b85b8bf29d6959fa5a8466a857ce9c95b2c0d0e4f3c63cd8379c868d2e4aba",
+    "night-replacement.md": "005aa98243e8e4b29325a137ac3288f75f3a06ff7be445bfdbbead2af133a4f5",
+    "sections.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "sections.md": "24ea4a997ddb7a180b5b4471dc2ea2fbc668ebfa734a7cfa9e53ec7757a73d72"
+  }
+}

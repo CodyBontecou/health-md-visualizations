@@ -14853,10 +14853,28 @@ function captureSummaryFromFrontmatter(fm) {
   };
 }
 function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O;
   const parsed = parseFrontmatter(content);
+  const raw = (_a = parsed.frontmatter) != null ? _a : {};
+  if (raw.healthmd_injection_kind !== void 0 && raw.healthmd_injection_kind !== null) {
+    if (raw.healthmd_injection_kind !== "daily_capture_v1") return null;
+    for (const key of ["healthmd_injection_kind", "healthmd_daily_injection_v1"]) {
+      if ((cachedFrontmatter == null ? void 0 : cachedFrontmatter[key]) !== void 0 && cachedFrontmatter[key] !== raw[key]) return null;
+    }
+    const value = raw.healthmd_daily_injection_v1;
+    if (typeof value !== "string" || value.length > 64 * 1024 * 1024) return null;
+    try {
+      const envelope = JSON.parse(value);
+      if (!envelope || envelope.kind !== "healthmd_daily_capture" || envelope.version !== 1 || typeof envelope.record_json !== "string" || Object.keys(envelope).sort().join(",") !== "kind,record_json,version") return null;
+      const capture3 = parseJSON(envelope.record_json);
+      if (!capture3 || !["apple-v11", "android-sleep-v6"].includes((_b = capture3.schema_profile) != null ? _b : "")) return null;
+      return capture3;
+    } catch (e) {
+      return null;
+    }
+  }
   let fm = applyFrontmatterAliases(
-    mergeFrontmatter((_a = parsed.frontmatter) != null ? _a : {}, cachedFrontmatter),
+    mergeFrontmatter((_c = parsed.frontmatter) != null ? _c : {}, cachedFrontmatter),
     frontmatterAliases
   );
   const declaration = sleepDeclaration(parsed.body);
@@ -14877,15 +14895,15 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   if (!declaration && sleepSummaryFacts(parsed.body) !== void 0) return null;
   const individual = readIndividualCaptureAuthority(fm);
   if (individual === null) return null;
-  const authority = (_b = individual == null ? void 0 : individual.authority) != null ? _b : readSleepAuthority(fm);
+  const authority = (_d = individual == null ? void 0 : individual.authority) != null ? _d : readSleepAuthority(fm);
   if (!authority) return null;
   const schema = getFirstStr(fm, "schema", "Schema");
-  const frontmatterType = normalizeLabel2((_c = getFirstStr(fm, "type", "Type")) != null ? _c : "");
+  const frontmatterType = normalizeLabel2((_e = getFirstStr(fm, "type", "Type")) != null ? _e : "");
   if (schema === HEALTHMD_ROLLUP_SCHEMA || frontmatterType === "health_rollup") return null;
   if (schema && schema !== HEALTHMD_HEALTH_DATA_SCHEMA && !frontmatterIndicatesWorkout(fm)) return null;
-  const rawDate = (_d = getFirstStr(fm, "date", "Date", "day", "Day")) != null ? _d : extractDateFromContent(content);
+  const rawDate = (_f = getFirstStr(fm, "date", "Date", "day", "Day")) != null ? _f : extractDateFromContent(content);
   if (!rawDate) return null;
-  const date = (_e = individual == null ? void 0 : individual.ownerDate) != null ? _e : rawDate.slice(0, 10);
+  const date = (_g = individual == null ? void 0 : individual.ownerDate) != null ? _g : rawDate.slice(0, 10);
   const schemaVersion = schemaVersionOf({ schemaVersion: getFirstNum(fm, "schemaVersion"), schema_version: getFirstNum(fm, "schema_version") });
   const rawUnits = fm.units;
   const unitsMap = mergeUnitMaps(dictionaryUnits, rawUnits);
@@ -14993,10 +15011,10 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   const heartValues = granular.heartRateSamples.map((sample) => sample.value);
   const hrvValues = granular.hrvSamples.map((sample) => sample.value);
   const restingHR = getFirstNum(fm, "resting_heart_rate", "heart_resting_heart_rate", "restingHeartRate");
-  const avgHR = (_f = getFirstNum(fm, "average_heart_rate", "heart_average_heart_rate", "averageHeartRate")) != null ? _f : average2(heartValues);
-  const hrvVal = (_g = getFirstNum(fm, "hrv_ms", "hrv", "heart_hrv")) != null ? _g : average2(hrvValues);
-  const heartRateMin = (_h = getFirstNum(fm, "heart_rate_min", "heart_min", "heartRateMin")) != null ? _h : heartValues.length ? Math.min(...heartValues) : void 0;
-  const heartRateMax = (_i = getFirstNum(fm, "heart_rate_max", "heart_max", "heartRateMax")) != null ? _i : heartValues.length ? Math.max(...heartValues) : void 0;
+  const avgHR = (_h = getFirstNum(fm, "average_heart_rate", "heart_average_heart_rate", "averageHeartRate")) != null ? _h : average2(heartValues);
+  const hrvVal = (_i = getFirstNum(fm, "hrv_ms", "hrv", "heart_hrv")) != null ? _i : average2(hrvValues);
+  const heartRateMin = (_j = getFirstNum(fm, "heart_rate_min", "heart_min", "heartRateMin")) != null ? _j : heartValues.length ? Math.min(...heartValues) : void 0;
+  const heartRateMax = (_k = getFirstNum(fm, "heart_rate_max", "heart_max", "heartRateMax")) != null ? _k : heartValues.length ? Math.max(...heartValues) : void 0;
   const walkingHeartRateAverage = getFirstNum(
     fm,
     "walking_heart_rate",
@@ -15005,9 +15023,9 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
   );
   if (restingHR !== void 0 || avgHR !== void 0 || hrvVal !== void 0 || heartRateMin !== void 0 || heartRateMax !== void 0 || walkingHeartRateAverage !== void 0 || granular.heartRateSamples.length || granular.hrvSamples.length) {
     day.heart = {
-      averageHeartRate: (_j = avgHR != null ? avgHR : restingHR) != null ? _j : 0,
-      heartRateMin: (_l = (_k = heartRateMin != null ? heartRateMin : avgHR) != null ? _k : restingHR) != null ? _l : 0,
-      heartRateMax: (_n = (_m = heartRateMax != null ? heartRateMax : avgHR) != null ? _m : restingHR) != null ? _n : 0,
+      averageHeartRate: (_l = avgHR != null ? avgHR : restingHR) != null ? _l : 0,
+      heartRateMin: (_n = (_m = heartRateMin != null ? heartRateMin : avgHR) != null ? _m : restingHR) != null ? _n : 0,
+      heartRateMax: (_p = (_o = heartRateMax != null ? heartRateMax : avgHR) != null ? _o : restingHR) != null ? _p : 0,
       heartRateSamples: granular.heartRateSamples,
       hrvSamples: granular.hrvSamples.length ? granular.hrvSamples : void 0,
       restingHeartRate: restingHR,
@@ -15044,12 +15062,12 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
       ...nativeSessions.length ? { sleepSessions: nativeSessions } : {},
       sleepStages: granular.sleepStages,
       totalDuration: sleepTotal != null ? sleepTotal : derivedSleepTotal,
-      deepSleep: deepH !== void 0 ? deepH * 3600 : (_o = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _o : successorSleep ? void 0 : sumStageSeconds2(granular.sleepStages, "deep"),
-      remSleep: remH !== void 0 ? remH * 3600 : (_p = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _p : successorSleep ? void 0 : sumStageSeconds2(granular.sleepStages, "rem"),
+      deepSleep: deepH !== void 0 ? deepH * 3600 : (_q = getFirstNum(fm, "sleep_deep", "sleepDeep", "deepSleep", "deep_sleep")) != null ? _q : successorSleep ? void 0 : sumStageSeconds2(granular.sleepStages, "deep"),
+      remSleep: remH !== void 0 ? remH * 3600 : (_r = getFirstNum(fm, "sleep_rem", "sleepRem", "remSleep", "rem_sleep")) != null ? _r : successorSleep ? void 0 : sumStageSeconds2(granular.sleepStages, "rem"),
       ...authority.androidSleep ? { lightSleep: lightH === void 0 ? void 0 : lightH * 3600 } : {},
-      coreSleep: authority.androidSleep ? void 0 : coreH !== void 0 ? coreH * 3600 : (_q = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light")) != null ? _q : successorSleep ? void 0 : sumStageSeconds2(granular.sleepStages, "core"),
-      awakeTime: awakeH !== void 0 ? awakeH * 3600 : (_r = getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time")) != null ? _r : successorSleep ? void 0 : sumStageSeconds2(granular.sleepStages, "awake"),
-      bedtime: (_u = (_t = getFirstStr(
+      coreSleep: authority.androidSleep ? void 0 : coreH !== void 0 ? coreH * 3600 : (_s = getFirstNum(fm, "sleep_core", "sleepCore", "coreSleep", "core_sleep", "sleep_light")) != null ? _s : successorSleep ? void 0 : sumStageSeconds2(granular.sleepStages, "core"),
+      awakeTime: awakeH !== void 0 ? awakeH * 3600 : (_t = getFirstNum(fm, "sleep_awake", "sleepAwake", "awakeTime", "awake_time")) != null ? _t : successorSleep ? void 0 : sumStageSeconds2(granular.sleepStages, "awake"),
+      bedtime: (_w = (_v = getFirstStr(
         fm,
         "sleep_bedtime",
         "sleepBedtime",
@@ -15058,8 +15076,8 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
         "sleep_start",
         "sleep_start_time",
         "sleep_session_start"
-      )) != null ? _t : successorSleep ? void 0 : (_s = granular.sleepStages[0]) == null ? void 0 : _s.startDate) != null ? _u : "",
-      bedtimeISO: (_w = getFirstStr(
+      )) != null ? _v : successorSleep ? void 0 : (_u = granular.sleepStages[0]) == null ? void 0 : _u.startDate) != null ? _w : "",
+      bedtimeISO: (_y = getFirstStr(
         fm,
         "sleep_bedtime_iso",
         "sleepBedtimeISO",
@@ -15067,8 +15085,8 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
         "bed_time_iso",
         "sleep_start_iso",
         "sleep_session_start_iso"
-      )) != null ? _w : successorSleep ? void 0 : (_v = granular.sleepStages[0]) == null ? void 0 : _v.startDate,
-      wakeTime: (_z = (_y = getFirstStr(
+      )) != null ? _y : successorSleep ? void 0 : (_x = granular.sleepStages[0]) == null ? void 0 : _x.startDate,
+      wakeTime: (_B = (_A = getFirstStr(
         fm,
         "sleep_wake",
         "sleepWake",
@@ -15079,8 +15097,8 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
         "sleep_end",
         "sleep_end_time",
         "sleep_session_end"
-      )) != null ? _y : successorSleep ? void 0 : (_x = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _x.endDate) != null ? _z : "",
-      wakeTimeISO: (_B = getFirstStr(
+      )) != null ? _A : successorSleep ? void 0 : (_z = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _z.endDate) != null ? _B : "",
+      wakeTimeISO: (_D = getFirstStr(
         fm,
         "sleep_wake_iso",
         "sleepWakeISO",
@@ -15090,29 +15108,29 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
         "wake_iso",
         "sleep_end_iso",
         "sleep_session_end_iso"
-      )) != null ? _B : successorSleep ? void 0 : (_A = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _A.endDate
+      )) != null ? _D : successorSleep ? void 0 : (_C = granular.sleepStages[granular.sleepStages.length - 1]) == null ? void 0 : _C.endDate
     };
   }
   const respiratoryValues = granular.respiratoryRateSamples.map((sample) => sample.value);
-  const respRateAvg = (_C = getFirstNum(fm, "respiratory_rate", "respiratory_rate_avg", "vitals_respiratory_rate", "respiratoryRateAvg")) != null ? _C : average2(respiratoryValues);
-  const respRateMin = (_D = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin")) != null ? _D : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0;
-  const respRateMax = (_E = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax")) != null ? _E : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0;
+  const respRateAvg = (_E = getFirstNum(fm, "respiratory_rate", "respiratory_rate_avg", "vitals_respiratory_rate", "respiratoryRateAvg")) != null ? _E : average2(respiratoryValues);
+  const respRateMin = (_F = getFirstNum(fm, "respiratory_rate_min", "respiratoryRateMin")) != null ? _F : respiratoryValues.length ? Math.min(...respiratoryValues) : void 0;
+  const respRateMax = (_G = getFirstNum(fm, "respiratory_rate_max", "respiratoryRateMax")) != null ? _G : respiratoryValues.length ? Math.max(...respiratoryValues) : void 0;
   const bloodOxygenSamples = granular.bloodOxygenSamples.map((sample) => ({
     timestamp: sample.timestamp,
     value: sample.value,
     percent: sample.value
   }));
   const bloodOxygenValues = bloodOxygenSamples.map((sample) => sample.value);
-  const bloodOxAvg = (_F = normalizePercent3(getFirstNum(
+  const bloodOxAvg = (_H = normalizePercent3(getFirstNum(
     fm,
     "blood_oxygen",
     "blood_oxygen_avg",
     "vitals_blood_oxygen",
     "bloodOxygenAvg",
     "bloodOxygenPercent"
-  ))) != null ? _F : average2(bloodOxygenValues);
-  const bloodOxMin = (_G = normalizePercent3(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"))) != null ? _G : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
-  const bloodOxMax = (_H = normalizePercent3(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"))) != null ? _H : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
+  ))) != null ? _H : average2(bloodOxygenValues);
+  const bloodOxMin = (_I = normalizePercent3(getFirstNum(fm, "blood_oxygen_min", "bloodOxygenMin"))) != null ? _I : bloodOxygenValues.length ? Math.min(...bloodOxygenValues) : void 0;
+  const bloodOxMax = (_J = normalizePercent3(getFirstNum(fm, "blood_oxygen_max", "bloodOxygenMax"))) != null ? _J : bloodOxygenValues.length ? Math.max(...bloodOxygenValues) : void 0;
   if (respRateAvg !== void 0 || respRateMin !== void 0 || respRateMax !== void 0 || bloodOxAvg !== void 0 || bloodOxMin !== void 0 || bloodOxMax !== void 0 || granular.respiratoryRateSamples.length || bloodOxygenSamples.length) {
     day.vitals = {
       respiratoryRate: respRateAvg,
@@ -15174,10 +15192,10 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
       const timestamp2 = headers.indexOf("timestamp (utc)"), end = headers.indexOf("end (utc)"), systolic = headers.indexOf("systolic"), diastolic = headers.indexOf("diastolic"), unit = headers.indexOf("unit");
       if ([timestamp2, end, systolic, diastolic, unit].some((index) => index < 0)) return null;
       for (const row of table.rows) {
-        if (!((_I = row[systolic]) == null ? void 0 : _I.trim()) || !((_J = row[diastolic]) == null ? void 0 : _J.trim())) return null;
+        if (!((_K = row[systolic]) == null ? void 0 : _K.trim()) || !((_L = row[diastolic]) == null ? void 0 : _L.trim())) return null;
         values.push({ metric: "blood_pressure", unit: row[unit], sample: {
           timestamp: row[timestamp2],
-          ...((_K = row[end]) == null ? void 0 : _K.trim()) ? { endDate: row[end] } : {},
+          ...((_M = row[end]) == null ? void 0 : _M.trim()) ? { endDate: row[end] } : {},
           systolic: Number(row[systolic]),
           diastolic: Number(row[diastolic])
         } });
@@ -15227,7 +15245,7 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
       if (timestamp2 < 0 || value < 0 || unit < 0) return null;
       for (const row of table.rows) {
         const number2 = Number(row[value]);
-        if (!((_L = row[value]) == null ? void 0 : _L.trim())) return null;
+        if (!((_N = row[value]) == null ? void 0 : _N.trim())) return null;
         values.push({ metric: definition.metric, unit: row[unit], sample: { timestamp: row[timestamp2], value: number2 } });
       }
     }
@@ -15236,7 +15254,7 @@ function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionar
     attachNativeQuantityDetails(day, records);
   }
   attachCanonicalMetrics(day, canonicalMetricsFromFlatRecord(fm, unitsMap));
-  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop || ((_M = day.nativeMindfulnessDetails) == null ? void 0 : _M.length);
+  const hasData = day.activity || day.heart || day.sleep || day.vitals || day.mobility || day.workouts || day.mood || hasMedicationData(day) || day.hearing || day.rawCapture || day.canonicalMetrics || day.whoop || ((_O = day.nativeMindfulnessDetails) == null ? void 0 : _O.length);
   return hasData ? day : null;
 }
 
