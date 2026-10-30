@@ -1280,3 +1280,23 @@ test('repository-written Night notes retain scoped facts under every aggregate w
   }
  }
 });
+
+
+test('Apple local notes alone and with accepted JSON deduplicate after foreground and recovery',async()=>{
+ const root='tests/fixtures/native-apple-local-notes/';
+ const manifest=JSON.parse(await readFile(root+'provenance.json','utf8'));
+ for(const name of Object.keys(manifest.files).filter(name=>name.endsWith('.md'))) {
+  const note=await readFile(root+name,'utf8');
+  const json=await readFile(root+name.replace(/\.md$/,'.json'),'utf8');
+  for(const sources of [{'note.md':note},{'note.md':note,'daily.json':json},{'daily.json':json,'note.md':note}]) {
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1,name);
+   assert.equal(days[0].date,'2026-03-08');
+   assert.equal(days[0].schema_profile,'apple-v11');
+   assert.equal(days[0].sleep.totalDuration,93600.5);
+   assert.equal(days[0].sleep.deepSleep,undefined);
+   assert.equal(days[0].activity.steps,42);
+   assert.ok(!report.warnings.some(w=>w.includes('conflicting')));
+  }
+ }
+});

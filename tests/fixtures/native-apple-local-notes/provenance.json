@@ -1,0 +1,25 @@
+{
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_commit": "bd2eb8f89464ba83f22425b086910c677450d9b7",
+  "producer_test": "MorningLocalNoteCompositionTests",
+  "synthetic": true,
+  "configuration": "Actual iOS writer: local normal/Daily Notes Only; sections off/on; foreground/restored; America/New_York spring DST; frozen settings; personal multiline CRLF and stale root date/sleep retained",
+  "files": {
+    "local-normal-sections-false.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "local-normal-sections-false.md": "d290cee535a85dbabeb5ea9fe6aa9574cd5a0f7ccb60e3bb2d691c1a8d420378",
+    "local-normal-sections-true.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "local-normal-sections-true.md": "fc0d0f2fd6967e1f8e4666fb2c67de92b8a216c763d20c8f075ca54de2a7faf7",
+    "local-only-sections-false.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "local-only-sections-false.md": "d290cee535a85dbabeb5ea9fe6aa9574cd5a0f7ccb60e3bb2d691c1a8d420378",
+    "local-only-sections-true.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "local-only-sections-true.md": "fc0d0f2fd6967e1f8e4666fb2c67de92b8a216c763d20c8f075ca54de2a7faf7",
+    "orchestrator-normal-recovered-false.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "orchestrator-normal-recovered-false.md": "5e770a74c2ebb50c4587e39a1d4cb7b2d687f726ce9fa8f3d52de017bd5e1230",
+    "orchestrator-normal-recovered-true.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "orchestrator-normal-recovered-true.md": "5e770a74c2ebb50c4587e39a1d4cb7b2d687f726ce9fa8f3d52de017bd5e1230",
+    "orchestrator-only-recovered-false.json": "8148e913db84bbd4cd952442a868c6c7d2979fcc9e00be4f60e8cef1b68420d9",
+    "orchestrator-only-recovered-false.md": "e25b0a93e8eb9a7ade07a51e8ef60bf51d64cc6b8b966000326e1dd81f881525",
+    "orchestrator-only-recovered-true.json": "8148e913db84bbd4cd952442a868c6c7d2979fcc9e00be4f60e8cef1b68420d9",
+    "orchestrator-only-recovered-true.md": "e25b0a93e8eb9a7ade07a51e8ef60bf51d64cc6b8b966000326e1dd81f881525"
+  }
+}
