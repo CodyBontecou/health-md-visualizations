@@ -1,0 +1,17 @@
+{
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_commit": "c0043ebebee2ac7c15fdb1e4e721582c5f46d06a",
+  "producer_test": "MorningLocalNoteCompositionTests.archivesComposeSeparateFrozenNotesAndReportOutcomes",
+  "synthetic": true,
+  "configuration": "Actual iOS ZIP companion writer: create/skip and foreground/restored; notes separate from ZIP; frozen America/New_York spring DST26h0.5s; personal CRLF/multiline and stale rootdate1999/deep9 retained",
+  "files": {
+    "archive-create-false-recovered-false.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "archive-create-false-recovered-false.md": "d7af072f23470f8ded61174641089e14038d5306e657086839f6b75b99b35e17",
+    "archive-create-false-recovered-true.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "archive-create-false-recovered-true.md": "d7af072f23470f8ded61174641089e14038d5306e657086839f6b75b99b35e17",
+    "archive-create-true-recovered-false.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "archive-create-true-recovered-false.md": "d7af072f23470f8ded61174641089e14038d5306e657086839f6b75b99b35e17",
+    "archive-create-true-recovered-true.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "archive-create-true-recovered-true.md": "d7af072f23470f8ded61174641089e14038d5306e657086839f6b75b99b35e17"
+  }
+}

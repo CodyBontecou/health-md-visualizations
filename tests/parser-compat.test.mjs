@@ -2786,11 +2786,11 @@ test('native Android Night corpora retain producer bytes and local-clock legacy 
 
 test('Apple local note writers preserve exact accepted captures across modes and recovery',async()=>{
  const {parseMarkdown,parseJSON}=await loadParsers();
- const root='tests/fixtures/native-apple-local-notes/';
+ for(const root of ['tests/fixtures/native-apple-local-notes/','tests/fixtures/native-apple-archive-notes/']) {
  const manifest=JSON.parse(await readFile(root+'provenance.json','utf8'));
  assert.equal(manifest.synthetic,true);
  assert.match(manifest.producer_commit,/^[a-f0-9]{40}$/);
- assert.equal(Object.keys(manifest.files).length,16);
+ assert.equal(Object.keys(manifest.files).length,root.includes('archive')?8:16);
  for(const [name,hash] of Object.entries(manifest.files))
   assert.equal(createHash('sha256').update(await readFile(root+name)).digest('hex'),hash,name);
  for(const name of Object.keys(manifest.files).filter(name=>name.endsWith('.md'))) {
@@ -2802,5 +2802,6 @@ test('Apple local note writers preserve exact accepted captures across modes and
   assert.equal(expected.sleep.totalDuration,93600.5);
   assert.equal(expected.sleep.deepSleep,undefined);
   assert.equal(expected.activity.steps,42);
+ }
  }
 });

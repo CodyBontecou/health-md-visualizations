@@ -1283,7 +1283,7 @@ test('repository-written Night notes retain scoped facts under every aggregate w
 
 
 test('Apple local notes alone and with accepted JSON deduplicate after foreground and recovery',async()=>{
- const root='tests/fixtures/native-apple-local-notes/';
+ for(const root of ['tests/fixtures/native-apple-local-notes/','tests/fixtures/native-apple-archive-notes/']) {
  const manifest=JSON.parse(await readFile(root+'provenance.json','utf8'));
  for(const name of Object.keys(manifest.files).filter(name=>name.endsWith('.md'))) {
   const note=await readFile(root+name,'utf8');
@@ -1298,5 +1298,6 @@ test('Apple local notes alone and with accepted JSON deduplicate after foregroun
    assert.equal(days[0].activity.steps,42);
    assert.ok(!report.warnings.some(w=>w.includes('conflicting')));
   }
+ }
  }
 });
