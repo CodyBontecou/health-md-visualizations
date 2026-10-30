@@ -2567,8 +2567,74 @@ test('native daily-note injections retain exact scoped source bytes and ignore h
  const replaced=await readFile(root+'night-replacement.md','utf8');
  // This personal note has no root date: clearing the scope cannot invent one.
  assert.equal(parseMarkdown(replaced),null);
- const night=parseMarkdown(replaced.replace('---\n','---\ndate: 2026-03-08\n'));
- assert.ok(night);
- assert.equal(night.schema_profile,undefined);
- assert.equal(night.timeContext?.sleep_day_attribution,undefined);
+ assert.equal(parseMarkdown(replaced.replace('---\n','---\ndate: 2026-03-08\n')),null,
+  'old null-tombstoned captures cannot attest retained historical fields');
+});
+
+test('Night frontmatter update cannot adopt retained Morning detail tables',async()=>{
+ const {parseMarkdown}=await loadParsers();
+ const root='tests/fixtures/native-daily-note-capture/';
+ const morning=await readFile(root+'sections.md','utf8');
+ const night=await readFile(root+'night-replacement.md','utf8');
+ const nightHeader=night.slice(0,night.indexOf('\n---\n')+5);
+ const morningBody=morning.slice(morning.indexOf('\n---\n')+5);
+ const mixed=nightHeader.replace('---\n','---\ndate: 2026-03-08\n')+morningBody;
+ assert.equal(parseMarkdown(mixed),null,'old null tombstones cannot authorize a mixed personal note');
+ const stepsOnly=morning.replace('---\n','---\ndate: 2026-03-08\n')
+  .replace(/^healthmd_injection_kind: .*$/m,'healthmd_injection_kind: null')
+  .replace(/^healthmd_daily_injection_v1: .*$/m,'healthmd_daily_injection_v1: null');
+ assert.equal(parseMarkdown(stepsOnly),null,'retained Morning sleep must not become part of a steps-only Night capture');
+});
+
+test('native scoped transitions preserve the selected record in both attribution directions',async()=>{
+ const {parseMarkdown,parseJSON}=await loadParsers();
+ const root='tests/fixtures/native-daily-note-transitions/';
+ const provenance=JSON.parse(await readFile(root+'provenance.json','utf8'));
+ const {createHash}=await import('node:crypto');
+ for(const [name,digest] of Object.entries(provenance.files)) {
+  const bytes=await readFile(root+name);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),digest);
+  if(!name.endsWith('.md')) continue;
+  const note=bytes.toString('utf8');
+  const source=await readFile(root+name.replace(/\.md$/,'.json'),'utf8');
+  const actual=parseMarkdown(note);
+  assert.deepEqual(actual,parseJSON(source),name);
+  assert.equal(actual.sleep?.deepSleep,undefined,name+' cannot adopt retained historical fields');
+  if(name.startsWith('restored-')) {
+   assert.equal(actual.schema_profile,'apple-v11');
+   assert.equal(actual.sleep.totalDuration,93600.5);
+  } else {
+   assert.equal(actual.schema_version,8);
+   assert.equal(actual.schema_profile,undefined);
+   assert.equal(actual.timeContext.sleep_day_attribution,undefined);
+   if(name.endsWith('-steps.md')) assert.equal(actual.sleep?.totalDuration??0,0);
+   else assert.equal(actual.sleep.totalDuration,3600.5);
+   if(name.endsWith('-sleep.md')) assert.equal(actual.activity?.steps,undefined);
+   else assert.equal(actual.activity.steps,42);
+  }
+ }
+});
+
+test('scoped historical captures require exact known schema and bounded clock authority',async()=>{
+ const {parseMarkdown}=await loadParsers();
+ const source=await readFile('tests/fixtures/native-daily-note-transitions/night-1-0-steps.json','utf8');
+ const note=(record)=>`---\ndate: 2026-03-08\nsleep_total_hours: 26\nhealthmd_injection_kind: daily_capture_v1\nhealthmd_daily_injection_v1: ${JSON.stringify(JSON.stringify({kind:'healthmd_daily_capture',version:1,record_json:record}))}\n---\n`;
+ assert.ok(parseMarkdown(note(source)));
+ const record=JSON.parse(source);
+ for(const malformed of [
+  JSON.stringify({...record,schema_version:9}),
+  JSON.stringify({...record,schema_version:'8'}),
+  JSON.stringify({...record,schemaVersion:9}),
+  JSON.stringify({...record,schemaVersion:8,schema_version:9}),
+  source.replace('{','{"schema_version":8,'),
+  JSON.stringify({...record,schema_profile:'unknown-night-profile'}),
+  JSON.stringify({...record,healthkit_record_archive:{}}),
+  JSON.stringify({...record,time_context:{...record.time_context,calendar_timezone:'Invalid/Timezone'}}),
+  JSON.stringify({...record,time_context:{...record.time_context,timestamp_timezone:'America/New_York'}}),
+  JSON.stringify({...record,time_context:{...record.time_context,sleep_day_attribution:'morning_ends'}}),
+  JSON.stringify({...record,time_context:{...record.time_context,extra:'x'.repeat(4096)}}),
+ ]) {
+  assert.notEqual(malformed,source,'control must change source bytes');
+  assert.equal(parseMarkdown(note(malformed)),null);
+ }
 });

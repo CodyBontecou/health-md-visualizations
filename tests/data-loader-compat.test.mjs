@@ -1144,3 +1144,36 @@ test('native Daily Note capture and exact daily JSON coexist in either scan orde
   }
  }
 });
+
+test('native scoped Night and restored Morning notes deduplicate without adopting retained facts',async()=>{
+ const root='tests/fixtures/native-daily-note-transitions/';
+ const provenance=JSON.parse(await readFile(root+'provenance.json','utf8'));
+ for(const name of Object.keys(provenance.files).filter(name=>name.endsWith('.md'))) {
+  const note=await readFile(root+name,'utf8');
+  const json=await readFile(root+name.replace(/\.md$/,'.json'),'utf8');
+  for(const reverse of [false,true]) {
+   const sources=reverse?{'journal.md':note,'daily.json':json}:{'daily.json':json,'journal.md':note};
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1,name);
+   const day=days[0];
+   assert.equal(day.date,'2026-03-08');
+   assert.equal(day.sleep?.deepSleep,undefined);
+   if(name.startsWith('restored-')) assert.equal(day.sleep.totalDuration,93600.5);
+   else if(name.endsWith('-steps.md')) assert.equal(day.sleep?.totalDuration??0,0);
+   else assert.equal(day.sleep.totalDuration,3600.5);
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')),name);
+  }
+ }
+});
+
+test('different scoped owner-day meanings remain conflicting operations in either scan order',async()=>{
+ const root='tests/fixtures/native-daily-note-transitions/';
+ const night=await readFile(root+'night-1-0-both.md','utf8');
+ const morning=await readFile(root+'restored-1-0-both.md','utf8');
+ for(const reverse of [false,true]) {
+  const sources=reverse?{'a.md':night,'b.md':morning,'c.md':night}:{'a.md':morning,'b.md':night,'c.md':morning};
+  const {days,report}=await loadWhoopVault(sources,true);
+  assert.equal(days.length,0);
+  assert.ok(report.warnings.some(warning=>warning.includes('conflicting sleep attribution/profile')));
+ }
+});

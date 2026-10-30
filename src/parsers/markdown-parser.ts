@@ -6,7 +6,7 @@ import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
 import { parseNativeDetailCell, nativeSourceRecordsAgree } from "../native-detail-markdown";
 import { canonicalSourceInstant } from "../native-source-clock";
-import { readSleepAuthority, readIndividualCaptureAuthority, sleepDeclaration, sleepSummaryFacts } from "../sleep-attribution";
+import { readSleepAuthority, readIndividualCaptureAuthority, supportsScopedDailyCapture, sleepDeclaration, sleepSummaryFacts } from "../sleep-attribution";
 import { parseJSON } from "./json-parser";
 import {
 	FrontmatterAliasMap,
@@ -1388,6 +1388,9 @@ export function parseMarkdown(
 	// personal/historical fields. Only on-disk identity may activate this path;
 	// a metadata cache or metric alias cannot manufacture capture authority.
 	const raw = parsed.frontmatter ?? {};
+	// An early, unqualified producer cleared both fields. Those bytes attest no
+	// capture; generic fallback could adopt retained facts under the wrong rule.
+	if (raw.healthmd_injection_kind === null && raw.healthmd_daily_injection_v1 === null) return null;
 	if (raw.healthmd_injection_kind !== undefined && raw.healthmd_injection_kind !== null) {
 		if (raw.healthmd_injection_kind !== "daily_capture_v1") return null;
 		for (const key of ["healthmd_injection_kind", "healthmd_daily_injection_v1"]) {
@@ -1400,8 +1403,9 @@ export function parseMarkdown(
 			if (!envelope || envelope.kind !== "healthmd_daily_capture" || envelope.version !== 1
 				|| typeof envelope.record_json !== "string"
 				|| Object.keys(envelope).sort().join(",") !== "kind,record_json,version") return null;
+			if (!supportsScopedDailyCapture(envelope.record_json)) return null;
 			const capture = parseJSON(envelope.record_json);
-			if (!capture || !["apple-v11", "android-sleep-v6"].includes(capture.schema_profile ?? "")) return null;
+			if (!capture) return null;
 			return capture;
 		} catch { return null; }
 	}

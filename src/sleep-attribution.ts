@@ -1,5 +1,6 @@
 import type { HealthDay, HealthMdTimeContext } from "./types";
 import { schemaVersionOf } from "./healthmd-schema";
+import { topLevelJsonObjectProperties } from "./json-utils";
 
 function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -68,6 +69,33 @@ export function readSleepAuthority(source: Record<string, unknown>): {
 			} : undefined,
 		};
 	} catch { return null; }
+}
+
+/** Known profile meanings that may own a scoped capture inside a personal note. */
+export function supportsScopedDailyCapture(json: string): boolean {
+	const properties = topLevelJsonObjectProperties(json);
+	if (!properties) return false;
+	const keys = new Set(["schema", "schema_version", "schemaVersion", "schema_profile", "schemaProfile", "type", "time_context", "timeContext"]);
+	const source: Record<string, unknown> = {};
+	const seen = new Set<string>();
+	try {
+		for (const property of properties) {
+			if (seen.has(property.key) || property.key === "healthkit_record_archive") return false;
+			seen.add(property.key);
+			if (!keys.has(property.key)) continue;
+			if (property.valueEnd - property.valueStart > 4096) return false;
+			source[property.key] = JSON.parse(json.slice(property.valueStart, property.valueEnd));
+		}
+	} catch { return false; }
+	const authority = readSleepAuthority(source);
+	if (!authority || source.schema !== "healthmd.health_data") return false;
+	if (["apple-v11", "android-sleep-v6"].includes(authority.profile ?? "")) return true;
+	// A later Night begins injection retains the existing Apple-v8 meaning in
+	// its own scoped record. It cannot inherit facts from the personal note.
+	return authority.profile === undefined && source.schema_version === 8
+		&& (source.schemaVersion === undefined || source.schemaVersion === 8)
+		&& timezone(authority.context?.calendar_timezone)
+		&& authority.context?.timestamp_timezone === "UTC";
 }
 
 /** Same-date inputs with different ownership/profile promises must never be combined. */
