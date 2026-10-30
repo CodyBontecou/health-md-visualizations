@@ -301,6 +301,8 @@ export interface MindfulnessSession {
 }
 
 export interface HealthDay {
+	/** Internal companion projection; qualified daily files retain scalar authority. */
+	individualEntryProjection?: boolean;
 	nativeMindfulnessDetails?: import("./native-mindfulness-details").NativeMindfulnessDetail[];
 	nativeWorkoutDetails?: import("./native-workout-details").NativeWorkoutDetail[];
 	nativeActivityDetails?: import("./native-activity-details").NativeActivityDetail[];

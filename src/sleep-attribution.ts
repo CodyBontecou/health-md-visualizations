@@ -73,6 +73,39 @@ export function readSleepAuthority(source: Record<string, unknown>): {
 /** Same-date inputs with different ownership/profile promises must never be combined. */
 type SleepAuthorityRecord = Pick<HealthDay, "schema_profile" | "timeContext" | "time_context">;
 
+/** An individual note describes its capture without claiming the daily-file grammar. */
+export function readIndividualCaptureAuthority(source: Record<string, unknown>): {
+	authority: NonNullable<ReturnType<typeof readSleepAuthority>>;
+	ownerDate?: string;
+} | null | undefined {
+	if (source.healthmd_capture_context_json === undefined) return undefined;
+	try {
+		if (typeof source.healthmd_capture_context_json !== "string"
+			|| source.healthmd_capture_context_json.length > 1024
+			|| typeof source.entry_kind !== "string"
+			|| !["healthkit_record", "granular_compatibility", "daily_aggregate"].includes(source.entry_kind)
+			|| typeof source.type !== "string" || !source.type
+			|| typeof source.metric !== "string" || !source.metric || source.metric.length > 128
+			|| ["schema", "schema_version", "schemaVersion", "schema_profile", "schemaProfile", "time_context", "timeContext"].some(key => source[key] !== undefined)) return null;
+		const context = record(JSON.parse(source.healthmd_capture_context_json));
+		const allowed = ["schema_profile", "calendar_timezone", "timestamp_timezone", "sleep_day_attribution",
+			"sleep_owner_day_rule", "sleep_interval_clipping", "sleep_owner_date"];
+		if (!context || Object.keys(context).some(key => !allowed.includes(key))
+			|| context.schema_profile !== "apple-v11") return null;
+		const authority = readSleepAuthority({ schema: "healthmd.health_data", schema_version: 11,
+			schema_profile: context.schema_profile, time_context: context });
+		if (!authority) return null;
+		const sleep = source.type === "sleep";
+		const owner = context.sleep_owner_date;
+		if (sleep) {
+			if (typeof owner !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(owner)
+				|| !Number.isFinite(Date.parse(owner + "T00:00:00Z"))
+				|| new Date(owner + "T00:00:00Z").toISOString().slice(0, 10) !== owner) return null;
+		} else if (owner !== undefined) return null;
+		return { authority, ...(sleep ? { ownerDate: owner as string } : {}) };
+	} catch { return null; }
+}
+
 export function sleepAuthoritiesAgree(a: SleepAuthorityRecord, b: SleepAuthorityRecord): boolean {
 	const context = (day: SleepAuthorityRecord): string => {
 		const time = day.timeContext ?? day.time_context;

@@ -233,10 +233,19 @@ export class DataLoader {
 			}
 		}
 
+		// Individual note scalars are display projections and may be rounded.
+		// A matching daily artifact already carries their exact source facts.
+		const dailyByDate = new Map<string, HealthDay[]>();
+		for (const day of days) {
+			if (day.individualEntryProjection) continue;
+			dailyByDate.set(day.date, [...dailyByDate.get(day.date) ?? [], day]);
+		}
+		const authoritativeDays = days.filter(day => !day.individualEntryProjection
+			|| !(dailyByDate.get(day.date) ?? []).some(daily => sleepAuthoritiesAgree(daily, day)));
 		// Deduplicate by date (prefer the entry with more data)
 		const byDate = new Map<string, HealthDay>();
 		const conflictingDates = new Set<string>();
-		for (const day of days) {
+		for (const day of authoritativeDays) {
 			if (conflictingDates.has(day.date)) continue;
 			const existing = byDate.get(day.date);
 			if (!existing) {

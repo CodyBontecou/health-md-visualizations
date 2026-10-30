@@ -1084,3 +1084,44 @@ test('DataLoader omits conflicting complete WHOOP captures without later resurre
         assert.ok(report.warnings.some(warning => warning.includes('conflicting native source facts')));
     }
 });
+
+async function nativeIndividualContents(variant) {
+ const root='tests/fixtures/native-individual-capture';
+ const provenance=JSON.parse(await readFile(path.join(root,'provenance.json'),'utf8'));
+ const entries=await Promise.all(Object.keys(provenance.files).filter(name=>name.startsWith(variant+'/')).map(async name=>[
+  path.basename(name),await readFile(path.join(root,name),'utf8')]));
+ return Object.fromEntries(entries);
+}
+
+test('Morning individual notes coexist with exact daily facts across format and scan orders',async()=>{
+ for(const variant of ['basic','workouts']) {
+  const contents=await nativeIndividualContents(variant);
+  for(const reverse of [false,true]) {
+   const ordered=Object.fromEntries(reverse?Object.entries(contents).reverse():Object.entries(contents));
+   const {days,report}=await loadWhoopVault(ordered,true);
+   assert.deepEqual(days.map(day=>day.date),variant==='basic'?['2026-03-07','2026-03-08']:['2026-03-08']);
+   const day=days.find(day=>day.date==='2026-03-08');
+   assert.equal(day.schema_profile,'apple-v11');
+   assert.equal(day.timeContext.calendar_timezone,'America/New_York');
+   assert.equal(day.sleep.totalDuration,93600.5,'rounded individual hours cannot replace exact daily seconds');
+   assert.equal(day.activity.steps,42);
+   if(variant==='workouts') assert.equal(day.workouts.length,1,'the source event is not counted twice');
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')));
+  }
+ }
+});
+
+test('Morning individual annotations do not upgrade historical notes or hide conflicting clocks',async()=>{
+ const contents=await nativeIndividualContents('basic');
+ const note=Object.entries(contents).find(([name])=>name.includes('sleep_total'))[1];
+ const daily=contents['2026-03-08.json'];
+ const legacy=note.replace(/^healthmd_capture_context_json: .*\n/m,'');
+ for(const source of [legacy,note.replaceAll('America/New_York','Asia/Tokyo')]) {
+  for(const reverse of [false,true]) {
+   const sources=reverse?{'note.md':source,'day.json':daily}:{'day.json':daily,'note.md':source};
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,0);
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting sleep attribution/profile')));
+  }
+ }
+});

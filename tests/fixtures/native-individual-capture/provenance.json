@@ -1,0 +1,29 @@
+{
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_commit": "94f64895eca9c2739842acd3b7065cfbc7c5bd41",
+  "producer_test": "MorningIndividualEntryTests.productionIndividualEntriesKeepAcceptedClockAndWholeSleep(mode:recovered:)",
+  "configuration": "macOS packaged core; synthetic HealthKit IPC; fresh daily and workout operations; America/New_York spring DST; whole26h+0.5s sleep; original source files unchanged",
+  "exporter_sha256": "956f350ce75e25c5528a4278cc7feb753ce28d942c1d40ca5f7e413d91451097",
+  "files": {
+    "basic/Health/2026-03-07-bases.md": "765cdf4d068d199bac4502e88733f9e238902c733343a949210a46350bad5b52",
+    "basic/Health/2026-03-07.json": "0b880b23f8c2d23edd55ac2959df15d105a0837e8db17c0b5151001e9be50c50",
+    "basic/Health/2026-03-07.md": "a9147c8a9c090758daa04d3e7bfdb2d6707a687800d548967a6063d50257fb6e",
+    "basic/Health/2026-03-08.md": "abd79f04a0043fb3bae86a6c121c826a697ac00c68ddd0c785d806559d0d38cf",
+    "basic/Health/2026-03-08.csv": "b4880db41259308d270c6cf66074540245ce486247d67bd94654d0c1ff684beb",
+    "basic/Health/2026-03-07.csv": "e367e083ac7ab7284b0bd8a6fe8460695d0401babe4c6cdd70a5fd62f0a27dd0",
+    "basic/Health/2026-03-08-bases.md": "b872844c7f0488fb02439c0f92217c54191f2ace02a36685e2eeee73af019ac7",
+    "basic/Health/_healthmd_data_dictionary.json": "cae3b542f1acc4e37ddd25a038b26972e6cffdbbfc3a33042a84150cb4e2117e",
+    "basic/Health/2026-03-08.json": "aaf18a149a6bdbc0c9d68e11424dadd146aad951d343a751ccb4a1722e91af4c",
+    "basic/Health/entries/sleep/2026_03_08_0000_sleep_total.md": "b44e764e9a20bff5ce2d299c6610216306db08c36541013b41877b513674efa8",
+    "basic/Health/entries/activity/2026_03_07_0000_steps.md": "bde1792b5d22d0e6e8f0caad1d0095638ff11e702097846f89ac84ff0216c1e8",
+    "basic/Health/entries/activity/2026_03_08_0000_steps.md": "c647bdaa25e233bce7317e56427a13ca933688d61d43321d5454547887aa07db",
+    "workouts/Health/2026-03-08.md": "9f833462635a81621e54fca1b7fa71333fcebd43b02a75c7c9cc0e959965f937",
+    "workouts/Health/2026-03-08.csv": "efa58a96932975e85a441f044e195e7667d9719d57f140cfd60c19e9e5205c4a",
+    "workouts/Health/2026-03-08-bases.md": "885c4ff957db1d4b4dee731a158ac71711735b637cd0a32315ad6ebc26ff154e",
+    "workouts/Health/_healthmd_data_dictionary.json": "cae3b542f1acc4e37ddd25a038b26972e6cffdbbfc3a33042a84150cb4e2117e",
+    "workouts/Health/2026-03-08.json": "1d608ca01eb081b5e41b1eda118464cb13b2e64f66883a3341639882735fd6de",
+    "workouts/Health/entries/sleep/2026_03_08_0000_sleep_total.md": "b44e764e9a20bff5ce2d299c6610216306db08c36541013b41877b513674efa8",
+    "workouts/Health/entries/activity/2026_03_08_0000_steps.md": "c647bdaa25e233bce7317e56427a13ca933688d61d43321d5454547887aa07db",
+    "workouts/Health/entries/workouts/2026_03_08_1300_workouts_workouts_ee13b751-d9c4-49e1-ad17-b3d716f8ec67.md": "26e74eba30526786a09d12edaa499686ff8d3ed42fa31dc3388fc1848e1661d1"
+  }
+}

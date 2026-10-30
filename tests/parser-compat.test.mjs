@@ -2467,3 +2467,37 @@ test("range fixtures are pinned to the committed native and core producer bytes"
 		assert.equal(createHash("sha256").update(await readFile(path.join(directory, name))).digest("hex"), digest, name);
 	}
 });
+
+test('native individual capture fixtures retain exact producer bytes',async()=>{
+ const root='tests/fixtures/native-individual-capture';
+ const manifest=JSON.parse(await readFile(path.join(root,'provenance.json'),'utf8'));
+ assert.equal(manifest.producer_repository,'CodyBontecou/health-md');
+ assert.equal(manifest.producer_commit,'94f64895eca9c2739842acd3b7065cfbc7c5bd41');
+ assert.equal(Object.keys(manifest.files).length,20);
+ for(const [name,digest] of Object.entries(manifest.files))
+  assert.equal(createHash('sha256').update(await readFile(path.join(root,name))).digest('hex'),digest,name);
+});
+
+test('individual sleep owner dates and invalid capture annotations are handled explicitly',async()=>{
+ const {parseMarkdown}=await loadParsers();
+ const note=await readFile('tests/fixtures/native-individual-capture/basic/Health/entries/sleep/2026_03_08_0000_sleep_total.md','utf8');
+ const metadata=/^healthmd_capture_context_json: (.*)$/m.exec(note);
+ const original=JSON.parse(JSON.parse(metadata[1]));
+ const change=mutate=>{const value=structuredClone(original);mutate(value);return note.replace(metadata[0],`healthmd_capture_context_json: ${JSON.stringify(JSON.stringify(value))}`);};
+ const day=parseMarkdown(note);
+ assert.equal(day.schema_profile,'apple-v11');
+ assert.equal(day.individualEntryProjection,true);
+ const sourceEvent=note.replace('date: 2026-03-08','date: 2026-03-07').replace('entry_kind: daily_aggregate','entry_kind: granular_compatibility');
+ assert.equal(parseMarkdown(sourceEvent).date,'2026-03-08','parent capture owns a stage even when its source starts yesterday');
+ for(const broken of [
+  change(value=>{value.schema_profile='apple-v8';}),
+  change(value=>{value.calendar_timezone='invalid/calendar';}),
+  change(value=>{value.sleep_interval_clipping='noon';}),
+  change(value=>{delete value.sleep_owner_date;}),
+  change(value=>{value.sleep_owner_date='2026-02-30';}),
+  change(value=>{value.unknown='unreviewed';}),
+  note.replace('entry_kind: daily_aggregate','entry_kind: unknown'),
+  note.replace(metadata[0],'healthmd_capture_context_json: "malformed"'),
+  note.replace('---\n','---\nschema_profile: apple-v11\n'),
+ ]) assert.equal(parseMarkdown(broken),null);
+});

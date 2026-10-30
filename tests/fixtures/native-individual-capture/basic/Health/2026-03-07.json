@@ -1,0 +1,22 @@
+{
+  "activity" : {
+    "steps" : 42
+  },
+  "date" : "2026-03-07",
+  "raw_capture_status" : "not_requested",
+  "schema" : "healthmd.health_data",
+  "schema_profile" : "apple-v11",
+  "schema_version" : 11,
+  "time_context" : {
+    "calendar_timezone" : "America\/New_York",
+    "sleep_day_attribution" : "morning_ends",
+    "sleep_interval_clipping" : "none",
+    "sleep_owner_day_rule" : "session_end_date",
+    "timestamp_timezone" : "UTC"
+  },
+  "type" : "health-data",
+  "unit_system" : "metric",
+  "units" : {
+    "steps" : "steps"
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "activity" : {
+    "steps" : 42
+  },
+  "date" : "2026-03-08",
+  "raw_capture_status" : "not_requested",
+  "schema" : "healthmd.health_data",
+  "schema_profile" : "apple-v11",
+  "schema_version" : 11,
+  "sleep" : {
+    "bedtime" : "10:00",
+    "bedtimeISO" : "2026-03-07T15:00:00.000000000Z",
+    "coreSleep" : 93600.5,
+    "coreSleepFormatted" : "26h 0m",
+    "sleepStages" : [
+      {
+        "durationSeconds" : 93600.5,
+        "endDate" : "2026-03-08T17:00:00.500000000Z",
+        "stage" : "core",
+        "startDate" : "2026-03-07T15:00:00.000000000Z"
+      }
+    ],
+    "totalDuration" : 93600.5,
+    "totalDurationFormatted" : "26h 0m",
+    "wakeTime" : "13:00",
+    "wakeTimeISO" : "2026-03-08T17:00:00.500000000Z"
+  },
+  "time_context" : {
+    "calendar_timezone" : "America\/New_York",
+    "sleep_day_attribution" : "morning_ends",
+    "sleep_interval_clipping" : "none",
+    "sleep_owner_day_rule" : "session_end_date",
+    "timestamp_timezone" : "UTC"
+  },
+  "type" : "health-data",
+  "unit_system" : "metric",
+  "units" : {
+    "sleep_bedtime" : "time",
+    "sleep_core_hours" : "hours",
+    "sleep_total_hours" : "hours",
+    "sleep_wake" : "time",
+    "steps" : "steps",
+    "workout_calories" : "kcal",
+    "workout_count" : "count",
+    "workout_distance_km" : "km",
+    "workout_distance_mi" : "mi",
+    "workout_minutes" : "min"
+  },
+  "workouts" : [
+    {
+      "avgPaceFormatted" : "30:00 \/km",
+      "avgPacePerKmFormatted" : "30:00 \/km",
+      "avgPacePerMiFormatted" : "48:17 \/mi",
+      "calories" : 100,
+      "distance" : 1000,
+      "distanceFormatted" : "1.00 km",
+      "distanceKm" : 1,
+      "distanceMi" : 0.62137119223733395,
+      "duration" : 1800,
+      "durationFormatted" : "30m",
+      "elapsedDuration" : 1800,
+      "endTimeISO" : "2026-03-08T17:30:00.000000000Z",
+      "healthKitActivityType" : "running",
+      "healthKitActivityTypeRawValue" : 37,
+      "id" : "EE13B751-D9C4-49E1-AD17-B3D716F8EC67",
+      "speedKmh" : 2,
+      "speedMph" : 1.2427423844746679,
+      "sport" : "running",
+      "startTime" : "13:00",
+      "startTimeISO" : "2026-03-08T17:00:00.000000000Z",
+      "type" : "Running"
+    }
+  ]
+}

@@ -6,7 +6,7 @@ import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
 import { parseNativeDetailCell, nativeSourceRecordsAgree } from "../native-detail-markdown";
 import { canonicalSourceInstant } from "../native-source-clock";
-import { readSleepAuthority, sleepDeclaration, sleepSummaryFacts } from "../sleep-attribution";
+import { readSleepAuthority, readIndividualCaptureAuthority, sleepDeclaration, sleepSummaryFacts } from "../sleep-attribution";
 import {
 	FrontmatterAliasMap,
 	HEALTHMD_HEALTH_DATA_SCHEMA,
@@ -1404,7 +1404,9 @@ export function parseMarkdown(
 		}
 	}
 	if (!declaration && sleepSummaryFacts(parsed.body) !== undefined) return null;
-	const authority = readSleepAuthority(fm);
+	const individual = readIndividualCaptureAuthority(fm);
+	if (individual === null) return null;
+	const authority = individual?.authority ?? readSleepAuthority(fm);
 	if (!authority) return null;
 
 	const schema = getFirstStr(fm, "schema", "Schema");
@@ -1417,7 +1419,7 @@ export function parseMarkdown(
 	// still contribute granular tables.
 	const rawDate = getFirstStr(fm, "date", "Date", "day", "Day") ?? extractDateFromContent(content);
 	if (!rawDate) return null;
-	const date = rawDate.slice(0, 10);
+	const date = individual?.ownerDate ?? rawDate.slice(0, 10);
 	const schemaVersion = schemaVersionOf({ schemaVersion: getFirstNum(fm, "schemaVersion"), schema_version: getFirstNum(fm, "schema_version") });
 	const rawUnits = fm.units;
 	const unitsMap = mergeUnitMaps(dictionaryUnits, rawUnits);
@@ -1439,6 +1441,7 @@ export function parseMarkdown(
 
 	const day: HealthDay = {
 		type: "health-data",
+		...(individual ? { individualEntryProjection: true } : {}),
 		date,
 		schema,
 		...(authority.profile ? { schemaProfile: authority.profile, schema_profile: authority.profile } : {}),
