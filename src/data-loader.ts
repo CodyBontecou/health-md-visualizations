@@ -1161,6 +1161,8 @@ function mergeDays(a: HealthDay, b: HealthDay): HealthDay {
 		type: "health-data",
 		date: a.date,
 		schema: preferred.schema ?? fallback.schema,
+		schema_profile: preferred.schema_profile ?? fallback.schema_profile,
+		schemaProfile: preferred.schemaProfile ?? fallback.schemaProfile,
 		schemaVersion: schemaVersion || undefined,
 		schema_version: schemaVersion || undefined,
 		sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths),

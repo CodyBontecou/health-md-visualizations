@@ -10565,6 +10565,38 @@ function supportsScopedDailyCapture(json) {
   if (["apple-v11", "android-sleep-v6"].includes((_a = authority.profile) != null ? _a : "")) return true;
   return authority.profile === void 0 && source.schema_version === 8 && (source.schemaVersion === void 0 || source.schemaVersion === 8) && timezone((_b = authority.context) == null ? void 0 : _b.calendar_timezone) && ((_c = authority.context) == null ? void 0 : _c.timestamp_timezone) === "UTC";
 }
+function readScopedAndroidNightCapture(json) {
+  try {
+    const properties = topLevelJsonObjectProperties(json);
+    if (!properties || new Set(properties.map((p) => p.key)).size !== properties.length) return null;
+    const envelope = record4(JSON.parse(json));
+    if (!envelope || Object.keys(envelope).sort().join(",") !== "kind,record_json,record_profile,time_context,version" || envelope.kind !== "healthmd_daily_capture" || envelope.version !== 2 || !["android-frozen-v4", "android-analytical-v5"].includes(String(envelope.record_profile)) || typeof envelope.record_json !== "string" || envelope.record_json.length > 8 * 1024 * 1024 || new TextEncoder().encode(envelope.record_json).byteLength > 8 * 1024 * 1024) return null;
+    const timeProperty = properties.find((p) => p.key === "time_context");
+    if (!timeProperty) return null;
+    const clockProperties = topLevelJsonObjectProperties(json.slice(timeProperty.valueStart, timeProperty.valueEnd));
+    const clock = record4(envelope.time_context);
+    if (!clockProperties || clockProperties.length !== 2 || new Set(clockProperties.map((p) => p.key)).size !== 2 || !clock || Object.keys(clock).sort().join(",") !== "calendar_timezone,timestamp_timezone" || typeof clock.calendar_timezone !== "string" || !timezone(clock.calendar_timezone) || clock.timestamp_timezone !== clock.calendar_timezone) return null;
+    const nativeProperties = topLevelJsonObjectProperties(envelope.record_json);
+    if (!nativeProperties) return null;
+    const seen = /* @__PURE__ */ new Set();
+    const header = {};
+    const metadata = /* @__PURE__ */ new Set(["schema", "schema_version", "schema_profile", "schemaVersion", "schemaProfile", "time_context", "timeContext", "type", "date"]);
+    for (const property of nativeProperties) {
+      if (seen.has(property.key) || property.key === "healthkit_record_archive") return null;
+      seen.add(property.key);
+      if (!metadata.has(property.key)) continue;
+      if (property.valueEnd - property.valueStart > 4096) return null;
+      header[property.key] = JSON.parse(envelope.record_json.slice(property.valueStart, property.valueEnd));
+    }
+    if (header.type !== "health-data" || ["schema", "schema_version", "schema_profile", "time_context", "timeContext"].some((key) => key in header) || typeof header.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(header.date) || (/* @__PURE__ */ new Date(header.date + "T00:00:00Z")).toISOString().slice(0, 10) !== header.date) return null;
+    if (envelope.record_profile === "android-frozen-v4") {
+      if ("schemaVersion" in header || "schemaProfile" in header) return null;
+    } else if (header.schemaVersion !== 5 || header.schemaProfile !== "android-analytical-v5") return null;
+    return { recordJson: envelope.record_json, profile: envelope.record_profile, calendar: clock.calendar_timezone };
+  } catch (e) {
+    return null;
+  }
+}
 function readIndividualCaptureAuthority(source) {
   if (source.healthmd_capture_context_json === void 0) return void 0;
   if (source.type === "health-data" || source.entry_kind === void 0 && source.metric === void 0) return void 0;
@@ -10599,13 +10631,20 @@ function readIndividualCaptureAuthority(source) {
   }
 }
 function sleepAuthoritiesAgree(a, b) {
+  var _a, _b, _c;
   const context = (day) => {
-    var _a, _b;
-    const time = (_a = day.timeContext) != null ? _a : day.time_context;
-    const attribution = (_b = time == null ? void 0 : time.sleep_day_attribution) != null ? _b : "night_begins";
+    var _a2, _b2;
+    const time = (_a2 = day.timeContext) != null ? _a2 : day.time_context;
+    const attribution = (_b2 = time == null ? void 0 : time.sleep_day_attribution) != null ? _b2 : "night_begins";
     return attribution === "morning_ends" ? [attribution, day.schema_profile, time == null ? void 0 : time.calendar_timezone, time == null ? void 0 : time.timestamp_timezone].join("|") : attribution;
   };
-  return context(a) === context(b);
+  if (context(a) !== context(b)) return false;
+  const at = (_a = a.timeContext) != null ? _a : a.time_context;
+  const bt = (_b = b.timeContext) != null ? _b : b.time_context;
+  if (((_c = at == null ? void 0 : at.sleep_day_attribution) != null ? _c : "night_begins") === "night_begins" && (at == null ? void 0 : at.calendar_timezone) && (bt == null ? void 0 : bt.calendar_timezone)) {
+    return at.calendar_timezone === bt.calendar_timezone && at.timestamp_timezone === bt.timestamp_timezone && (!a.schema_profile || !b.schema_profile || a.schema_profile === b.schema_profile);
+  }
+  return true;
 }
 function sleepDeclaration(body2) {
   if (!body2.includes("Health.md sleep attribution:")) return void 0;
@@ -14007,9 +14046,29 @@ function parseFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!match) return { frontmatter: null, body: content };
   const yaml = match[1];
+  const captureKeys = /* @__PURE__ */ new Set(["healthmd_injection_kind", "healthmd_daily_injection_v1", "healthmd_daily_injection_v2"]);
+  const seenCapture = /* @__PURE__ */ new Set();
+  let captureMetadataInvalid = false;
+  for (const line of yaml.split(/\r?\n/)) {
+    if (!line || /^\s/.test(line)) continue;
+    const entry = splitYamlKeyValue2(line);
+    if (!entry) continue;
+    const literal = entry[0];
+    let key = literal;
+    try {
+      if (literal.startsWith('"')) key = JSON.parse(literal);
+      else if (literal.startsWith("'") && literal.endsWith("'")) key = literal.slice(1, -1).replace(/''/g, "'");
+    } catch (e) {
+      continue;
+    }
+    if (!captureKeys.has(key)) continue;
+    if (key !== literal || seenCapture.has(key)) captureMetadataInvalid = true;
+    seenCapture.add(key);
+  }
   const lines = yaml.split(/\r?\n/).map((line) => ({ indent: countIndent(line), text: line.trim() })).filter((line) => line.text && !line.text.startsWith("#"));
   const parsed = parseYamlBlock(lines, 0, 0).value;
   return {
+    ...captureMetadataInvalid ? { captureMetadataInvalid: true } : {},
     frontmatter: typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : {},
     body: content.slice(match[0].length)
   };
@@ -14887,16 +14946,42 @@ function captureSummaryFromFrontmatter(fm) {
 function parseMarkdown(content, cachedFrontmatter, frontmatterAliases, dictionaryUnits) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N;
   const parsed = parseFrontmatter(content);
+  if (parsed.captureMetadataInvalid) return null;
   const raw = (_a = parsed.frontmatter) != null ? _a : {};
+  if ((raw.healthmd_injection_kind === void 0 || raw.healthmd_injection_kind === null) && (raw.healthmd_daily_injection_v1 !== void 0 || raw.healthmd_daily_injection_v2 !== void 0)) return null;
   if (raw.healthmd_injection_kind === null && raw.healthmd_daily_injection_v1 === null) return null;
   if (raw.healthmd_injection_kind !== void 0 && raw.healthmd_injection_kind !== null) {
-    if (raw.healthmd_injection_kind !== "daily_capture_v1") return null;
-    for (const key of ["healthmd_injection_kind", "healthmd_daily_injection_v1"]) {
+    if (!["daily_capture_v1", "daily_capture_v2"].includes(String(raw.healthmd_injection_kind))) return null;
+    const night = raw.healthmd_injection_kind === "daily_capture_v2";
+    const inactive = raw[night ? "healthmd_daily_injection_v1" : "healthmd_daily_injection_v2"];
+    if (inactive !== void 0 && inactive !== null) return null;
+    for (const key of ["healthmd_injection_kind", "healthmd_daily_injection_v1", "healthmd_daily_injection_v2"]) {
       if ((cachedFrontmatter == null ? void 0 : cachedFrontmatter[key]) !== void 0 && cachedFrontmatter[key] !== raw[key]) return null;
     }
-    const value = raw.healthmd_daily_injection_v1;
+    const value = raw[night ? "healthmd_daily_injection_v2" : "healthmd_daily_injection_v1"];
     if (typeof value !== "string" || value.length > 64 * 1024 * 1024) return null;
     try {
+      if (night) {
+        const historical = readScopedAndroidNightCapture(value);
+        if (!historical) return null;
+        const capture4 = parseJSON(historical.recordJson);
+        if (!capture4) return null;
+        const time = {
+          calendar_timezone: historical.calendar,
+          calendarTimezone: historical.calendar,
+          timestamp_timezone: historical.calendar,
+          timestampTimezone: historical.calendar
+        };
+        return {
+          ...capture4,
+          schema_profile: historical.profile,
+          schemaProfile: historical.profile,
+          schema_version: historical.profile === "android-frozen-v4" ? 4 : 5,
+          schemaVersion: historical.profile === "android-frozen-v4" ? 4 : 5,
+          time_context: time,
+          timeContext: time
+        };
+      }
       const envelope = JSON.parse(value);
       if (!envelope || envelope.kind !== "healthmd_daily_capture" || envelope.version !== 1 || typeof envelope.record_json !== "string" || Object.keys(envelope).sort().join(",") !== "kind,record_json,version") return null;
       if (!supportsScopedDailyCapture(envelope.record_json)) return null;
@@ -16862,7 +16947,7 @@ function mergeNativeWorkouts(a = [], b = []) {
   });
 }
 function mergeDays(a, b) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R;
   if (successorSleepDetails(a.schema_profile) && ((_a = a.providers) == null ? void 0 : _a.whoop) !== void 0 && ((_b = b.providers) == null ? void 0 : _b.whoop) !== void 0 && !nativeSourceRecordsAgree([a.providers.whoop], [b.providers.whoop])) {
     throw new QuantitySourceConflict("conflicting native provider facts");
   }
@@ -16892,10 +16977,12 @@ function mergeDays(a, b) {
     type: "health-data",
     date: a.date,
     schema: (_i = preferred.schema) != null ? _i : fallback.schema,
+    schema_profile: (_j = preferred.schema_profile) != null ? _j : fallback.schema_profile,
+    schemaProfile: (_k = preferred.schemaProfile) != null ? _k : fallback.schemaProfile,
     schemaVersion: schemaVersion || void 0,
     schema_version: schemaVersion || void 0,
     sourcePaths: mergeSourcePaths(a.sourcePaths, b.sourcePaths),
-    units: (_j = preferred.units) != null ? _j : fallback.units,
+    units: (_l = preferred.units) != null ? _l : fallback.units,
     unitSystem,
     unit_system: unitSystem,
     timeContext,
@@ -16910,23 +16997,23 @@ function mergeDays(a, b) {
     workouts: mergeWorkouts(a.workouts, b.workouts),
     mood: mergeSection(fallback.mood, preferred.mood),
     mindfulness: mergeSection(fallback.mindfulness, preferred.mindfulness),
-    medicationCount: preferMeaningfulValue((_k = fallback.medicationCount) != null ? _k : fallback.medication_count, (_l = preferred.medicationCount) != null ? _l : preferred.medication_count),
-    medication_count: preferMeaningfulValue((_m = fallback.medication_count) != null ? _m : fallback.medicationCount, (_n = preferred.medication_count) != null ? _n : preferred.medicationCount),
-    activeMedicationCount: preferMeaningfulValue((_o = fallback.activeMedicationCount) != null ? _o : fallback.active_medication_count, (_p = preferred.activeMedicationCount) != null ? _p : preferred.active_medication_count),
-    active_medication_count: preferMeaningfulValue((_q = fallback.active_medication_count) != null ? _q : fallback.activeMedicationCount, (_r = preferred.active_medication_count) != null ? _r : preferred.activeMedicationCount),
-    archivedMedicationCount: preferMeaningfulValue((_s = fallback.archivedMedicationCount) != null ? _s : fallback.archived_medication_count, (_t = preferred.archivedMedicationCount) != null ? _t : preferred.archived_medication_count),
-    archived_medication_count: preferMeaningfulValue((_u = fallback.archived_medication_count) != null ? _u : fallback.archivedMedicationCount, (_v = preferred.archived_medication_count) != null ? _v : preferred.archivedMedicationCount),
-    medicationDoseCount: preferMeaningfulValue((_w = fallback.medicationDoseCount) != null ? _w : fallback.medication_dose_count, (_x = preferred.medicationDoseCount) != null ? _x : preferred.medication_dose_count),
-    medication_dose_count: preferMeaningfulValue((_y = fallback.medication_dose_count) != null ? _y : fallback.medicationDoseCount, (_z = preferred.medication_dose_count) != null ? _z : preferred.medicationDoseCount),
-    medicationTakenCount: preferMeaningfulValue((_A = fallback.medicationTakenCount) != null ? _A : fallback.medication_taken_count, (_B = preferred.medicationTakenCount) != null ? _B : preferred.medication_taken_count),
-    medication_taken_count: preferMeaningfulValue((_C = fallback.medication_taken_count) != null ? _C : fallback.medicationTakenCount, (_D = preferred.medication_taken_count) != null ? _D : preferred.medicationTakenCount),
-    medicationSkippedCount: preferMeaningfulValue((_E = fallback.medicationSkippedCount) != null ? _E : fallback.medication_skipped_count, (_F = preferred.medicationSkippedCount) != null ? _F : preferred.medication_skipped_count),
-    medication_skipped_count: preferMeaningfulValue((_G = fallback.medication_skipped_count) != null ? _G : fallback.medicationSkippedCount, (_H = preferred.medication_skipped_count) != null ? _H : preferred.medicationSkippedCount),
+    medicationCount: preferMeaningfulValue((_m = fallback.medicationCount) != null ? _m : fallback.medication_count, (_n = preferred.medicationCount) != null ? _n : preferred.medication_count),
+    medication_count: preferMeaningfulValue((_o = fallback.medication_count) != null ? _o : fallback.medicationCount, (_p = preferred.medication_count) != null ? _p : preferred.medicationCount),
+    activeMedicationCount: preferMeaningfulValue((_q = fallback.activeMedicationCount) != null ? _q : fallback.active_medication_count, (_r = preferred.activeMedicationCount) != null ? _r : preferred.active_medication_count),
+    active_medication_count: preferMeaningfulValue((_s = fallback.active_medication_count) != null ? _s : fallback.activeMedicationCount, (_t = preferred.active_medication_count) != null ? _t : preferred.activeMedicationCount),
+    archivedMedicationCount: preferMeaningfulValue((_u = fallback.archivedMedicationCount) != null ? _u : fallback.archived_medication_count, (_v = preferred.archivedMedicationCount) != null ? _v : preferred.archived_medication_count),
+    archived_medication_count: preferMeaningfulValue((_w = fallback.archived_medication_count) != null ? _w : fallback.archivedMedicationCount, (_x = preferred.archived_medication_count) != null ? _x : preferred.archivedMedicationCount),
+    medicationDoseCount: preferMeaningfulValue((_y = fallback.medicationDoseCount) != null ? _y : fallback.medication_dose_count, (_z = preferred.medicationDoseCount) != null ? _z : preferred.medication_dose_count),
+    medication_dose_count: preferMeaningfulValue((_A = fallback.medication_dose_count) != null ? _A : fallback.medicationDoseCount, (_B = preferred.medication_dose_count) != null ? _B : preferred.medicationDoseCount),
+    medicationTakenCount: preferMeaningfulValue((_C = fallback.medicationTakenCount) != null ? _C : fallback.medication_taken_count, (_D = preferred.medicationTakenCount) != null ? _D : preferred.medication_taken_count),
+    medication_taken_count: preferMeaningfulValue((_E = fallback.medication_taken_count) != null ? _E : fallback.medicationTakenCount, (_F = preferred.medication_taken_count) != null ? _F : preferred.medicationTakenCount),
+    medicationSkippedCount: preferMeaningfulValue((_G = fallback.medicationSkippedCount) != null ? _G : fallback.medication_skipped_count, (_H = preferred.medicationSkippedCount) != null ? _H : preferred.medication_skipped_count),
+    medication_skipped_count: preferMeaningfulValue((_I = fallback.medication_skipped_count) != null ? _I : fallback.medicationSkippedCount, (_J = preferred.medication_skipped_count) != null ? _J : preferred.medicationSkippedCount),
     medications: mergeStringLists(fallback.medications, preferred.medications),
-    medicationDetails: mergeMedicationDetails((_I = fallback.medicationDetails) != null ? _I : fallback.medication_details, (_J = preferred.medicationDetails) != null ? _J : preferred.medication_details),
-    medication_details: mergeMedicationDetails((_K = fallback.medication_details) != null ? _K : fallback.medicationDetails, (_L = preferred.medication_details) != null ? _L : preferred.medicationDetails),
-    medicationDoseEvents: mergeMedicationDoseEvents((_M = fallback.medicationDoseEvents) != null ? _M : fallback.medication_dose_events, (_N = preferred.medicationDoseEvents) != null ? _N : preferred.medication_dose_events),
-    medication_dose_events: mergeMedicationDoseEvents((_O = fallback.medication_dose_events) != null ? _O : fallback.medicationDoseEvents, (_P = preferred.medication_dose_events) != null ? _P : preferred.medicationDoseEvents),
+    medicationDetails: mergeMedicationDetails((_K = fallback.medicationDetails) != null ? _K : fallback.medication_details, (_L = preferred.medicationDetails) != null ? _L : preferred.medication_details),
+    medication_details: mergeMedicationDetails((_M = fallback.medication_details) != null ? _M : fallback.medicationDetails, (_N = preferred.medication_details) != null ? _N : preferred.medicationDetails),
+    medicationDoseEvents: mergeMedicationDoseEvents((_O = fallback.medicationDoseEvents) != null ? _O : fallback.medication_dose_events, (_P = preferred.medicationDoseEvents) != null ? _P : preferred.medication_dose_events),
+    medication_dose_events: mergeMedicationDoseEvents((_Q = fallback.medication_dose_events) != null ? _Q : fallback.medicationDoseEvents, (_R = preferred.medication_dose_events) != null ? _R : preferred.medicationDoseEvents),
     hearing: mergeSection(fallback.hearing, preferred.hearing),
     canonicalMetrics: mergeSection(fallback.canonicalMetrics, preferred.canonicalMetrics),
     providers,

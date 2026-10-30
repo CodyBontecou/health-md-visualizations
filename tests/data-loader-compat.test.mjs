@@ -1232,3 +1232,51 @@ test('native Android scoped note deduplicates exact daily JSON in both orders',a
   }
  }
 });
+
+test('native Android Night scope deduplicates companions and rejects different frozen clocks',async()=>{
+ const root='tests/fixtures/native-android-daily-note-transitions/';
+ for(const profile of ['IOS_V4_FROZEN','ANDROID_ANALYTICAL_V5']) for(const sections of [false,true])
+ for(const selection of ['steps','sleep','both']) {
+  const name=`${profile}-true-${sections}-${selection}`;
+  const note=await readFile(root+'night-'+name+'.md','utf8');
+  const json=await readFile(root+'night-'+name+'.json','utf8');
+  for(const sources of [{'note.md':note},{'note.md':note,'daily.json':json},{'daily.json':json,'note.md':note}]) {
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1,name);
+   assert.equal(days[0].date,'2026-03-08');
+   assert.equal(days[0].time_context.calendar_timezone,'America/New_York');
+   assert.equal(days[0].sleep?.totalDuration,selection==='steps'?undefined:3600);
+   assert.equal(days[0].sleep?.deepSleep,undefined);
+   assert.equal(days[0].activity?.steps,selection==='sleep'?undefined:84);
+   assert.ok(!report.warnings.some(w=>w.includes('conflicting')),name);
+  }
+  const restored=await readFile(root+'restored-'+name+'.json','utf8');
+  for(const other of [restored,note.replaceAll('America/New_York','Asia/Tokyo')]) for(const reverse of [false,true]) {
+   const sources=reverse?{'other.md':other,'note.md':note}:{'note.md':note,'other.md':other};
+   // JSON files retain their grammar: only the clock control is Markdown.
+   if(other===restored) {sources['other.json']=sources['other.md'];delete sources['other.md'];}
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,0);
+   assert.ok(report.warnings.some(w=>w.includes('conflicting sleep attribution/profile')));
+  }
+ }
+});
+
+test('repository-written Night notes retain scoped facts under every aggregate write mode',async()=>{
+ const root='tests/fixtures/native-android-night-repository/';
+ for(const profile of ['IOS_V4_FROZEN','ANDROID_ANALYTICAL_V5']) for(const mode of ['OVERWRITE','APPEND','UPDATE']) {
+  const name=`repository-${profile}-${mode}`;
+  const note=await readFile(root+name+'.md','utf8');
+  const json=await readFile(root+name+'.json','utf8');
+  for(const sources of [{'note.md':note},{'note.md':note,'daily.json':json},{'daily.json':json,'note.md':note}]) {
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1);
+   assert.equal(days[0].time_context.calendar_timezone,'America/New_York');
+   assert.equal(days[0].sleep.totalDuration,3600);
+   assert.equal(days[0].sleep.sleepStages[0].durationSeconds,97200);
+   assert.equal(days[0].sleep.deepSleep,undefined);
+   assert.equal(days[0].activity.steps,84);
+   assert.ok(!report.warnings.some(w=>w.includes('conflicting')));
+  }
+ }
+});

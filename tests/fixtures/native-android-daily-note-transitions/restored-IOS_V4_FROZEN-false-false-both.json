@@ -1,0 +1,33 @@
+{
+    "date": "2026-03-08",
+    "type": "health-data",
+    "sleep": {
+        "totalDuration": 93600.5,
+        "totalDurationFormatted": "26h",
+        "bedtime": "10:00",
+        "bedtimeISO": "2026-03-07T15:00:00Z",
+        "wakeTime": "13:00",
+        "wakeTimeISO": "2026-03-08T17:00:00.500Z",
+        "lightSleep": 93600.5,
+        "lightSleepFormatted": "26h"
+    },
+    "activity": {
+        "steps": 42
+    },
+    "schema": "healthmd.health_data",
+    "schema_version": 6,
+    "schema_profile": "android-sleep-v6",
+    "time_context": {
+        "calendar_timezone": "America/New_York",
+        "timestamp_timezone": "UTC",
+        "sleep_day_attribution": "morning_ends",
+        "sleep_owner_day_rule": "session_end_date",
+        "sleep_interval_clipping": "none"
+    },
+    "unit_system": "metric",
+    "units": {
+        "sleep_light_hours": "hours",
+        "sleep_total_hours": "hours",
+        "steps": "steps"
+    }
+}

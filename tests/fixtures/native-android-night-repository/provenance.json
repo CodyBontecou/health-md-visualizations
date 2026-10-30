@@ -1,0 +1,28 @@
+{
+  "producer_component": "health-md monorepo/apps/android",
+  "producer_commit": "2faf8026c588e251cf6b230074a1e655ee2841cf",
+  "producer_test": "com.healthmd.export.HostCoreDailyNoteTest.repositoryNightTransitionWritesExactPreviewWithoutASecondLegacyMerge",
+  "build_base_commit": "9336a7e59110bad8fa19da0f3455db396e874627",
+  "build_source_sha256": "52cfd5bd0bd75e9219f9498e49d623e73649829d42d3ae662ca1e74227b990ce",
+  "source_sha256": {
+    "apps/android/app/src/main/java/com/healthmd/data/export/DailyNoteInjector.kt": "be53c6b6353afc1a780d3bc8273d7b11a47373e9332b9d502ce8170dc9ddfa1d",
+    "apps/android/app/src/main/java/com/healthmd/data/storage/ExportRepositoryImpl.kt": "ff96b3548a7c12a6cb06d679e477c163a1a0c6dc4fc9f6cf036c5aaa7f7b0ad8",
+    "apps/android/app/src/test/java/com/healthmd/export/HostCoreDailyNoteTest.kt": "129c3b30de2a1091b47a29cc90ab1c665328db81b2cda0f2a04d5eba0d027d18",
+    "packages/healthmd-core-rust/crates/healthmd-core/src/render/markdown_merge/scoped_note.rs": "89b138c80a157e57b2dbfba0c141afd7d58b6b8bb95f4d1117f6f5d4ac32e3fd"
+  },
+  "scope": "Actual pinned host UniFFI and native historical Android writers with fixed synthetic source data. Repository fixtures exercise fake SAF boundaries, not device or Health Connect capture. No fixture bytes were rewritten.",
+  "files": {
+    "repository-ANDROID_ANALYTICAL_V5-APPEND.json": "577b01840caeeab08c904fabbfca2c90cef05972ccedb8d9dd81fdb531289a83",
+    "repository-ANDROID_ANALYTICAL_V5-APPEND.md": "3fb83ee0aa1e937ddf3ca84c09bf8db215157f97a6d4d9102d172944b26b38f9",
+    "repository-ANDROID_ANALYTICAL_V5-OVERWRITE.json": "577b01840caeeab08c904fabbfca2c90cef05972ccedb8d9dd81fdb531289a83",
+    "repository-ANDROID_ANALYTICAL_V5-OVERWRITE.md": "3fb83ee0aa1e937ddf3ca84c09bf8db215157f97a6d4d9102d172944b26b38f9",
+    "repository-ANDROID_ANALYTICAL_V5-UPDATE.json": "577b01840caeeab08c904fabbfca2c90cef05972ccedb8d9dd81fdb531289a83",
+    "repository-ANDROID_ANALYTICAL_V5-UPDATE.md": "3fb83ee0aa1e937ddf3ca84c09bf8db215157f97a6d4d9102d172944b26b38f9",
+    "repository-IOS_V4_FROZEN-APPEND.json": "7210d2a4615361fa5cf3272f7079fada536092ad05b9ae94bca36dc6787b033f",
+    "repository-IOS_V4_FROZEN-APPEND.md": "9e4e6b2b57cc5e6ac3b55b6e23aeada68e114df251f54604d1c2faba1d1611db",
+    "repository-IOS_V4_FROZEN-OVERWRITE.json": "7210d2a4615361fa5cf3272f7079fada536092ad05b9ae94bca36dc6787b033f",
+    "repository-IOS_V4_FROZEN-OVERWRITE.md": "9e4e6b2b57cc5e6ac3b55b6e23aeada68e114df251f54604d1c2faba1d1611db",
+    "repository-IOS_V4_FROZEN-UPDATE.json": "7210d2a4615361fa5cf3272f7079fada536092ad05b9ae94bca36dc6787b033f",
+    "repository-IOS_V4_FROZEN-UPDATE.md": "9e4e6b2b57cc5e6ac3b55b6e23aeada68e114df251f54604d1c2faba1d1611db"
+  }
+}

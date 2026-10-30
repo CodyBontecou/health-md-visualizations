@@ -98,6 +98,48 @@ export function supportsScopedDailyCapture(json: string): boolean {
 		&& authority.context?.timestamp_timezone === "UTC";
 }
 
+/** V2 supplies the clock omitted by unchanged historical Android native JSON. */
+export function readScopedAndroidNightCapture(json: string): {
+ recordJson: string; profile: "android-frozen-v4" | "android-analytical-v5"; calendar: string;
+} | null {
+ try {
+  const properties = topLevelJsonObjectProperties(json);
+  if (!properties || new Set(properties.map(p => p.key)).size !== properties.length) return null;
+  const envelope = record(JSON.parse(json));
+  if (!envelope || Object.keys(envelope).sort().join(",") !== "kind,record_json,record_profile,time_context,version"
+   || envelope.kind !== "healthmd_daily_capture" || envelope.version !== 2
+   || !["android-frozen-v4","android-analytical-v5"].includes(String(envelope.record_profile))
+   || typeof envelope.record_json !== "string" || envelope.record_json.length > 8*1024*1024
+   || new TextEncoder().encode(envelope.record_json).byteLength > 8*1024*1024) return null;
+  const timeProperty = properties.find(p => p.key === "time_context");
+  if (!timeProperty) return null;
+  const clockProperties = topLevelJsonObjectProperties(json.slice(timeProperty.valueStart,timeProperty.valueEnd));
+  const clock = record(envelope.time_context);
+  if (!clockProperties || clockProperties.length !== 2 || new Set(clockProperties.map(p => p.key)).size !== 2
+   || !clock || Object.keys(clock).sort().join(",") !== "calendar_timezone,timestamp_timezone"
+   || typeof clock.calendar_timezone !== "string" || !timezone(clock.calendar_timezone)
+   || clock.timestamp_timezone !== clock.calendar_timezone) return null;
+  const nativeProperties = topLevelJsonObjectProperties(envelope.record_json);
+  if (!nativeProperties) return null;
+  const seen = new Set<string>(); const header: Record<string, unknown> = {};
+  const metadata = new Set(["schema","schema_version","schema_profile","schemaVersion","schemaProfile","time_context","timeContext","type","date"]);
+  for(const property of nativeProperties) {
+   if(seen.has(property.key) || property.key === "healthkit_record_archive") return null;
+   seen.add(property.key);
+   if(!metadata.has(property.key)) continue;
+   if(property.valueEnd-property.valueStart>4096) return null;
+   header[property.key]=JSON.parse(envelope.record_json.slice(property.valueStart,property.valueEnd));
+  }
+  if(header.type !== "health-data" || ["schema","schema_version","schema_profile","time_context","timeContext"].some(key=>key in header)
+   || typeof header.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(header.date)
+   || new Date(header.date+"T00:00:00Z").toISOString().slice(0,10)!==header.date) return null;
+  if(envelope.record_profile === "android-frozen-v4") {
+   if("schemaVersion" in header || "schemaProfile" in header) return null;
+  } else if(header.schemaVersion !== 5 || header.schemaProfile !== "android-analytical-v5") return null;
+  return {recordJson:envelope.record_json,profile:envelope.record_profile as "android-frozen-v4" | "android-analytical-v5",calendar:clock.calendar_timezone};
+ } catch { return null; }
+}
+
 /** Same-date inputs with different ownership/profile promises must never be combined. */
 type SleepAuthorityRecord = Pick<HealthDay, "schema_profile" | "timeContext" | "time_context">;
 
@@ -145,7 +187,17 @@ export function sleepAuthoritiesAgree(a: SleepAuthorityRecord, b: SleepAuthority
 			? [attribution, day.schema_profile, time?.calendar_timezone, time?.timestamp_timezone].join("|")
 			: attribution;
 	};
-	return context(a) === context(b);
+	if (context(a) !== context(b)) return false;
+	const at = a.timeContext ?? a.time_context;
+	const bt = b.timeContext ?? b.time_context;
+	// Historical files without a declared clock keep their established reading.
+	// Two explicit clocks cannot silently collapse into one Night capture.
+	if ((at?.sleep_day_attribution ?? "night_begins") === "night_begins"
+		&& at?.calendar_timezone && bt?.calendar_timezone) {
+		return at.calendar_timezone === bt.calendar_timezone && at.timestamp_timezone === bt.timestamp_timezone
+			&& (!a.schema_profile || !b.schema_profile || a.schema_profile === b.schema_profile);
+	}
+	return true;
 }
 
 /** Exact metadata-off declaration emitted by the versioned successor renderer. */

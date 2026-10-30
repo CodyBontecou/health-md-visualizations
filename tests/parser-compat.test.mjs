@@ -2703,3 +2703,82 @@ test('scoped captures after personal YAML block scalars retain only root authori
   assert.equal(parseMarkdown(nestedOnly)?.activity?.steps,42);
  }
 });
+
+test('native Android Night scopes and Morning restorations retain exact selected records',async()=>{
+ const {parseMarkdown,parseJSON}=await loadParsers();
+ const root='tests/fixtures/native-android-daily-note-transitions/';
+ for(const profile of ['IOS_V4_FROZEN','ANDROID_ANALYTICAL_V5']) for(const initial of [false,true])
+ for(const sections of [false,true]) for(const selection of ['steps','sleep','both']) {
+  const name=`${profile}-${initial}-${sections}-${selection}`;
+  const note=await readFile(root+'night-'+name+'.md','utf8');
+  const source=await readFile(root+'night-'+name+'.json','utf8');
+  const day=parseMarkdown(note);
+  assert.ok(day,name);
+  assert.equal(day.date,'2026-03-08');
+  assert.equal(day.schema_profile,profile==='IOS_V4_FROZEN'?'android-frozen-v4':'android-analytical-v5');
+  assert.equal(day.time_context.calendar_timezone,'America/New_York');
+  assert.equal(day.time_context.timestamp_timezone,'America/New_York');
+  assert.deepEqual(day.sleep,parseJSON(source).sleep);
+  assert.equal(day.sleep?.totalDuration,selection==='steps'?undefined:3600);
+  assert.equal(day.sleep?.deepSleep,undefined);
+  assert.equal(day.sleep?.sleepStages?.length??0,sections && selection!=='steps'?1:0);
+  assert.equal(day.activity?.steps,selection==='sleep'?undefined:84);
+  assert.ok(note.includes('sleep_deep_hours: 9 # historical'));
+  assert.ok(note.includes('Personal: multiline text'));
+  const restored=parseMarkdown(await readFile(root+'restored-'+name+'.md','utf8'));
+  assert.deepEqual(restored,parseJSON(await readFile(root+'restored-'+name+'.json','utf8')));
+  assert.equal(restored.sleep.totalDuration,93600.5);
+  assert.equal(restored.sleep.lightSleep,93600.5);
+  assert.equal(restored.sleep.coreSleep,undefined);
+ }
+});
+
+test('Android Night envelope rejects incomplete or conflicting outer and inner authority',async()=>{
+ const {parseMarkdown}=await loadParsers();
+ const root='tests/fixtures/native-android-daily-note-transitions/';
+ const note=await readFile(root+'night-ANDROID_ANALYTICAL_V5-true-false-steps.md','utf8');
+ const line=note.split(/\r?\n/).find(line=>line.startsWith('healthmd_daily_injection_v2:'));
+ const encoded=line.slice(line.indexOf(':')+1).trim();
+ const value=JSON.parse(encoded);const envelope=JSON.parse(value);
+ const mutate=(fn)=>{const copy=structuredClone(envelope);fn(copy);return note.replace(encoded,JSON.stringify(JSON.stringify(copy)));};
+ for(const bad of [
+  note.replace('healthmd_injection_kind: daily_capture_v2',''),
+  note.replace('daily_capture_v2','daily_capture_v99'),
+  note.replace('healthmd_injection_kind: daily_capture_v2','healthmd_injection_kind: daily_capture_v2\nhealthmd_injection_kind: daily_capture_v2'),
+  note.replace('healthmd_injection_kind:', '"healthmd_injection_kind":'),
+  note.replace('healthmd_daily_injection_v1: null','healthmd_daily_injection_v1: invalid'),
+  mutate(e=>e.version=1),mutate(e=>e.record_profile='android-frozen-v4'),
+  mutate(e=>e.time_context.timestamp_timezone='UTC'),mutate(e=>e.time_context.calendar_timezone='Not/AZone'),
+  mutate(e=>e.time_context.extra=true),mutate(e=>e.extra=true),
+  mutate(e=>e.record_json=e.record_json.replace('{','{"time_context":{},')),
+  mutate(e=>e.record_json=e.record_json.replace('{','{"date":"2026-03-08",')),
+  mutate(e=>e.record_json=e.record_json.replace('"schemaVersion": 5','"schemaVersion": 4')),
+  note.replace(encoded,JSON.stringify(value.replace('{','{"version":2,'))),
+ ]) assert.equal(parseMarkdown(bad),null);
+ assert.equal(parseMarkdown(note,{healthmd_daily_injection_v2:'forged'}),null);
+});
+
+test('native Android Night corpora retain producer bytes and local-clock legacy duration',async()=>{
+ const {parseMarkdown,parseJSON}=await loadParsers();
+ for(const folder of ['native-android-daily-note-transitions','native-android-night-repository']) {
+  const root='tests/fixtures/'+folder+'/';
+  const provenance=JSON.parse(await readFile(root+'provenance.json','utf8'));
+  for(const [name,digest] of Object.entries(provenance.files))
+   assert.equal(createHash('sha256').update(await readFile(root+name)).digest('hex'),digest);
+ }
+ const root='tests/fixtures/native-android-night-repository/';
+ for(const profile of ['IOS_V4_FROZEN','ANDROID_ANALYTICAL_V5']) for(const mode of ['OVERWRITE','APPEND','UPDATE']) {
+  const name=`repository-${profile}-${mode}`;
+  const note=await readFile(root+name+'.md','utf8');
+  const json=await readFile(root+name+'.json','utf8');
+  const day=parseMarkdown(note);
+  assert.deepEqual(day.sleep,parseJSON(json).sleep);
+  assert.equal(day.sleep.totalDuration,3600);
+  assert.equal(day.sleep.sleepStages[0].durationSeconds,97200);
+  assert.equal(day.sleep.sleepStages[0].startDate,'2026-03-07T10:00:00');
+  assert.equal(day.sleep.sleepStages[0].endDate,'2026-03-08T13:00:00.5');
+  assert.equal(day.sleep.deepSleep,undefined);
+  assert.equal(day.activity.steps,84);
+  assert.ok(note.includes('notes: |\r\n  My personal journal\r\n'));
+ }
+});

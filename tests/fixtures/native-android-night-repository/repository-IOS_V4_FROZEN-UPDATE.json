@@ -1,0 +1,33 @@
+{
+    "date": "2026-03-08",
+    "type": "health-data",
+    "units": "metric",
+    "sleep": {
+        "totalDuration": 3600.0,
+        "totalDurationFormatted": "1h",
+        "bedtime": "10:00",
+        "bedtimeISO": "2026-03-07T10:00:00",
+        "wakeTime": "13:00",
+        "wakeTimeISO": "2026-03-08T13:00:00.5",
+        "coreSleep": 3600.0,
+        "coreSleepFormatted": "1h",
+        "sleepStages": [
+            {
+                "stage": "light",
+                "startDate": "2026-03-07T10:00:00",
+                "endDate": "2026-03-08T13:00:00.5",
+                "durationSeconds": 97200.0
+            }
+        ],
+        "sleepSessions": [
+            {
+                "startTimeISO": "2026-03-07T10:00:00",
+                "endTimeISO": "2026-03-08T13:00:00.5",
+                "notes": "Synthetic complete session"
+            }
+        ]
+    },
+    "activity": {
+        "steps": 84
+    }
+}

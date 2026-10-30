@@ -6,7 +6,7 @@ import { attachNativeQuantityDetails, nativeQuantityDetails, quantityDefinitions
 import { nativeSleepStages, nativeSleepSessions, sleepInterval, successorSleepDetails } from "../native-sleep-details";
 import { parseNativeDetailCell, nativeSourceRecordsAgree } from "../native-detail-markdown";
 import { canonicalSourceInstant } from "../native-source-clock";
-import { readSleepAuthority, readIndividualCaptureAuthority, supportsScopedDailyCapture, sleepDeclaration, sleepSummaryFacts } from "../sleep-attribution";
+import { readSleepAuthority, readIndividualCaptureAuthority, supportsScopedDailyCapture, readScopedAndroidNightCapture, sleepDeclaration, sleepSummaryFacts } from "../sleep-attribution";
 import { parseJSON } from "./json-parser";
 import {
 	FrontmatterAliasMap,
@@ -40,6 +40,7 @@ import { parseWhoopFlat, parseCompleteWhoopSource, whoopFlatFactsAgree } from ".
 import { attachCanonicalMetrics, canonicalMetricsFromFlatRecord } from "../summary-metric-normalizer";
 
 interface ParsedFrontmatter {
+	captureMetadataInvalid?: boolean;
 	frontmatter: Record<string, unknown> | null;
 	body: string;
 }
@@ -334,6 +335,23 @@ export function parseFrontmatter(content: string): ParsedFrontmatter {
 	if (!match) return { frontmatter: null, body: content };
 
 	const yaml = match[1];
+	const captureKeys = new Set(["healthmd_injection_kind","healthmd_daily_injection_v1","healthmd_daily_injection_v2"]);
+	const seenCapture = new Set<string>();
+	let captureMetadataInvalid = false;
+	for (const line of yaml.split(/\r?\n/)) {
+		if (!line || /^\s/.test(line)) continue;
+		const entry = splitYamlKeyValue(line);
+		if (!entry) continue;
+		const literal = entry[0];
+		let key = literal;
+		try {
+			if (literal.startsWith('"')) key = JSON.parse(literal);
+			else if (literal.startsWith("'") && literal.endsWith("'")) key = literal.slice(1,-1).replace(/''/g, "'");
+		} catch { continue; }
+		if (!captureKeys.has(key)) continue;
+		if (key !== literal || seenCapture.has(key)) captureMetadataInvalid = true;
+		seenCapture.add(key);
+	}
 	const lines: YamlLine[] = yaml
 		.split(/\r?\n/)
 		.map((line) => ({ indent: countIndent(line), text: line.trim() }))
@@ -341,6 +359,7 @@ export function parseFrontmatter(content: string): ParsedFrontmatter {
 	const parsed = parseYamlBlock(lines, 0, 0).value;
 
 	return {
+		...(captureMetadataInvalid ? {captureMetadataInvalid:true} : {}),
 		frontmatter: typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
 			? parsed as Record<string, unknown>
 			: {},
@@ -1395,21 +1414,38 @@ export function parseMarkdown(
 	dictionaryUnits?: HealthMdUnitMap
 ): HealthDay | null {
 	const parsed = parseFrontmatter(content);
+	if (parsed.captureMetadataInvalid) return null;
 	// A daily-note injection owns one explicit capture, not the surrounding
 	// personal/historical fields. Only on-disk identity may activate this path;
 	// a metadata cache or metric alias cannot manufacture capture authority.
 	const raw = parsed.frontmatter ?? {};
+	if ((raw.healthmd_injection_kind === undefined || raw.healthmd_injection_kind === null)
+		&& (raw.healthmd_daily_injection_v1 !== undefined || raw.healthmd_daily_injection_v2 !== undefined)) return null;
 	// An early, unqualified producer cleared both fields. Those bytes attest no
 	// capture; generic fallback could adopt retained facts under the wrong rule.
 	if (raw.healthmd_injection_kind === null && raw.healthmd_daily_injection_v1 === null) return null;
 	if (raw.healthmd_injection_kind !== undefined && raw.healthmd_injection_kind !== null) {
-		if (raw.healthmd_injection_kind !== "daily_capture_v1") return null;
-		for (const key of ["healthmd_injection_kind", "healthmd_daily_injection_v1"]) {
+		if (!["daily_capture_v1","daily_capture_v2"].includes(String(raw.healthmd_injection_kind))) return null;
+		const night = raw.healthmd_injection_kind === "daily_capture_v2";
+		const inactive = raw[night ? "healthmd_daily_injection_v1" : "healthmd_daily_injection_v2"];
+		if (inactive !== undefined && inactive !== null) return null;
+		for (const key of ["healthmd_injection_kind", "healthmd_daily_injection_v1", "healthmd_daily_injection_v2"]) {
 			if (cachedFrontmatter?.[key] !== undefined && cachedFrontmatter[key] !== raw[key]) return null;
 		}
-		const value = raw.healthmd_daily_injection_v1;
+		const value = raw[night ? "healthmd_daily_injection_v2" : "healthmd_daily_injection_v1"];
 		if (typeof value !== "string" || value.length > 64 * 1024 * 1024) return null;
 		try {
+			if (night) {
+				const historical = readScopedAndroidNightCapture(value);
+				if (!historical) return null;
+				const capture = parseJSON(historical.recordJson);
+				if (!capture) return null;
+				const time = {calendar_timezone:historical.calendar,calendarTimezone:historical.calendar,
+					timestamp_timezone:historical.calendar,timestampTimezone:historical.calendar};
+				return {...capture,schema_profile:historical.profile,schemaProfile:historical.profile,
+					schema_version:historical.profile === "android-frozen-v4" ? 4 : 5,
+					schemaVersion:historical.profile === "android-frozen-v4" ? 4 : 5,time_context:time,timeContext:time};
+			}
 			const envelope = JSON.parse(value) as Record<string, unknown>;
 			if (!envelope || envelope.kind !== "healthmd_daily_capture" || envelope.version !== 1
 				|| typeof envelope.record_json !== "string"
