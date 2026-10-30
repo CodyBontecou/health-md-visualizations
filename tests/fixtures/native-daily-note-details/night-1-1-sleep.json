@@ -1,0 +1,30 @@
+{
+  "date" : "2026-03-08",
+  "raw_capture_status" : "not_requested",
+  "schema" : "healthmd.health_data",
+  "schema_version" : 8,
+  "sleep" : {
+    "coreSleep" : 3600.5,
+    "coreSleepFormatted" : "1h 0m",
+    "sleepStages" : [
+      {
+        "durationSeconds" : 3600.5,
+        "endDate" : "2026-03-08T17:00:00Z",
+        "stage" : "core",
+        "startDate" : "2026-03-08T16:00:00Z"
+      }
+    ],
+    "totalDuration" : 3600.5,
+    "totalDurationFormatted" : "1h 0m"
+  },
+  "time_context" : {
+    "calendar_timezone" : "America\/New_York",
+    "timestamp_timezone" : "UTC"
+  },
+  "type" : "health-data",
+  "unit_system" : "metric",
+  "units" : {
+    "sleep_core_hours" : "hours",
+    "sleep_total_hours" : "hours"
+  }
+}

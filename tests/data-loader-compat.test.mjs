@@ -1177,3 +1177,40 @@ test('different scoped owner-day meanings remain conflicting operations in eithe
   assert.ok(report.warnings.some(warning=>warning.includes('conflicting sleep attribution/profile')));
  }
 });
+
+test('source JSON cannot use an internal display flag to hide conflicting native records',async()=>{
+ const source=await readFile('tests/fixtures/apple-v11-whoop-source/false/2026-03-15.json','utf8');
+ const changed=JSON.parse(source);
+ changed.providers.whoop.cycles[0].strain_score+=1;
+ for(const flag of [false,true]) {
+  changed.individualEntryProjection=flag;
+  for(const reverse of [false,true]) {
+   const values=reverse?{'a.json':JSON.stringify(changed),'b.json':source}:{'a.json':source,'b.json':JSON.stringify(changed)};
+   const {days,report}=await loadWhoopVault(values,true);
+   assert.equal(days.length,0);
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+  }
+ }
+});
+
+test('selected native Night details remain stable when scoped notes and exact JSON are loaded together',async()=>{
+ const root='tests/fixtures/native-daily-note-details/';
+ for(const name of ['night-1-1-both','night-1-0-both','night-0-1-sleep','night-0-1-steps','restored-0-1-both']) {
+  const note=await readFile(root+name+'.md','utf8');
+  const json=await readFile(root+name+'.json','utf8');
+  for(const reverse of [false,true]) {
+   const files=reverse?{'a.md':note,'b.json':json}:{'a.json':json,'b.md':note};
+   const {days,report}=await loadWhoopVault(files,true);
+   assert.equal(days.length,1,name);
+   const day=days[0];
+   if(name.startsWith('restored')) assert.equal(day.sleep.totalDuration,93600.5);
+   else if(name.endsWith('steps')) assert.equal(day.sleep?.totalDuration??0,0);
+   else {
+    assert.equal(day.sleep.totalDuration,3600.5);
+    const detail=name.includes('-1-1-')||name.includes('-0-1-');
+    assert.equal(day.sleep.sleepStages.length,detail?1:0);
+   }
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')),name);
+  }
+ }
+});

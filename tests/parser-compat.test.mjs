@@ -2638,3 +2638,33 @@ test('scoped historical captures require exact known schema and bounded clock au
   assert.equal(parseMarkdown(note(malformed)),null);
  }
 });
+
+test('consumer-only individual projection flags cannot come from JSON source',async()=>{
+ const {parseJSON}=await loadParsers();
+ const source=await readFile('tests/fixtures/native-individual-capture/basic/Health/2026-03-08.json','utf8');
+ const poisoned=JSON.stringify({...JSON.parse(source),individualEntryProjection:true});
+ assert.equal(parseJSON(poisoned).individualEntryProjection,undefined);
+});
+
+test('native scoped Night details survive selected section injection and remain absent from frontmatter-only captures',async()=>{
+ const {parseMarkdown,parseJSON}=await loadParsers();
+ const root='tests/fixtures/native-daily-note-details/';
+ const provenance=JSON.parse(await readFile(root+'provenance.json','utf8'));
+ const {createHash}=await import('node:crypto');
+ for(const [name,digest] of Object.entries(provenance.files)) {
+  const bytes=await readFile(root+name);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),digest);
+  if(!name.endsWith('.md')) continue;
+  const json=await readFile(root+name.replace(/\.md$/,'.json'),'utf8');
+  const actual=parseMarkdown(bytes.toString('utf8'));
+  assert.deepEqual(actual,parseJSON(json),name);
+  if(name.startsWith('night-')) {
+   const [,initialSections,nightSections,selection]=name.replace(/\.md$/,'').split('-');
+   const expectsDetail=nightSections==='1'&&selection!=='steps';
+   assert.equal(actual.sleep?.sleepStages?.length??0,expectsDetail?1:0,name);
+   if(expectsDetail) assert.equal(actual.sleep.sleepStages[0].durationSeconds,3600.5);
+   if(selection==='steps') assert.equal(actual.sleep?.totalDuration??0,0);
+   else assert.equal(actual.sleep.totalDuration,3600.5);
+  } else assert.equal(actual.sleep.totalDuration,93600.5);
+ }
+});
