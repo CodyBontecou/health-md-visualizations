@@ -295,8 +295,19 @@ function parseYamlBlock(lines: YamlLine[], start: number, indent: number): { val
 		}
 		const [key, rawValue] = keyValue;
 		if (rawValue) {
-			obj[key] = parseYamlScalar(rawValue, key);
-			i++;
+			// Personal journals can precede a scoped capture with a block scalar.
+			// Consume its indented lines so they neither end the root mapping nor
+			// masquerade as root capture metadata.
+			if (/^[|>](?:[1-9][+-]?|[+-][1-9]?)?$/.test(stripInlineComment(rawValue).trim())) {
+				const folded = rawValue.startsWith(">");
+				const parts: string[] = [];
+				i++;
+				while (i < lines.length && lines[i].indent > indent) parts.push(lines[i++].text);
+				obj[key] = parts.join(folded ? " " : "\n");
+			} else {
+				obj[key] = parseYamlScalar(rawValue, key);
+				i++;
+			}
 			continue;
 		}
 

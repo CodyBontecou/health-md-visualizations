@@ -13980,8 +13980,16 @@ function parseYamlBlock(lines, start, indent) {
     }
     const [key, rawValue] = keyValue;
     if (rawValue) {
-      obj[key] = parseYamlScalar(rawValue, key);
-      i++;
+      if (/^[|>](?:[1-9][+-]?|[+-][1-9]?)?$/.test(stripInlineComment(rawValue).trim())) {
+        const folded = rawValue.startsWith(">");
+        const parts = [];
+        i++;
+        while (i < lines.length && lines[i].indent > indent) parts.push(lines[i++].text);
+        obj[key] = parts.join(folded ? " " : "\n");
+      } else {
+        obj[key] = parseYamlScalar(rawValue, key);
+        i++;
+      }
       continue;
     }
     if (i + 1 < lines.length && lines[i + 1].indent > lines[i].indent) {

@@ -1214,3 +1214,21 @@ test('selected native Night details remain stable when scoped notes and exact JS
   }
  }
 });
+
+test('native Android scoped note deduplicates exact daily JSON in both orders',async()=>{
+ const root='tests/fixtures/native-android-daily-note/';
+ for(const mode of ['false','true']) {
+  const note=await readFile(root+'android-'+mode+'.md','utf8');
+  const json=await readFile(root+'android-'+mode+'.json','utf8');
+  for(const sources of [{'journal.md':note},{'journal.md':note,'daily.json':json},{'daily.json':json,'journal.md':note}]) {
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1);
+   assert.equal(days[0].date,'2026-03-08');
+   assert.equal(days[0].schema_profile,'android-sleep-v6');
+   assert.equal(days[0].sleep.lightSleep,93600.5);
+   assert.equal(days[0].sleep.coreSleep,undefined);
+   assert.equal(days[0].sleep.deepSleep,undefined);
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')));
+  }
+ }
+});

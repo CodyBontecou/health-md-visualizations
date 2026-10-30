@@ -2668,3 +2668,38 @@ test('native scoped Night details survive selected section injection and remain 
   } else assert.equal(actual.sleep.totalDuration,93600.5);
  }
 });
+
+test('native Android scoped note agrees with its accepted record and preserves Light',async()=>{
+ const {parseMarkdown,parseJSON}=await loadParsers();
+ const root='tests/fixtures/native-android-daily-note/';
+ const provenance=JSON.parse(await readFile(root+'provenance.json','utf8'));
+ for(const [name,digest] of Object.entries(provenance.files))
+  assert.equal(createHash('sha256').update(await readFile(root+name)).digest('hex'),digest);
+ for(const mode of ['false','true']) {
+  const note=await readFile(root+'android-'+mode+'.md','utf8');
+  const record=await readFile(root+'android-'+mode+'.json','utf8');
+  const actual=parseMarkdown(note);
+  assert.deepEqual(actual,parseJSON(record));
+  assert.equal(actual.date,'2026-03-08');
+  assert.equal(actual.schema_profile,'android-sleep-v6');
+  assert.equal(actual.sleep.totalDuration,93600.5);
+  assert.equal(actual.sleep.lightSleep,93600.5);
+  assert.equal(actual.sleep.coreSleep,undefined);
+  assert.equal(actual.sleep.deepSleep,undefined);
+  assert.equal(actual.activity.steps,42);
+  assert.ok(note.includes('sleep_deep_hours: 9 # history'));
+  assert.ok(note.includes('Keep my: multiline text'));
+ }
+});
+
+test('scoped captures after personal YAML block scalars retain only root authority',async()=>{
+ const {parseMarkdown}=await loadParsers();
+ const source=await readFile('tests/fixtures/native-daily-note-capture/frontmatter.md','utf8');
+ const expected=parseMarkdown(source);
+ for(const indicator of ['|','|-','|+','|2','|2-','|-2','>','>-','>+','>2','>2-','>-2']) {
+  const personal=`notes: ${indicator} # personal journal\n  healthmd_injection_kind: forged\n  healthmd_daily_injection_v1: forged\n`;
+  assert.deepEqual(parseMarkdown(source.replace('---\n','---\n'+personal)),expected);
+  const nestedOnly=`---\n${personal}date: 2026-03-08\nsteps: 42\n---\n`;
+  assert.equal(parseMarkdown(nestedOnly)?.activity?.steps,42);
+ }
+});

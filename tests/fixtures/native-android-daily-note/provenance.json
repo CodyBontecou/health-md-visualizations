@@ -1,0 +1,13 @@
+{
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_commit": "da30a5f8886fa6e0d5c50414e9899445de081487",
+  "producer_test": "HostCoreDailyNoteTest.acceptedCaptureSurvivesMutationAndPreservesPersonalYaml",
+  "producer_source_sha256": "5a8d23887ea9430f13a723a767725a39bb5fa1056595e22e3edc818e2b209f0e",
+  "evidence": "Actual host UniFFI accepted Android-sleep-v6 render plan and shared merger. No Health Connect or emulator claims. CRLF personal multiline YAML retained byte-for-byte.",
+  "files": {
+    "android-false.json": "d337634e475a52e27b0ec71797c25e5b25e5b525d9721140d35638712a6d42ee",
+    "android-false.md": "6dd8ce2cd615383f65c12d5d090813b5e7c8fc0fe3a0abbd24b19d9660bf11a1",
+    "android-true.json": "6b88a5b07f80052f5996897403f7b6298892f39f007e726215d6cf366e33d480",
+    "android-true.md": "ab18447e3afaec2629d47cd42e8ed942057f899264b28ca96a2171d35aa337dd"
+  }
+}
