@@ -2501,3 +2501,14 @@ test('individual sleep owner dates and invalid capture annotations are handled e
   note.replace('---\n','---\nschema_profile: apple-v11\n'),
  ]) assert.equal(parseMarkdown(broken),null);
 });
+
+test('individual annotation names do not reserve custom metric keys on daily exports',async()=>{
+ const {parseMarkdown}=await loadParsers();
+ const daily=await readFile('tests/fixtures/native-individual-capture/basic/Health/2026-03-08.md','utf8');
+ const withCustomKey=daily.replace('---\n','---\nhealthmd_capture_context_json: 42\n');
+ const actual=parseMarkdown(withCustomKey);
+ assert.ok(actual);
+ assert.equal(actual.individualEntryProjection,undefined);
+ assert.equal(actual.schema_profile,'apple-v11');
+ assert.deepEqual(actual,parseMarkdown(daily));
+});

@@ -10544,6 +10544,7 @@ function readSleepAuthority(source) {
 }
 function readIndividualCaptureAuthority(source) {
   if (source.healthmd_capture_context_json === void 0) return void 0;
+  if (source.type === "health-data" || source.entry_kind === void 0 && source.metric === void 0) return void 0;
   try {
     if (typeof source.healthmd_capture_context_json !== "string" || source.healthmd_capture_context_json.length > 1024 || typeof source.entry_kind !== "string" || !["healthkit_record", "granular_compatibility", "daily_aggregate"].includes(source.entry_kind) || typeof source.type !== "string" || !source.type || typeof source.metric !== "string" || !source.metric || source.metric.length > 128 || ["schema", "schema_version", "schemaVersion", "schema_profile", "schemaProfile", "time_context", "timeContext"].some((key) => source[key] !== void 0)) return null;
     const context = record4(JSON.parse(source.healthmd_capture_context_json));

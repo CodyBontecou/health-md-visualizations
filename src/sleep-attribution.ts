@@ -79,6 +79,9 @@ export function readIndividualCaptureAuthority(source: Record<string, unknown>):
 	ownerDate?: string;
 } | null | undefined {
 	if (source.healthmd_capture_context_json === undefined) return undefined;
+	// Daily exports may use arbitrary custom metric keys. Only a note's
+	// individual-entry identity can activate this annotation grammar.
+	if (source.type === "health-data" || (source.entry_kind === undefined && source.metric === undefined)) return undefined;
 	try {
 		if (typeof source.healthmd_capture_context_json !== "string"
 			|| source.healthmd_capture_context_json.length > 1024
