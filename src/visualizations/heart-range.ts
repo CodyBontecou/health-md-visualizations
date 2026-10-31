@@ -23,7 +23,7 @@ function extractForMetric(day: HealthDay, metric: HeartMetric) {
 	const max = day.heart.heartRateMax;
 	const avg = day.heart.averageHeartRate;
 	if (avg == null || avg <= 0) return null;
-	return { min: min > 0 ? min : avg, max: max > 0 ? max : avg, avg };
+	return { min: min != null && min > 0 ? min : avg, max: max != null && max > 0 ? max : avg, avg };
 }
 
 function labelFor(m: HeartMetric): string {

@@ -6,6 +6,8 @@ type SleepStage = NonNullable<HealthDay["sleep"]>["sleepStages"][number];
 
 function buildSyntheticStages(night: HealthDay): SleepStage[] {
 	const sleep = night.sleep!;
+	// Summary totals cannot place native stages on a source timeline.
+	if (night.timeContext?.sleep_day_attribution === "morning_ends") return [];
 	if (!sleep.bedtime || !sleep.wakeTime) return [];
 
 	const isTimeOnly = (s: string) => /^\d{1,2}:\d{2}$/.test(s);
@@ -34,15 +36,16 @@ function buildSyntheticStages(night: HealthDay): SleepStage[] {
 	}
 
 	const awake = sleep.awakeTime ?? 0;
-	const core = sleep.coreSleep ?? 0;
+	const core = sleep.coreSleep ?? sleep.lightSleep ?? 0;
+	const nativeStage = sleep.lightSleep !== undefined ? "light" : "core";
 	const deep = sleep.deepSleep ?? 0;
 	const rem = sleep.remSleep ?? 0;
 
 	addStage("awake", awake * 0.3);
-	addStage("core", core * 0.45);
+	addStage(nativeStage, core * 0.45);
 	addStage("deep", deep);
 	addStage("rem", rem);
-	addStage("core", core * 0.55);
+	addStage(nativeStage, core * 0.55);
 	addStage("awake", awake * 0.7);
 
 	return stages;
@@ -66,13 +69,14 @@ export const renderSleepPolar: RenderFn = (
 ): void => {
 	const canvas = ctx.canvas;
 	const nights = data.filter(
-		(d) => d.sleep && (d.sleep.sleepStages.length > 0 || d.sleep.totalDuration > 0)
+		(d) => d.sleep && getEffectiveStages(d).length > 0
 	);
 	if (!nights.length) {
 		ctx.fillStyle = theme.muted;
 		ctx.font = "12px sans-serif";
 		ctx.textAlign = "center";
-		ctx.fillText("No sleep data", W / 2, H / 2);
+		ctx.fillText(data.some((day) => day.timeContext?.sleep_day_attribution === "morning_ends" && day.sleep)
+			? "No recorded sleep stage timing" : "No sleep data", W / 2, H / 2);
 		return;
 	}
 
@@ -134,7 +138,7 @@ export const renderSleepPolar: RenderFn = (
 			ctx.moveTo(cx, cy);
 			ctx.arc(cx, cy, r - 1, a1, a2);
 			ctx.closePath();
-			ctx.fillStyle = theme.colors.sleep[stage.stage as keyof typeof theme.colors.sleep] || "#333";
+			ctx.fillStyle = theme.colors.sleep[(stage.stage === "light" ? "core" : stage.stage) as keyof typeof theme.colors.sleep] || "#333";
 			ctx.globalAlpha = 0.85;
 			ctx.fill();
 			ctx.globalAlpha = 1;
@@ -170,10 +174,11 @@ export const renderSleepPolar: RenderFn = (
 			r: r + 6,
 			title: formatDate(night.date),
 			details: [
-				{ label: "Total", value: formatDuration(sleep.totalDuration) },
-				{ label: "Deep", value: formatDuration(sleep.deepSleep) },
-				{ label: "REM", value: formatDuration(sleep.remSleep) },
-				{ label: "Core", value: formatDuration(sleep.coreSleep) },
+				...(sleep.totalDuration !== undefined ? [{ label: "Total", value: formatDuration(sleep.totalDuration) }] : []),
+				...(sleep.deepSleep !== undefined ? [{ label: "Deep", value: formatDuration(sleep.deepSleep) }] : []),
+				...(sleep.remSleep !== undefined ? [{ label: "REM", value: formatDuration(sleep.remSleep) }] : []),
+				...(sleep.coreSleep !== undefined ? [{ label: "Core", value: formatDuration(sleep.coreSleep) }] : []),
+				...(sleep.lightSleep !== undefined ? [{ label: "Light", value: formatDuration(sleep.lightSleep) }] : []),
 				...(sleep.awakeTime
 					? [{ label: "Awake", value: formatDuration(sleep.awakeTime) }]
 					: []),

@@ -264,3 +264,55 @@ export function mergeWhoop(preferred?: WhoopDayData, fallback?: WhoopDayData): W
 	if (preferred.fetchedAt && fallback.fetchedAt && Date.parse(fallback.fetchedAt) > Date.parse(preferred.fetchedAt)) return fallback;
 	return preferred; // Never union different captures or revive an authoritative empty collection.
 }
+
+/** Complete successor source cells retain the original provider object alongside its display model. */
+export function parseCompleteWhoopSource(value: unknown): { providers: Record<string, unknown>; whoop: WhoopDayData } | null {
+    const providers = object(value), raw = object(providers?.whoop);
+    if (!providers || Object.keys(providers).length !== 1 || !raw) return null;
+    const whoop = parseWhoopSection(raw);
+    if (!whoop) return null;
+    const counts: Record<string, number> = {};
+    for (const key of Object.keys(MAPPERS) as Collection[]) {
+        if (!Array.isArray(raw[key]) || raw[key].length > 10_000
+            || !raw[key].every(value => { const record = object(value); return record && validRecord(key, record); })) return null;
+        counts[key === 'recoveries' ? 'recovery' : key] = raw[key].length;
+    }
+    counts.body = raw.body === undefined ? 0 : 1;
+    if (raw.body !== undefined) {
+        const profile = object(raw.body);
+        if (!profile || profile.source_kind !== 'current_profile_snapshot' || !timestamp(profile.observed_at)) return null;
+    }
+    if (!Array.isArray(raw.resources) || !Array.isArray(raw.warnings)) return null;
+    const resources = raw.resources.map(resource);
+    if (resources.some(row => !row) || new Set(resources.map(row => row?.resource)).size !== resources.length) return null;
+    if (resources.some(row => row!.record_count !== counts[row!.resource])) return null;
+    if (Object.entries(counts).some(([key, count]) => count > 0 && !resources.some(row => row!.resource === key))) return null;
+    if (raw.capture_status === 'not_requested') {
+        if (raw.fetched_at !== null || resources.length || Object.values(counts).some(count => count !== 0)) return null;
+    } else {
+        if (!timestamp(raw.fetched_at) || !resources.length) return null;
+        const complete = resources.every(row => row!.status === 'success');
+        if ((raw.capture_status === 'complete') !== complete) return null;
+    }
+    return { providers, whoop };
+}
+
+/** Flat summaries are redundant only for a single source record; never invent an identity. */
+export function whoopFlatFactsAgree(providers: Record<string, unknown>, flat: Record<string, unknown>): boolean {
+    const raw = object(providers.whoop);
+    if (!raw) return false;
+    if (flat.whoop_capture_status !== undefined && flat.whoop_capture_status !== raw.capture_status) return false;
+    for (const [key, group, field] of FLAT_FIELDS) {
+        if (flat[key] === undefined) continue;
+        const records = group === 'body' ? [raw.body] : raw[group];
+        if (!Array.isArray(records) || records.length !== 1) return false;
+        const expected = object(records[0])?.[field];
+        if (expected === undefined) return false;
+        const presented = typeof expected === 'number' && typeof flat[key] === 'string' && flat[key].trim() !== ''
+            ? Number(flat[key]) : flat[key];
+        // The established flat writer displays either signed zero as 0; the complete
+        // source object independently retains its captured numeric value.
+        if (expected !== presented) return false;
+    }
+    return true;
+}

@@ -1,0 +1,708 @@
+{
+  "calendar_timezone" : "GMT",
+  "categories" : {
+    "Workouts" : [
+      {
+        "canonical_key" : "workout_avg_heart_rate",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Avg Heart Rate",
+        "key" : "workout_avg_heart_rate",
+        "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+        "primary_value" : "175",
+        "rule" : "weighted_average",
+        "statistics" : [
+          {
+            "name" : "weighted_average",
+            "value" : "175"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "100"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "200"
+          },
+          {
+            "name" : "latest",
+            "value" : "200"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "bpm"
+      },
+      {
+        "canonical_key" : "workout_avg_power",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Avg Power",
+        "key" : "workout_avg_power",
+        "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+        "primary_value" : "150",
+        "rule" : "weighted_average",
+        "statistics" : [
+          {
+            "name" : "weighted_average",
+            "value" : "150"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "100"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "300"
+          },
+          {
+            "name" : "latest",
+            "value" : "300"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "W"
+      },
+      {
+        "canonical_key" : "workout_cycling_cadence",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Cycling Cadence",
+        "key" : "workout_cycling_cadence",
+        "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+        "primary_value" : "86.66666666666667",
+        "rule" : "weighted_average",
+        "statistics" : [
+          {
+            "name" : "weighted_average",
+            "value" : "86.66666666666667"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "80"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "100"
+          },
+          {
+            "name" : "latest",
+            "value" : "100"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "rpm"
+      },
+      {
+        "canonical_key" : "workout_max_heart_rate",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Max Heart Rate",
+        "key" : "workout_max_heart_rate",
+        "notes" : "Maximum available workout measurement in the requested range.",
+        "primary_value" : "260",
+        "rule" : "maximum",
+        "statistics" : [
+          {
+            "name" : "sum",
+            "value" : "510"
+          },
+          {
+            "name" : "daily_average",
+            "value" : "255"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "250"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "260"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "bpm"
+      },
+      {
+        "canonical_key" : "workout_max_power",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Max Power",
+        "key" : "workout_max_power",
+        "notes" : "Maximum available workout measurement in the requested range.",
+        "primary_value" : "900",
+        "rule" : "maximum",
+        "statistics" : [
+          {
+            "name" : "sum",
+            "value" : "1300"
+          },
+          {
+            "name" : "daily_average",
+            "value" : "650"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "400"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "900"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "W"
+      },
+      {
+        "canonical_key" : "workout_min_heart_rate",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Min Heart Rate",
+        "key" : "workout_min_heart_rate",
+        "notes" : "Minimum available workout measurement in the requested range.",
+        "primary_value" : "50",
+        "rule" : "minimum",
+        "statistics" : [
+          {
+            "name" : "sum",
+            "value" : "105"
+          },
+          {
+            "name" : "daily_average",
+            "value" : "52.5"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "50"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "55"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "bpm"
+      },
+      {
+        "canonical_key" : "workout_running_cadence",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Running Cadence",
+        "key" : "workout_running_cadence",
+        "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+        "primary_value" : "195",
+        "rule" : "weighted_average",
+        "statistics" : [
+          {
+            "name" : "weighted_average",
+            "value" : "195"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "180"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "200"
+          },
+          {
+            "name" : "latest",
+            "value" : "200"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "spm"
+      },
+      {
+        "canonical_key" : "workout_running_ground_contact",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Running Ground Contact",
+        "key" : "workout_running_ground_contact",
+        "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+        "primary_value" : "275",
+        "rule" : "weighted_average",
+        "statistics" : [
+          {
+            "name" : "weighted_average",
+            "value" : "275"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "200"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "300"
+          },
+          {
+            "name" : "latest",
+            "value" : "300"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "ms"
+      },
+      {
+        "canonical_key" : "workout_running_stride_length",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Running Stride Length",
+        "key" : "workout_running_stride_length",
+        "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+        "primary_value" : "1.75",
+        "rule" : "weighted_average",
+        "statistics" : [
+          {
+            "name" : "weighted_average",
+            "value" : "1.75"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "1"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "2"
+          },
+          {
+            "name" : "latest",
+            "value" : "2"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "m"
+      },
+      {
+        "canonical_key" : "workout_running_vertical_oscillation",
+        "category" : "Workouts",
+        "days_counted" : 2,
+        "display_name" : "Workout Running Vertical Oscillation",
+        "key" : "workout_running_vertical_oscillation",
+        "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+        "primary_value" : "9",
+        "rule" : "weighted_average",
+        "statistics" : [
+          {
+            "name" : "weighted_average",
+            "value" : "9"
+          },
+          {
+            "name" : "minimum_daily_value",
+            "value" : "6"
+          },
+          {
+            "name" : "maximum_daily_value",
+            "value" : "10"
+          },
+          {
+            "name" : "latest",
+            "value" : "10"
+          },
+          {
+            "name" : "days_counted",
+            "value" : "2"
+          }
+        ],
+        "unit" : "cm"
+      }
+    ]
+  },
+  "coverage_percent" : 100,
+  "days_counted" : 2,
+  "days_expected" : 2,
+  "end_date" : "2026-03-16",
+  "generated_at" : "2026-10-20T02:44:40Z",
+  "metrics" : [
+    {
+      "canonical_key" : "workout_avg_heart_rate",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Avg Heart Rate",
+      "key" : "workout_avg_heart_rate",
+      "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+      "primary_value" : "175",
+      "rule" : "weighted_average",
+      "statistics" : [
+        {
+          "name" : "weighted_average",
+          "value" : "175"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "100"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "200"
+        },
+        {
+          "name" : "latest",
+          "value" : "200"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "bpm"
+    },
+    {
+      "canonical_key" : "workout_avg_power",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Avg Power",
+      "key" : "workout_avg_power",
+      "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+      "primary_value" : "150",
+      "rule" : "weighted_average",
+      "statistics" : [
+        {
+          "name" : "weighted_average",
+          "value" : "150"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "100"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "300"
+        },
+        {
+          "name" : "latest",
+          "value" : "300"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "W"
+    },
+    {
+      "canonical_key" : "workout_cycling_cadence",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Cycling Cadence",
+      "key" : "workout_cycling_cadence",
+      "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+      "primary_value" : "86.66666666666667",
+      "rule" : "weighted_average",
+      "statistics" : [
+        {
+          "name" : "weighted_average",
+          "value" : "86.66666666666667"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "80"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "100"
+        },
+        {
+          "name" : "latest",
+          "value" : "100"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "rpm"
+    },
+    {
+      "canonical_key" : "workout_max_heart_rate",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Max Heart Rate",
+      "key" : "workout_max_heart_rate",
+      "notes" : "Maximum available workout measurement in the requested range.",
+      "primary_value" : "260",
+      "rule" : "maximum",
+      "statistics" : [
+        {
+          "name" : "sum",
+          "value" : "510"
+        },
+        {
+          "name" : "daily_average",
+          "value" : "255"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "250"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "260"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "bpm"
+    },
+    {
+      "canonical_key" : "workout_max_power",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Max Power",
+      "key" : "workout_max_power",
+      "notes" : "Maximum available workout measurement in the requested range.",
+      "primary_value" : "900",
+      "rule" : "maximum",
+      "statistics" : [
+        {
+          "name" : "sum",
+          "value" : "1300"
+        },
+        {
+          "name" : "daily_average",
+          "value" : "650"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "400"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "900"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "W"
+    },
+    {
+      "canonical_key" : "workout_min_heart_rate",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Min Heart Rate",
+      "key" : "workout_min_heart_rate",
+      "notes" : "Minimum available workout measurement in the requested range.",
+      "primary_value" : "50",
+      "rule" : "minimum",
+      "statistics" : [
+        {
+          "name" : "sum",
+          "value" : "105"
+        },
+        {
+          "name" : "daily_average",
+          "value" : "52.5"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "50"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "55"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "bpm"
+    },
+    {
+      "canonical_key" : "workout_running_cadence",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Running Cadence",
+      "key" : "workout_running_cadence",
+      "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+      "primary_value" : "195",
+      "rule" : "weighted_average",
+      "statistics" : [
+        {
+          "name" : "weighted_average",
+          "value" : "195"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "180"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "200"
+        },
+        {
+          "name" : "latest",
+          "value" : "200"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "spm"
+    },
+    {
+      "canonical_key" : "workout_running_ground_contact",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Running Ground Contact",
+      "key" : "workout_running_ground_contact",
+      "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+      "primary_value" : "275",
+      "rule" : "weighted_average",
+      "statistics" : [
+        {
+          "name" : "weighted_average",
+          "value" : "275"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "200"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "300"
+        },
+        {
+          "name" : "latest",
+          "value" : "300"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "ms"
+    },
+    {
+      "canonical_key" : "workout_running_stride_length",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Running Stride Length",
+      "key" : "workout_running_stride_length",
+      "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+      "primary_value" : "1.75",
+      "rule" : "weighted_average",
+      "statistics" : [
+        {
+          "name" : "weighted_average",
+          "value" : "1.75"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "1"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "2"
+        },
+        {
+          "name" : "latest",
+          "value" : "2"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "m"
+    },
+    {
+      "canonical_key" : "workout_running_vertical_oscillation",
+      "category" : "Workouts",
+      "days_counted" : 2,
+      "display_name" : "Workout Running Vertical Oscillation",
+      "key" : "workout_running_vertical_oscillation",
+      "notes" : "Weighted by active seconds of workouts with this measurement; missing measurements do not contribute.",
+      "primary_value" : "9",
+      "rule" : "weighted_average",
+      "statistics" : [
+        {
+          "name" : "weighted_average",
+          "value" : "9"
+        },
+        {
+          "name" : "minimum_daily_value",
+          "value" : "6"
+        },
+        {
+          "name" : "maximum_daily_value",
+          "value" : "10"
+        },
+        {
+          "name" : "latest",
+          "value" : "10"
+        },
+        {
+          "name" : "days_counted",
+          "value" : "2"
+        }
+      ],
+      "unit" : "cm"
+    }
+  ],
+  "period_id" : "2026-03-15_to_2026-03-16",
+  "rollup_period" : "range",
+  "rollup_rules_version" : 12,
+  "schema" : "healthmd.rollup_summary",
+  "schema_profile" : "apple-rollup-v11",
+  "schema_version" : 11,
+  "source_dates" : [
+    "2026-03-15",
+    "2026-03-16"
+  ],
+  "source_schema" : "healthmd.health_data",
+  "source_schema_profile" : "apple-v11",
+  "source_schema_version" : 11,
+  "start_date" : "2026-03-15",
+  "time_context" : {
+    "calendar_timezone" : "GMT",
+    "sleep_day_attribution" : "morning_ends",
+    "sleep_interval_clipping" : "none",
+    "sleep_owner_day_rule" : "session_end_date",
+    "timestamp_timezone" : "UTC"
+  },
+  "type" : "health_rollup",
+  "units" : {
+    "workout_avg_heart_rate" : "bpm",
+    "workout_avg_power" : "W",
+    "workout_cycling_cadence" : "rpm",
+    "workout_max_heart_rate" : "bpm",
+    "workout_max_power" : "W",
+    "workout_min_heart_rate" : "bpm",
+    "workout_running_cadence" : "spm",
+    "workout_running_ground_contact" : "ms",
+    "workout_running_stride_length" : "m",
+    "workout_running_vertical_oscillation" : "cm"
+  }
+}

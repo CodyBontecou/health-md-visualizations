@@ -1,0 +1,68 @@
+{
+  "date" : "2026-03-15",
+  "heart" : {
+    "heartRateSamples" : [
+      {
+        "metadata" : {
+          "synthetic" : "quantity, \"source\""
+        },
+        "timestamp" : "2026-03-15T01:00:00.125000000Z",
+        "value" : 72.125
+      }
+    ],
+    "hrvSamples" : [
+      {
+        "metadata" : {
+          "synthetic" : "quantity, \"source\""
+        },
+        "timestamp" : "2026-03-15T01:00:00.125000000Z",
+        "value" : 31.875
+      }
+    ]
+  },
+  "raw_capture_status" : "not_requested",
+  "schema" : "healthmd.health_data",
+  "schema_profile" : "apple-v11",
+  "schema_version" : 11,
+  "time_context" : {
+    "calendar_timezone" : "GMT",
+    "sleep_day_attribution" : "morning_ends",
+    "sleep_interval_clipping" : "none",
+    "sleep_owner_day_rule" : "session_end_date",
+    "timestamp_timezone" : "UTC"
+  },
+  "type" : "health-data",
+  "unit_system" : "metric",
+  "units" : {
+
+  },
+  "vitals" : {
+    "bloodGlucoseSamples" : [
+      {
+        "metadata" : {
+          "synthetic" : "quantity, \"source\""
+        },
+        "timestamp" : "2026-03-15T01:00:00.125000000Z",
+        "value" : 101.875
+      }
+    ],
+    "bloodOxygenSamples" : [
+      {
+        "metadata" : {
+          "synthetic" : "quantity, \"source\""
+        },
+        "timestamp" : "2026-03-15T01:00:00.125000000Z",
+        "value" : 0.97124999999999995
+      }
+    ],
+    "respiratoryRateSamples" : [
+      {
+        "metadata" : {
+          "synthetic" : "quantity, \"source\""
+        },
+        "timestamp" : "2026-03-15T01:00:00.125000000Z",
+        "value" : 16.125
+      }
+    ]
+  }
+}

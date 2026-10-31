@@ -1,0 +1,19 @@
+{
+  "date" : "2026-03-08",
+  "raw_capture_status" : "not_requested",
+  "schema" : "healthmd.health_data",
+  "schema_version" : 8,
+  "sleep" : {
+    "totalDuration" : 3600.5,
+    "totalDurationFormatted" : "1h 0m"
+  },
+  "time_context" : {
+    "calendar_timezone" : "America\/New_York",
+    "timestamp_timezone" : "UTC"
+  },
+  "type" : "health-data",
+  "unit_system" : "metric",
+  "units" : {
+    "sleep_total_hours" : "hours"
+  }
+}

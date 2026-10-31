@@ -1,0 +1,14 @@
+{
+  "producer_commit": "08f315da4207730c1ddea6c5bbb3fae3aa115da1",
+  "synthetic": true,
+  "sha256": {
+    "android-v6-blood-pressure/2026-11-01-bases.md": "59afc78bc396ea329730ed60c99ec8c7de86c2c1ba2f59af4fec7cfab1a5a01b",
+    "android-v6-blood-pressure/2026-11-01.csv": "96deb30d7d2beb7169bed640aba9664c42a90c70099853276d9b762ce7f1b250",
+    "android-v6-blood-pressure/2026-11-01.json": "55bc2f86c0510ede21e10f939a73c9cbd4005a9f233b4d6ac7966e3cd2a19679",
+    "android-v6-blood-pressure/2026-11-01.md": "fbcde86ee903b13a843e08cb55b432f4261e6ab20267dfca354488f517e2ce8e",
+    "apple-v11-blood-pressure/2026-03-15-bases.md": "3041ef2817e86388d62d802151af8f0f12e01dc16508ff3dadb53b4bd44e0051",
+    "apple-v11-blood-pressure/2026-03-15.csv": "aff1fbdb4f4a1e8b3528b0e3e2ce7dfca6c0b1972dd19b8322202bd44a8dd245",
+    "apple-v11-blood-pressure/2026-03-15.json": "cbe531de0830fe4142030f8c7e66adc355cafd1b6dda66e047aa53fbec7b9d2b",
+    "apple-v11-blood-pressure/2026-03-15.md": "befdad8b7d19cbd9e638778e261871cef15dc3ea6c343e0694015970cf282681"
+  }
+}

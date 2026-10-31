@@ -1,0 +1,13 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-11-01,Metadata,schema,healthmd.health_data,,
+2026-11-01,Metadata,schema_version,11,,
+2026-11-01,Metadata,schema_profile,apple-v11,,
+2026-11-01,Metadata,unit_system,metric,,
+2026-11-01,Metadata,time_context.calendar_timezone,America/New_York,,
+2026-11-01,Metadata,time_context.timestamp_timezone,UTC,,
+2026-11-01,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-11-01,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-11-01,Metadata,time_context.sleep_interval_clipping,none,,
+2026-11-01,Raw HealthKit,Raw Capture Status,not_requested,status,
+2026-11-01,Sleep,Total Sleep,15.50013888888889,hours,
+2026-11-01,Sleep Detail,Sleep Stage,"{""durationSeconds"":39600,""endDate"":""2026-11-01T17:30:00.750000000Z"",""metadata"":{""synthetic"":""unspecified-source""},""stage"":""unspecified"",""startDate"":""2026-11-01T06:30:00.750000000Z""}",seconds,2026-11-01T06:30:00.750000000Z

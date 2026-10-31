@@ -1,0 +1,76 @@
+{
+  "date" : "2026-03-15",
+  "raw_capture_status" : "not_requested",
+  "schema" : "healthmd.health_data",
+  "schema_profile" : "apple-v11",
+  "schema_version" : 11,
+  "time_context" : {
+    "calendar_timezone" : "GMT",
+    "sleep_day_attribution" : "morning_ends",
+    "sleep_interval_clipping" : "none",
+    "sleep_owner_day_rule" : "session_end_date",
+    "timestamp_timezone" : "UTC"
+  },
+  "type" : "health-data",
+  "unit_system" : "metric",
+  "units" : {
+    "workout_avg_heart_rate" : "bpm",
+    "workout_avg_power" : "W",
+    "workout_count" : "count",
+    "workout_cycling_cadence" : "rpm",
+    "workout_max_heart_rate" : "bpm",
+    "workout_max_power" : "W",
+    "workout_min_heart_rate" : "bpm",
+    "workout_minutes" : "min",
+    "workout_running_cadence" : "spm",
+    "workout_running_ground_contact" : "ms",
+    "workout_running_stride_length" : "m",
+    "workout_running_vertical_oscillation" : "cm"
+  },
+  "workouts" : [
+    {
+      "avgGroundContactTime" : 200,
+      "avgHeartRate" : 100,
+      "avgPower" : 100,
+      "avgRunningCadence" : 180,
+      "avgStrideLength" : 1,
+      "avgVerticalOscillation" : 6,
+      "duration" : 600,
+      "durationFormatted" : "10m",
+      "elapsedDuration" : 600,
+      "endTimeISO" : "2026-03-15T00:10:00.000000000Z",
+      "id" : "94651962-A356-407A-B18E-D015B9B279BB",
+      "maxHeartRate" : 260,
+      "maxPower" : 400,
+      "minHeartRate" : 50,
+      "sport" : "running",
+      "startTime" : "00:00",
+      "startTimeISO" : "2026-03-15T00:00:00.000000000Z",
+      "type" : "Running"
+    },
+    {
+      "avgCyclingCadence" : 80,
+      "avgPower" : 100,
+      "duration" : 1200,
+      "durationFormatted" : "20m",
+      "elapsedDuration" : 1200,
+      "endTimeISO" : "2026-03-15T00:40:00.000000000Z",
+      "id" : "DD62E176-162F-4F45-AEC1-F35688117112",
+      "sport" : "cycling",
+      "startTime" : "00:20",
+      "startTimeISO" : "2026-03-15T00:20:00.000000000Z",
+      "type" : "Cycling"
+    },
+    {
+      "duration" : 1800,
+      "durationFormatted" : "30m",
+      "elapsedDuration" : 1800,
+      "endTimeISO" : "2026-03-15T01:30:00.000000000Z",
+      "id" : "86A413B4-F7CA-453A-996D-91D08B712E22",
+      "sport" : "running",
+      "startTime" : "01:00",
+      "startTimeISO" : "2026-03-15T01:00:00.000000000Z",
+      "type" : "Running"
+    }
+  ]
+}

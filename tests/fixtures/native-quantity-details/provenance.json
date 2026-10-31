@@ -1,0 +1,27 @@
+{
+  "synthetic": true,
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_commit": "66ab02f74f4788bb5cd992f881177dc244a7e3e7",
+  "controls": [
+    "AppleWakeDateExportPlannerTests.testSelectedQuantityDetailsWithoutSummariesReachEveryFormat",
+    "HostCoreDailyAggregatePlannerTest.quantityOnlyNativeRecordsReachConcretePlannerAcrossEveryFormat"
+  ],
+  "sha256": {
+    "apple-v11-quantities/2026-03-15.json": "ddfde56f8b2fc29b40171d4fcbdb95ab61d1f370543ba6ca81faf8466d53f7f6",
+    "apple-v11-quantities/2026-03-15.csv": "79116254863160944fc6b8008e9de67a1641a102ebced6a568ab37e5a4dbf085",
+    "apple-v11-quantities/2026-03-15.md": "78b2f2ffaa227e4abaaba6ca71c086575506343529533b632cf3a79a673b50bd",
+    "apple-v11-quantities/2026-03-15-bases.md": "c3359fdd02de1df0eb09851f8a127d26f4187bf1c5c5bf658254f4e9f92b9043",
+    "apple-v11-heart-only/2026-03-15.json": "8a1bfb74bd35b7990a2085fbc8455a597bde20bf843d25c559800b5fcef773bf",
+    "apple-v11-heart-only/2026-03-15.csv": "2da95494c16ada4fb395619cdb4be69c0d6fdcfe03e101a651dccedcc62fd482",
+    "apple-v11-heart-only/2026-03-15.md": "abda38f61baa40624d8d753ddd3c5bd54a9b7584f751223be4fb0ae9a6e8b5e0",
+    "apple-v11-heart-only/2026-03-15-bases.md": "5baed0d144dd8740cf1fe5b2b600573e28111a14303e06c289df59038d9b6752",
+    "android-v6-quantities/2026-11-01.json": "4ac73855f8967b266e29fb26dbcdf8071e4170a70021176de8e112f2c1f07934",
+    "android-v6-quantities/2026-11-01.csv": "bf761a79b4c992e81c582d7c72b30973454d7ce6eb025f915ce999edf24dfc32",
+    "android-v6-quantities/2026-11-01.md": "1e54d58e102c5335965f0d456b9cf7d3cd038953412c3f65bc703ee7a5e8d3a9",
+    "android-v6-quantities/2026-11-01-bases.md": "e0a0e4eb074f84e91989941cfcb25c4c9480df4214ec23acb5e61f73c2158d2c",
+    "android-v6-heart-only/2026-11-01.json": "d675c9031e4416d44afb7ff01781dfd843668c3e56a0cabe1a6eff9111133f6f",
+    "android-v6-heart-only/2026-11-01.csv": "40bb6926fe609eb792e1f95914914c33031cbc274cae9279bb29788564f27708",
+    "android-v6-heart-only/2026-11-01.md": "d52b6339c4ddba606665ecfdfc3a847e87d7f679ae38262b66e54483de0931a6",
+    "android-v6-heart-only/2026-11-01-bases.md": "68ce66bdec1714b79f75de3515aec8814bbf910d4c5602aab666a9e0099cad30"
+  }
+}

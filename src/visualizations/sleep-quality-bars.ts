@@ -16,14 +16,14 @@ export const renderSleepQualityBars: RenderFn = (
 	ctx.fillStyle = theme.bg;
 	ctx.fillRect(0, 0, W, H);
 
-	const days = data.filter((d) => d.sleep && d.sleep.totalDuration > 0);
+	const days = data.filter((d) => d.sleep && (d.sleep.totalDuration ?? 0) > 0);
 	if (!days.length) return;
 
 	const padL = 40, padR = 16, padT = 20, padB = 28;
 	const plotW = W - padL - padR;
 	const plotH = H - padT - padB;
 
-	const maxTotal = Math.max(...days.map((d) => d.sleep!.totalDuration));
+	const maxTotal = Math.max(...days.map((d) => (d.sleep!.totalDuration ?? 0)));
 
 	const barW = plotW / days.length;
 	const gap = Math.max(1, barW * 0.15);
@@ -49,7 +49,8 @@ export const renderSleepQualityBars: RenderFn = (
 	const legend = [
 		{ label: "Deep", color: theme.colors.sleep.deep },
 		{ label: "REM", color: theme.colors.sleep.rem },
-		{ label: "Core", color: theme.colors.sleep.core },
+		...(days.some((day) => day.sleep?.coreSleep !== undefined) ? [{ label: "Core", color: theme.colors.sleep.core }] : []),
+		...(days.some((day) => day.sleep?.lightSleep !== undefined) ? [{ label: "Light", color: theme.colors.sleep.core }] : []),
 		{ label: "Awake", color: theme.colors.sleep.awake },
 	];
 	let lx = padL;
@@ -75,6 +76,7 @@ export const renderSleepQualityBars: RenderFn = (
 			{ secs: sl.deepSleep || 0, color: theme.colors.sleep.deep, label: "Deep" },
 			{ secs: sl.remSleep || 0, color: theme.colors.sleep.rem, label: "REM" },
 			{ secs: sl.coreSleep || 0, color: theme.colors.sleep.core, label: "Core" },
+			{ secs: sl.lightSleep || 0, color: theme.colors.sleep.core, label: "Light" },
 			{ secs: sl.awakeTime || 0, color: theme.colors.sleep.awake, label: "Awake" },
 		].filter((s) => s.secs > 0);
 
@@ -115,7 +117,7 @@ export const renderSleepQualityBars: RenderFn = (
 		}
 
 		// Hit region
-		const barTop = padT + plotH - (sl.totalDuration / maxTotal) * plotH;
+		const barTop = padT + plotH - ((sl.totalDuration ?? 0) / maxTotal) * plotH;
 		const bedtime = formatClockTime(sl.bedtime) ?? formatClockTime(sl.bedtimeISO);
 		hits.add({
 			shape: "rect",
@@ -125,10 +127,11 @@ export const renderSleepQualityBars: RenderFn = (
 			h: plotH - (barTop - padT),
 			title: formatDate(day.date),
 			details: [
-				{ label: "Total", value: formatDuration(sl.totalDuration) },
+				{ label: "Total", value: formatDuration(sl.totalDuration ?? 0) },
 				...(sl.deepSleep ? [{ label: "Deep", value: formatDuration(sl.deepSleep) }] : []),
 				...(sl.remSleep ? [{ label: "REM", value: formatDuration(sl.remSleep) }] : []),
 				...(sl.coreSleep ? [{ label: "Core", value: formatDuration(sl.coreSleep) }] : []),
+				...(sl.lightSleep ? [{ label: "Light", value: formatDuration(sl.lightSleep) }] : []),
 				...(sl.awakeTime ? [{ label: "Awake", value: formatDuration(sl.awakeTime) }] : []),
 				...(bedtime ? [{ label: "Bedtime", value: bedtime }] : []),
 			],
@@ -137,21 +140,17 @@ export const renderSleepQualityBars: RenderFn = (
 	});
 
 	// Stats strip
-	const avgTotal = days.reduce((s, d) => s + d.sleep!.totalDuration, 0) / days.length;
-	const avgDeep = days.reduce((s, d) => s + (d.sleep!.deepSleep || 0), 0) / days.length;
-	const avgRem = days.reduce((s, d) => s + (d.sleep!.remSleep || 0), 0) / days.length;
+	const avgTotal = days.reduce((s, d) => s + (d.sleep!.totalDuration ?? 0), 0) / days.length;
+	const deepDays = days.filter((day) => day.sleep!.deepSleep !== undefined);
+	const remDays = days.filter((day) => day.sleep!.remSleep !== undefined);
+	const avgDeep = deepDays.length ? deepDays.reduce((sum, day) => sum + (day.sleep!.deepSleep ?? 0), 0) / deepDays.length : undefined;
+	const avgRem = remDays.length ? remDays.reduce((sum, day) => sum + (day.sleep!.remSleep ?? 0), 0) / remDays.length : undefined;
 	renderInlineStats(statsEl, [
 		[
 			{ text: "Avg sleep " },
 			{ text: formatDuration(avgTotal), strong: true },
 		],
-		[
-			{ text: "Avg deep " },
-			{ text: formatDuration(avgDeep), strong: true },
-		],
-		[
-			{ text: "Avg REM " },
-			{ text: formatDuration(avgRem), strong: true },
-		],
+		...(avgDeep !== undefined ? [[{ text: "Avg deep " }, { text: formatDuration(avgDeep), strong: true }]] : []),
+		...(avgRem !== undefined ? [[{ text: "Avg REM " }, { text: formatDuration(avgRem), strong: true }]] : []),
 	]);
 };

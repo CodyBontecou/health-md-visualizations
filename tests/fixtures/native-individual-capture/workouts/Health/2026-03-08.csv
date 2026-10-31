@@ -1,0 +1,24 @@
+Date,Category,Metric,Value,Unit,Timestamp
+2026-03-08,Metadata,schema,healthmd.health_data,,
+2026-03-08,Metadata,schema_version,11,,
+2026-03-08,Metadata,schema_profile,apple-v11,,
+2026-03-08,Metadata,unit_system,metric,,
+2026-03-08,Metadata,time_context.calendar_timezone,America/New_York,,
+2026-03-08,Metadata,time_context.timestamp_timezone,UTC,,
+2026-03-08,Metadata,time_context.sleep_day_attribution,morning_ends,,
+2026-03-08,Metadata,time_context.sleep_owner_day_rule,session_end_date,,
+2026-03-08,Metadata,time_context.sleep_interval_clipping,none,,
+2026-03-08,Raw HealthKit,Raw Capture Status,not_requested,status,
+2026-03-08,Sleep,Total Sleep,26.00013888888889,hours,
+2026-03-08,Sleep,Bedtime,10:00,time,2026-03-07T15:00:00.000000000Z
+2026-03-08,Sleep,Wake Time,13:00,time,2026-03-08T17:00:00.500000000Z
+2026-03-08,Sleep,Core Sleep,26.00013888888889,hours,
+2026-03-08,Activity,Steps,42,steps,
+2026-03-08,Workouts,Workout Count,1,count,
+2026-03-08,Workouts,Workout Minutes,30,min,
+2026-03-08,Workouts,Workout Calories,100,kcal,
+2026-03-08,Workouts,Workout Distance Km,1,km,
+2026-03-08,Workouts,Workout Distance Mi,0.6213711922373339,mi,
+2026-03-08,Workouts,Workouts,[running],,
+2026-03-08,Sleep Detail,Sleep Stage,"{""durationSeconds"":93600.5,""endDate"":""2026-03-08T17:00:00.500000000Z"",""stage"":""core"",""startDate"":""2026-03-07T15:00:00.000000000Z""}",seconds,2026-03-07T15:00:00.000000000Z
+2026-03-08,Native Detail,Workout,"{""metric"":""workout"",""sample"":{""avgPaceFormatted"":""30:00 \/km"",""avgPacePerKmFormatted"":""30:00 \/km"",""avgPacePerMiFormatted"":""48:17 \/mi"",""calories"":100,""distance"":1000,""distanceFormatted"":""1.00 km"",""distanceKm"":1,""distanceMi"":0.62137119223733395,""duration"":1800,""durationFormatted"":""30m"",""elapsedDuration"":1800,""endTimeISO"":""2026-03-08T17:30:00.000000000Z"",""healthKitActivityType"":""running"",""healthKitActivityTypeRawValue"":37,""id"":""EE13B751-D9C4-49E1-AD17-B3D716F8EC67"",""speedKmh"":2,""speedMph"":1.2427423844746679,""sport"":""running"",""startTime"":""13:00"",""startTimeISO"":""2026-03-08T17:00:00.000000000Z"",""type"":""Running""}}",json,2026-03-08T17:00:00.000000000Z

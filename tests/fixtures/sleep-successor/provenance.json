@@ -1,0 +1,20 @@
+{
+  "producer_repository": "CodyBontecou/health-md",
+  "producer_revision": "7c312e6be0322d58f21b784403ea8b98c8e0d8cb",
+  "registry_sha256": "709df0ae9f583e82627bc5439c4385905a5d85000e4322a0384cfe96b35a8f78",
+  "synthetic": true,
+  "cases": {
+    "android-sleep-v6-dst": "HealthConnectManager SDK-boundary synthetic SleepSessionRecord \u2192 Kotlin planner \u2192 real host UniFFI/Rust writer",
+    "apple-v11-dst": "Synthetic HealthData with Foundation instants \u2192 AppleLooseDailyExportPlanner \u2192 packaged UniFFI/Rust writer"
+  },
+  "sha256": {
+    "android-sleep-v6-dst/2026-11-01-bases.md": "6eb26946633a5bcd85991a5f8d33ede536a71b72d4c85e1b69c4ecf3d764d4a8",
+    "android-sleep-v6-dst/2026-11-01.csv": "586c65eb9f0bbd294dd5faa1de481279b322489bb825fda38775a071903f90f5",
+    "android-sleep-v6-dst/2026-11-01.json": "dbea5408a6fd78ba589f72f61e745155e70e128d58c60e6c64fa04ca5951792d",
+    "android-sleep-v6-dst/2026-11-01.md": "e8be51c745c305eddf4f3a5d73d538eb2bd3cfc5c0abffea256fa31b566e5b52",
+    "apple-v11-dst/2026-11-01-bases.md": "8b519c309fd3d0b5d10d76c97bd31be777ab9ccbb2afa56b26083a5ba89819b2",
+    "apple-v11-dst/2026-11-01.csv": "368afc0f0ded10607f145c37eb713b7c84c7d1560a825ae3d688502c215629d1",
+    "apple-v11-dst/2026-11-01.json": "ff9259015310219008f52000634489f111c33711663c5e5c878271e5c22b9a57",
+    "apple-v11-dst/2026-11-01.md": "7d2006939ace2d869e59bdcdb0a012dec452f41892726460fe7e5cc18eded731"
+  }
+}

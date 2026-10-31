@@ -1,0 +1,20 @@
+{
+    "date": "2026-03-08",
+    "type": "health-data",
+    "units": "metric",
+    "schemaProfile": "android-analytical-v5",
+    "schemaVersion": 5,
+    "sleep": {
+        "totalDuration": 3600.0,
+        "totalDurationFormatted": "1h",
+        "bedtime": "12:00",
+        "bedtimeISO": "2026-03-08T12:00:00",
+        "wakeTime": "13:00",
+        "wakeTimeISO": "2026-03-08T13:00:00.5",
+        "coreSleep": 3600.0,
+        "coreSleepFormatted": "1h"
+    },
+    "activity": {
+        "steps": 84
+    }
+}

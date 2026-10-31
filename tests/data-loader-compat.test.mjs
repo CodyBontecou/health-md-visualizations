@@ -710,7 +710,7 @@ route_file: gone.route.json
 	assert.ok(report.warnings.some((w) => w.includes("gone.route.json")));
 });
 
-async function loadWhoopVault(contents) {
+async function loadWhoopVault(contents, includeReport = false) {
 	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
 	const root = new TFolder("Health", Object.keys(contents).map((name) => new TFile(`Health/${name}`)));
 	root.children.forEach((file) => { file.parent = root; });
@@ -719,7 +719,9 @@ async function loadWhoopVault(contents) {
 		getAbstractFileByPath(filePath) { return index.get(filePath) ?? null; },
 		async read(file) { return contents[file.name] ?? ""; },
 	};
-	return new DataLoader(vault, { dataFolder: "Health", filePattern: "*", dataFormat: "auto", dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" }).load();
+	const loader = new DataLoader(vault, { dataFolder: "Health", filePattern: "*", dataFormat: "auto", dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" });
+	const days = await loader.load();
+	return includeReport ? {days, report: loader.getLastLoadReport()} : days;
 }
 
 const whoopFixture = (name) => readFile(path.join(process.cwd(), "tests/fixtures/schema-v8", name), "utf8");
@@ -765,4 +767,537 @@ test("DataLoader preserves an unknown WHOOP native version without interpreting 
 	const [day] = await loadWhoopVault({ "a.csv": csv, "b.json": JSON.stringify(future) });
 	assert.equal(day.providers.whoop.schema_version, 3);
 	assert.equal(day.whoop, undefined);
+});
+
+test("DataLoader retains mixed-date sleep versions but omits conflicting same-date authority", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const context = { calendar_timezone: "America/New_York", timestamp_timezone: "UTC",
+		sleep_day_attribution: "morning_ends", sleep_owner_day_rule: "session_end_date", sleep_interval_clipping: "none" };
+	for (const reverse of [false, true]) {
+		const sources = [
+			["Health/night.json", { date: "2026-08-10", schema_version: 8, sleep: { totalDuration: 100, coreSleep: 80 } }],
+			["Health/morning.json", { date: "2026-08-10", schema_version: 6, schema_profile: "android-sleep-v6", time_context: context,
+				sleep: { totalDuration: 27900, lightSleep: 15300 } }],
+			["Health/historical.json", { date: "2026-08-09", schema_version: 8, activity: { steps: 100 } }],
+			["Health/new.json", { date: "2026-08-11", schema_version: 11, schema_profile: "apple-v11", time_context: context,
+				sleep: { totalDuration: 28000, coreSleep: 15400 } }],
+		];
+		if (reverse) sources.reverse();
+		const contents = new Map(sources.map(([file, data]) => [file, JSON.stringify({ type: "health-data", schema: "healthmd.health_data", ...data })]));
+		const files = sources.map(([file]) => new TFile(file));
+		const folder = new TFolder("Health", files);
+		for (const file of files) file.parent = folder;
+		const loader = new DataLoader({ getAbstractFileByPath: (name) => name === "Health" ? folder : files.find((file) => file.path === name),
+			read: async (file) => contents.get(file.path) }, { dataFolder: "Health", filePattern: "*", dataFormat: "auto",
+			dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" });
+		const days = await loader.load();
+		assert.deepEqual(days.map((day) => day.date), ["2026-08-09", "2026-08-11"]);
+		assert.equal(days[1].timeContext.sleep_day_attribution, "morning_ends");
+		assert.ok(loader.getLastLoadReport().warnings.some((warning) => warning.includes("conflicting sleep attribution/profile")));
+	}
+});
+
+
+test("DataLoader omits same-window rollups with conflicting sleep ownership independently of scan order", async () => {
+	const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+	const morning = JSON.parse(await readFile(path.join(process.cwd(), "tests/fixtures/rollup-summary-v11/range-v11.json"), "utf8"));
+	const night = { ...morning, schema_version: 9, source_schema_version: 8, rollup_rules_version: 8 };
+	delete night.schema_profile;
+	delete night.source_schema_profile;
+	delete night.time_context;
+	for (const reverse of [false, true]) {
+		const values = reverse ? [morning, morning, night] : [night, morning, morning];
+		const sources = values.map((value, index) => [`Health/Rollups/${index}.json`, value]);
+		const contents = new Map(sources.map(([file, data]) => [file, JSON.stringify(data)]));
+		const files = sources.map(([file]) => new TFile(file));
+		const rollupsFolder = new TFolder("Health/Rollups", files);
+		const folder = new TFolder("Health", [rollupsFolder]);
+		rollupsFolder.parent = folder;
+		for (const file of files) file.parent = rollupsFolder;
+		const loader = new DataLoader({ getAbstractFileByPath: (name) => name === "Health" ? folder : name === "Health/Rollups" ? rollupsFolder : files.find((file) => file.path === name),
+			read: async (file) => contents.get(file.path) }, { dataFolder: "Health", filePattern: "*", dataFormat: "auto",
+			dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" });
+		assert.deepEqual(await loader.loadRollups(), []);
+		assert.ok(loader.getLastLoadReport().warnings.some((warning) => warning.includes("ambiguous rollup data")));
+	}
+});
+test('DataLoader preserves native parent and stage objects across duplicate formats in either order', async () => {
+ const fixture = async suffix => readFile(path.join(process.cwd(), `tests/fixtures/sleep-native-parents/2026-11-01${suffix}`), 'utf8');
+ const [json,csv,md,bases] = await Promise.all(['.json','.csv','.md','-bases.md'].map(fixture));
+ const native = JSON.parse(json).sleep;
+ for(const contents of [
+  {'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},
+  {'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},
+  {'a.csv':csv,'b.md':md},
+  {'a.md':md,'b.csv':csv},
+ ]){
+  const [day] = await loadWhoopVault(contents);
+  assert.deepEqual(day.sleep.sleepStages,native.sleepStages);
+  assert.deepEqual(day.sleep.sleepSessions,native.sleepSessions);
+ }
+});
+
+
+test('DataLoader retains native Apple metadata when display tables and machine formats coexist', async () => {
+ for (const variant of ['selected-stages', 'total-only']) {
+  const base = path.join(process.cwd(), 'tests/fixtures/sleep-native-apple', variant, '2026-11-01');
+  const [json, csv, md, bases] = await Promise.all(['.json', '.csv', '.md', '-bases.md'].map(suffix => readFile(base + suffix, 'utf8')));
+  const native = JSON.parse(json).sleep.sleepStages;
+  for (const contents of [
+   {'a.json': json, 'b.csv': csv, 'c.md': md, 'd.md': bases},
+   {'a.md': md, 'b.csv': csv, 'c.json': json, 'd.md': bases},
+   {'a.csv': csv, 'b.md': md},
+   {'a.md': md, 'b.csv': csv},
+   {'a.md': bases, 'b.md': md},
+   {'a.md': md, 'b.md': bases},
+  ]) {
+   const [day] = await loadWhoopVault(contents);
+   assert.ok(day, variant);
+   assert.deepEqual(day.sleep.sleepStages, native, variant);
+   assert.equal(day.sleep.sleepSessions, undefined);
+  }
+ }
+});
+
+test('DataLoader retains complete quantity source objects across machine and display formats',async()=>{
+ for(const [variant,date] of [['apple-v11-quantities','2026-03-15'],['android-v6-quantities','2026-11-01']]){
+  const base=path.join(process.cwd(),'tests/fixtures/native-quantity-details',variant,date);
+  const [json,csv,md,bases]=await Promise.all(['.json','.csv','.md','-bases.md'].map(suffix=>readFile(base+suffix,'utf8')));
+  const native=JSON.parse(json);
+  for(const contents of [{'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},{'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},{'a.csv':csv,'b.md':md},{'a.md':md,'b.csv':csv},{'a.md':bases,'b.md':md},{'a.md':md,'b.md':bases}]){
+   const [day]=await loadWhoopVault(contents);
+   assert.ok(day,variant);
+   assert.deepEqual(day.heart.heartRateSamples,native.heart.heartRateSamples,variant);
+   assert.deepEqual(day.heart.hrvSamples,native.heart.hrvSamples,variant);
+   assert.deepEqual(day.vitals.bloodGlucoseSamples,native.vitals.bloodGlucoseSamples,variant);
+   assert.equal(day.heart.averageHeartRate,undefined,variant);
+  }
+ }
+});
+
+test('DataLoader merges complementary quantity provenance and rejects conflicting source facts',async()=>{
+ const original=JSON.parse(await readFile('tests/fixtures/native-quantity-details/android-v6-heart-only/2026-11-01.json','utf8'));
+ const left=structuredClone(original),right=structuredClone(original);
+ left.heart.heartRateSamples[0].metadata.left={name:'recorded source'};
+ right.heart.heartRateSamples[0].metadata.right={version:'recorded revision'};
+ for(const [a,b] of [[left,right],[right,left]]){
+  const [day]=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)});
+  assert.deepEqual(day.heart.heartRateSamples[0].metadata,{synthetic:'quantity-source',left:{name:'recorded source'},right:{version:'recorded revision'}});
+ }
+ for(const mutation of [sample=>sample.identity.nativeId='another-source',sample=>sample.metadata.synthetic='contradictory-source',sample=>sample.value=75.25]){
+  const changed=structuredClone(original);mutation(changed.heart.heartRateSamples[0]);
+  for(const [a,b] of [[original,changed],[changed,original]]){
+   const {days,report}=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b),'c.json':JSON.stringify(original)},true);
+   assert.deepEqual(days,[]);
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+  }
+ }
+});
+
+
+test('DataLoader pairs duplicate quantity clocks by compatible identity independently of array order',async()=>{
+ const original=JSON.parse(await readFile('tests/fixtures/native-quantity-details/android-v6-heart-only/2026-11-01.json','utf8'));
+ const second=structuredClone(original.heart.heartRateSamples[0]);second.identity.nativeId='second-native-record';
+ original.heart.heartRateSamples.push(second);
+ const reversed=structuredClone(original);reversed.heart.heartRateSamples.reverse();
+ for(const [a,b] of [[original,reversed],[reversed,original]]){
+  const [day]=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)});
+  assert.deepEqual(day.heart.heartRateSamples.map(sample=>sample.identity.nativeId).sort(),['second-native-record','synthetic-quantity']);
+ }
+ const truncated=structuredClone(original);truncated.heart.heartRateSamples.pop();
+ for(const [a,b] of [[original,truncated],[truncated,original]]){
+  assert.deepEqual(await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)}),[]);
+ }
+});
+
+test('DataLoader retains native paired-pressure objects across all format orders and rejects source conflicts',async()=>{
+ for(const [variant,date] of [['apple-v11-blood-pressure','2026-03-15'],['android-v6-blood-pressure','2026-11-01']]){
+  const base=path.join(process.cwd(),'tests/fixtures/native-blood-pressure',variant,date);
+  const [json,csv,md,bases]=await Promise.all(['.json','.csv','.md','-bases.md'].map(suffix=>readFile(base+suffix,'utf8')));
+  const native=JSON.parse(json);
+  for(const contents of [{'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},{'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},{'a.csv':csv,'b.md':md},{'a.md':md,'b.csv':csv},{'a.md':bases,'b.md':md},{'a.md':md,'b.md':bases}]){
+   const [day]=await loadWhoopVault(contents);assert.ok(day,variant);
+   assert.deepEqual(day.vitals.bloodPressureSamples,native.vitals.bloodPressureSamples,variant);
+   assert.equal(day.canonicalMetrics?.blood_pressure_systolic,undefined);
+  }
+  const changed=structuredClone(native);changed.vitals.bloodPressureSamples[0].metadata.synthetic='another-capture';
+  for(const [a,b] of [[json,JSON.stringify(changed)],[JSON.stringify(changed),json]]){
+   const {days,report}=await loadWhoopVault({'a.json':a,'b.json':b,'c.md':md},true);
+   assert.deepEqual(days,[]);assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+  }
+ }
+});
+
+
+test('DataLoader keeps native activity source records once across format orders and rejects conflicts',async()=>{
+ for(const variant of ['android-v6-activity','android-v6-activity-captured-true','android-v6-activity-captured-false']){
+ const base=path.join(process.cwd(),'tests/fixtures/native-activity',variant,'2026-11-01');
+ const [json,csv,md,bases]=await Promise.all(['.json','.csv','.md','-bases.md'].map(suffix=>readFile(base+suffix,'utf8')));
+ const native=JSON.parse(json);
+ for(const contents of [{'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},{'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},
+  {'a.csv':csv,'b.md':md},{'a.md':md,'b.csv':csv},{'a.md':bases,'b.md':md},{'a.md':md,'b.md':bases}]){
+  const [day]=await loadWhoopVault(contents);assert.ok(day);
+  assert.deepEqual(day.activity.stepSamples,native.activity.stepSamples);
+  assert.deepEqual(day.activity.activityIntensity,native.activity.activityIntensity);
+  assert.equal(day.nativeActivityDetails.length,variant.endsWith('false')?1:2);
+  assert.equal(day.canonicalMetrics?.steps,undefined);
+ }
+ const changed=structuredClone(native),identity=changed.activity.stepSamples[0].identity;
+ if(identity.clientRecordId!==undefined)identity.clientRecordId='another-capture';else identity.nativeId='another-capture';
+ for(const [a,b] of [[json,JSON.stringify(changed)],[JSON.stringify(changed),json]]){
+  const {days,report}=await loadWhoopVault({'a.json':a,'b.json':b,'c.md':md},true);
+  assert.deepEqual(days,[]);assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+ }
+ }
+});
+
+
+test('DataLoader preserves complete native workout source records in every mixed-format order',async()=>{
+ for(const [variant,folder,date] of [
+  ['apple-v11-workouts-Metric-detailed','Health','2026-03-15'],
+  ['android-v6-workouts-METRIC-true','health','2026-11-01'],
+ ]) {
+  const base=path.join(process.cwd(),'tests/fixtures/native-workouts',variant,folder,date);
+  const [json,csv,md,bases]=await Promise.all(['.json','.csv','.md','-bases.md'].map(suffix=>readFile(base+suffix,'utf8')));
+  const native=JSON.parse(json).workouts;
+  for(const contents of [{'a.json':json,'b.csv':csv,'c.md':md,'d.md':bases},
+   {'a.md':md,'b.csv':csv,'c.json':json,'d.md':bases},{'a.csv':csv,'b.md':md},
+   {'a.md':md,'b.csv':csv},{'a.md':bases,'b.md':md},{'a.md':md,'b.md':bases}]) {
+   const [day]=await loadWhoopVault(contents);
+   assert.ok(day,variant);
+   assert.deepEqual(day.workouts,native.map(sample=>({...sample,...(typeof sample.distance==='number'?{distanceMeters:sample.distance}:{})})),variant);
+   assert.deepEqual(day.nativeWorkoutDetails.map(record=>record.sample),native,variant);
+  }
+ }
+});
+
+test('DataLoader merges complementary workout provenance and rejects contradictory native quantities',async()=>{
+ const original=JSON.parse(await readFile('tests/fixtures/native-workouts/android-v6-workouts-METRIC-true/health/2026-11-01.json','utf8'));
+ const left=structuredClone(original),right=structuredClone(original);
+ left.workouts[0].metadata.left={name:'source'};
+ right.workouts[0].metadata.right={version:'revision'};
+ for(const [a,b] of [[left,right],[right,left]]){
+  const [day]=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b)});
+  assert.deepEqual(day.workouts[0].metadata,{synthetic:'workout, source',left:{name:'source'},right:{version:'revision'}});
+ }
+ for(const mutation of [sample=>sample.identity.nativeId='another-workout',sample=>sample.metadata.synthetic='contradiction',sample=>sample.avgHeartRate=161.875]){
+  const changed=structuredClone(original);mutation(changed.workouts[0]);
+  for(const [a,b] of [[original,changed],[changed,original]]){
+   const {days,report}=await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b),'c.json':JSON.stringify(original)},true);
+   assert.deepEqual(days,[]);
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+  }
+ }
+});
+
+
+test("DataLoader omits conflicting successor range-rule authorities in every scan order", async () => {
+    const { DataLoader, TFile, TFolder } = await loadDataLoaderHarness();
+    const original = JSON.parse(await readFile("tests/fixtures/rollup-summary-v11/range-v11.json", "utf8"));
+    const corrected = { ...original, rollup_rules_version: 12 };
+    for (const values of [[original, corrected, corrected], [corrected, original, corrected], [corrected, corrected, original], [corrected, corrected, corrected]]) {
+        const files = values.map((_, index) => new TFile(`Health/Rollups/${index}.json`));
+        const rollupsFolder = new TFolder("Health/Rollups", files);
+        const root = new TFolder("Health", [rollupsFolder]);
+        rollupsFolder.parent = root;
+        for (const file of files) file.parent = rollupsFolder;
+        const contents = new Map(files.map((file, index) => [file.path, JSON.stringify(values[index])]));
+        const loader = new DataLoader({ getAbstractFileByPath: (name) => name === "Health" ? root : name === "Health/Rollups" ? rollupsFolder : files.find(file => file.path === name),
+            read: async (file) => contents.get(file.path) }, { dataFolder: "Health", filePattern: "*", dataFormat: "auto", dataFolderGranularity: "flat", dataFolderCustomPathTemplate: "" });
+        const rollups = await loader.loadRollups();
+        if (values.some(value => value.rollup_rules_version === 11)) {
+            assert.deepEqual(rollups, []);
+            assert.ok(loader.getLastLoadReport().warnings.some(warning => warning.includes("range rules") && warning.includes("ambiguous rollup data")));
+        } else {
+            assert.equal(rollups.length, 1);
+            assert.equal(rollups[0].rollupRulesVersion, 12);
+            assert.equal(loader.getLastLoadReport().warnings.length, 0);
+        }
+    }
+});
+
+test('DataLoader preserves complete native mindfulness facts in every mixed-format order', async () => {
+ for (const platform of ['apple-v11', 'android-v6']) for (const metadata of [true, false]) {
+  const folder = `tests/fixtures/native-mindfulness/${platform}-mindfulness-${metadata}/${platform === 'apple-v11' ? 'Health' : 'health'}`;
+  const date = platform === 'apple-v11' ? '2026-03-14' : '2026-11-01';
+  const names = [`${date}.json`, `${date}.csv`, `${date}.md`, `${date}-bases.md`];
+  const values = await Promise.all(names.map(name => readFile(`${folder}/${name}`, 'utf8')));
+  const json = JSON.parse(values[0]), expected = json.mindfulness[platform === 'apple-v11' ? 'stateOfMindEntries' : 'sessions'];
+  for (const order of [[0,1,2,3],[3,2,1,0],[1,2,3,0],[2,3,0,1],[0,3,1,2],[2,1,0,3]]) {
+   const contents = Object.fromEntries(order.map((index, i) => [`${i}-${names[index]}`, values[index]]));
+   const [day] = await loadWhoopVault(contents);
+   assert.ok(day, folder + order);
+   assert.deepEqual(day.nativeMindfulnessDetails.map(record => record.sample), expected, folder + order);
+   assert.equal(day.sourcePaths.length, 4);
+  }
+ }
+});
+
+test('DataLoader omits contradictory native mood and mindfulness sources without later resurrection', async () => {
+ for (const platform of ['apple-v11', 'android-v6']) {
+  const folder = `tests/fixtures/native-mindfulness/${platform}-mindfulness-true/${platform === 'apple-v11' ? 'Health' : 'health'}`;
+  const date = platform === 'apple-v11' ? '2026-03-14' : '2026-11-01';
+  const source = JSON.parse(await readFile(`${folder}/${date}.json`, 'utf8'));
+  const changed = structuredClone(source), sample = changed.mindfulness[platform === 'apple-v11' ? 'stateOfMindEntries' : 'sessions'][0];
+  sample.metadata.synthetic = 'contradictory source';
+  for (const [a,b] of [[source,changed],[changed,source]]) {
+   const {days,report} = await loadWhoopVault({'a.json':JSON.stringify(a),'b.json':JSON.stringify(b),'c.json':JSON.stringify(source)}, true);
+   assert.deepEqual(days, []);
+   assert.ok(report.warnings.some(warning => warning.includes('conflicting native source facts')));
+  }
+ }
+});
+
+test('DataLoader retains complete Morning ends WHOOP facts across format orders', async () => {
+    for (const metadata of [true, false]) {
+        const root = `tests/fixtures/apple-v11-whoop-source/${metadata}/2026-03-15`;
+        const names = ['.json', '.csv', '.md', '-bases.md'];
+        const values = await Promise.all(names.map(suffix => readFile(root + suffix, 'utf8')));
+        const expected = JSON.parse(values[0]).providers;
+        for (const order of [[0,1,2,3], [3,2,1,0], [1,2,3,0], [2,3,0,1]]) {
+            const contents = Object.fromEntries(order.map((index, i) => [`${i}-2026-03-15${names[index]}`, values[index]]));
+            const [day] = await loadWhoopVault(contents);
+            assert.ok(day, `${metadata} ${order}`);
+            assert.deepEqual(day.providers, expected);
+            assert.equal(day.whoop.source, 'typed');
+            assert.equal(day.whoop.sleep[0].id, '202');
+            assert.equal(day.activity.steps, 1);
+            assert.equal(day.sourcePaths.length, 4);
+        }
+    }
+});
+
+test('DataLoader omits conflicting complete WHOOP captures without later resurrection', async () => {
+    const root = 'tests/fixtures/apple-v11-whoop-source/false/2026-03-15';
+    const json = await readFile(root + '.json', 'utf8');
+    const markdown = await readFile(root + '.md', 'utf8');
+    const row = markdown.split('\n').find(line => line.startsWith('| `{') && line.includes('healthmd.provider.whoop_daily'));
+    const source = JSON.parse(row.slice(3, -3));
+    source.whoop.cycles[0].strain_score += 1;
+    const conflicting = markdown.replace(row, `| \`${JSON.stringify(source)}\` |`);
+    for (const contents of [
+        {'a.json':json, 'b.md':conflicting, 'c.json':json},
+        {'a.md':conflicting, 'b.json':json, 'c.md':markdown},
+    ]) {
+        const {days, report} = await loadWhoopVault(contents, true);
+        assert.deepEqual(days, []);
+        assert.ok(report.warnings.some(warning => warning.includes('conflicting native source facts')));
+    }
+});
+
+async function nativeIndividualContents(variant) {
+ const root='tests/fixtures/native-individual-capture';
+ const provenance=JSON.parse(await readFile(path.join(root,'provenance.json'),'utf8'));
+ const entries=await Promise.all(Object.keys(provenance.files).filter(name=>name.startsWith(variant+'/')).map(async name=>[
+  path.basename(name),await readFile(path.join(root,name),'utf8')]));
+ return Object.fromEntries(entries);
+}
+
+test('Morning individual notes coexist with exact daily facts across format and scan orders',async()=>{
+ for(const variant of ['basic','workouts']) {
+  const contents=await nativeIndividualContents(variant);
+  for(const reverse of [false,true]) {
+   const ordered=Object.fromEntries(reverse?Object.entries(contents).reverse():Object.entries(contents));
+   const {days,report}=await loadWhoopVault(ordered,true);
+   assert.deepEqual(days.map(day=>day.date),variant==='basic'?['2026-03-07','2026-03-08']:['2026-03-08']);
+   const day=days.find(day=>day.date==='2026-03-08');
+   assert.equal(day.schema_profile,'apple-v11');
+   assert.equal(day.timeContext.calendar_timezone,'America/New_York');
+   assert.equal(day.sleep.totalDuration,93600.5,'rounded individual hours cannot replace exact daily seconds');
+   assert.equal(day.activity.steps,42);
+   if(variant==='workouts') assert.equal(day.workouts.length,1,'the source event is not counted twice');
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')));
+  }
+ }
+});
+
+test('Morning individual annotations do not upgrade historical notes or hide conflicting clocks',async()=>{
+ const contents=await nativeIndividualContents('basic');
+ const note=Object.entries(contents).find(([name])=>name.includes('sleep_total'))[1];
+ const daily=contents['2026-03-08.json'];
+ const legacy=note.replace(/^healthmd_capture_context_json: .*\n/m,'');
+ for(const source of [legacy,note.replaceAll('America/New_York','Asia/Tokyo')]) {
+  for(const reverse of [false,true]) {
+   const sources=reverse?{'note.md':source,'day.json':daily}:{'day.json':daily,'note.md':source};
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,0);
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting sleep attribution/profile')));
+  }
+ }
+});
+
+test('native Daily Note capture and exact daily JSON coexist in either scan order',async()=>{
+ const root='tests/fixtures/native-daily-note-capture/';
+ for(const mode of ['frontmatter','sections']) {
+  const note=await readFile(root+mode+'.md','utf8');
+  const json=await readFile(root+mode+'.json','utf8');
+  for(const reverse of [false,true]) {
+   const sources=reverse?{'journal.md':note,'daily.json':json}:{'daily.json':json,'journal.md':note};
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1);
+   assert.equal(days[0].date,'2026-03-08');
+   assert.equal(days[0].schema_profile,'apple-v11');
+   assert.equal(days[0].sleep.totalDuration,93600.5);
+   assert.equal(days[0].sleep.deepSleep,undefined);
+   assert.equal(days[0].activity.steps,42);
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')));
+  }
+ }
+});
+
+test('native scoped Night and restored Morning notes deduplicate without adopting retained facts',async()=>{
+ const root='tests/fixtures/native-daily-note-transitions/';
+ const provenance=JSON.parse(await readFile(root+'provenance.json','utf8'));
+ for(const name of Object.keys(provenance.files).filter(name=>name.endsWith('.md'))) {
+  const note=await readFile(root+name,'utf8');
+  const json=await readFile(root+name.replace(/\.md$/,'.json'),'utf8');
+  for(const reverse of [false,true]) {
+   const sources=reverse?{'journal.md':note,'daily.json':json}:{'daily.json':json,'journal.md':note};
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1,name);
+   const day=days[0];
+   assert.equal(day.date,'2026-03-08');
+   assert.equal(day.sleep?.deepSleep,undefined);
+   if(name.startsWith('restored-')) assert.equal(day.sleep.totalDuration,93600.5);
+   else if(name.endsWith('-steps.md')) assert.equal(day.sleep?.totalDuration??0,0);
+   else assert.equal(day.sleep.totalDuration,3600.5);
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')),name);
+  }
+ }
+});
+
+test('different scoped owner-day meanings remain conflicting operations in either scan order',async()=>{
+ const root='tests/fixtures/native-daily-note-transitions/';
+ const night=await readFile(root+'night-1-0-both.md','utf8');
+ const morning=await readFile(root+'restored-1-0-both.md','utf8');
+ for(const reverse of [false,true]) {
+  const sources=reverse?{'a.md':night,'b.md':morning,'c.md':night}:{'a.md':morning,'b.md':night,'c.md':morning};
+  const {days,report}=await loadWhoopVault(sources,true);
+  assert.equal(days.length,0);
+  assert.ok(report.warnings.some(warning=>warning.includes('conflicting sleep attribution/profile')));
+ }
+});
+
+test('source JSON cannot use an internal display flag to hide conflicting native records',async()=>{
+ const source=await readFile('tests/fixtures/apple-v11-whoop-source/false/2026-03-15.json','utf8');
+ const changed=JSON.parse(source);
+ changed.providers.whoop.cycles[0].strain_score+=1;
+ for(const flag of [false,true]) {
+  changed.individualEntryProjection=flag;
+  for(const reverse of [false,true]) {
+   const values=reverse?{'a.json':JSON.stringify(changed),'b.json':source}:{'a.json':source,'b.json':JSON.stringify(changed)};
+   const {days,report}=await loadWhoopVault(values,true);
+   assert.equal(days.length,0);
+   assert.ok(report.warnings.some(warning=>warning.includes('conflicting native source facts')));
+  }
+ }
+});
+
+test('selected native Night details remain stable when scoped notes and exact JSON are loaded together',async()=>{
+ const root='tests/fixtures/native-daily-note-details/';
+ for(const name of ['night-1-1-both','night-1-0-both','night-0-1-sleep','night-0-1-steps','restored-0-1-both']) {
+  const note=await readFile(root+name+'.md','utf8');
+  const json=await readFile(root+name+'.json','utf8');
+  for(const reverse of [false,true]) {
+   const files=reverse?{'a.md':note,'b.json':json}:{'a.json':json,'b.md':note};
+   const {days,report}=await loadWhoopVault(files,true);
+   assert.equal(days.length,1,name);
+   const day=days[0];
+   if(name.startsWith('restored')) assert.equal(day.sleep.totalDuration,93600.5);
+   else if(name.endsWith('steps')) assert.equal(day.sleep?.totalDuration??0,0);
+   else {
+    assert.equal(day.sleep.totalDuration,3600.5);
+    const detail=name.includes('-1-1-')||name.includes('-0-1-');
+    assert.equal(day.sleep.sleepStages.length,detail?1:0);
+   }
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')),name);
+  }
+ }
+});
+
+test('native Android scoped note deduplicates exact daily JSON in both orders',async()=>{
+ const root='tests/fixtures/native-android-daily-note/';
+ for(const mode of ['false','true']) {
+  const note=await readFile(root+'android-'+mode+'.md','utf8');
+  const json=await readFile(root+'android-'+mode+'.json','utf8');
+  for(const sources of [{'journal.md':note},{'journal.md':note,'daily.json':json},{'daily.json':json,'journal.md':note}]) {
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1);
+   assert.equal(days[0].date,'2026-03-08');
+   assert.equal(days[0].schema_profile,'android-sleep-v6');
+   assert.equal(days[0].sleep.lightSleep,93600.5);
+   assert.equal(days[0].sleep.coreSleep,undefined);
+   assert.equal(days[0].sleep.deepSleep,undefined);
+   assert.ok(!report.warnings.some(warning=>warning.includes('conflicting')));
+  }
+ }
+});
+
+test('native Android Night scope deduplicates companions and rejects different frozen clocks',async()=>{
+ const root='tests/fixtures/native-android-daily-note-transitions/';
+ for(const profile of ['IOS_V4_FROZEN','ANDROID_ANALYTICAL_V5']) for(const sections of [false,true])
+ for(const selection of ['steps','sleep','both']) {
+  const name=`${profile}-true-${sections}-${selection}`;
+  const note=await readFile(root+'night-'+name+'.md','utf8');
+  const json=await readFile(root+'night-'+name+'.json','utf8');
+  for(const sources of [{'note.md':note},{'note.md':note,'daily.json':json},{'daily.json':json,'note.md':note}]) {
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1,name);
+   assert.equal(days[0].date,'2026-03-08');
+   assert.equal(days[0].time_context.calendar_timezone,'America/New_York');
+   assert.equal(days[0].sleep?.totalDuration,selection==='steps'?undefined:3600);
+   assert.equal(days[0].sleep?.deepSleep,undefined);
+   assert.equal(days[0].activity?.steps,selection==='sleep'?undefined:84);
+   assert.ok(!report.warnings.some(w=>w.includes('conflicting')),name);
+  }
+  const restored=await readFile(root+'restored-'+name+'.json','utf8');
+  for(const other of [restored,note.replaceAll('America/New_York','Asia/Tokyo')]) for(const reverse of [false,true]) {
+   const sources=reverse?{'other.md':other,'note.md':note}:{'note.md':note,'other.md':other};
+   // JSON files retain their grammar: only the clock control is Markdown.
+   if(other===restored) {sources['other.json']=sources['other.md'];delete sources['other.md'];}
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,0);
+   assert.ok(report.warnings.some(w=>w.includes('conflicting sleep attribution/profile')));
+  }
+ }
+});
+
+test('repository-written Night notes retain scoped facts under every aggregate write mode',async()=>{
+ const root='tests/fixtures/native-android-night-repository/';
+ for(const profile of ['IOS_V4_FROZEN','ANDROID_ANALYTICAL_V5']) for(const mode of ['OVERWRITE','APPEND','UPDATE']) {
+  const name=`repository-${profile}-${mode}`;
+  const note=await readFile(root+name+'.md','utf8');
+  const json=await readFile(root+name+'.json','utf8');
+  for(const sources of [{'note.md':note},{'note.md':note,'daily.json':json},{'daily.json':json,'note.md':note}]) {
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1);
+   assert.equal(days[0].time_context.calendar_timezone,'America/New_York');
+   assert.equal(days[0].sleep.totalDuration,3600);
+   assert.equal(days[0].sleep.sleepStages[0].durationSeconds,97200);
+   assert.equal(days[0].sleep.deepSleep,undefined);
+   assert.equal(days[0].activity.steps,84);
+   assert.ok(!report.warnings.some(w=>w.includes('conflicting')));
+  }
+ }
+});
+
+
+test('Apple local notes alone and with accepted JSON deduplicate after foreground and recovery',async()=>{
+ for(const root of ['tests/fixtures/native-apple-local-notes/','tests/fixtures/native-apple-archive-notes/']) {
+ const manifest=JSON.parse(await readFile(root+'provenance.json','utf8'));
+ for(const name of Object.keys(manifest.files).filter(name=>name.endsWith('.md'))) {
+  const note=await readFile(root+name,'utf8');
+  const json=await readFile(root+name.replace(/\.md$/,'.json'),'utf8');
+  for(const sources of [{'note.md':note},{'note.md':note,'daily.json':json},{'daily.json':json,'note.md':note}]) {
+   const {days,report}=await loadWhoopVault(sources,true);
+   assert.equal(days.length,1,name);
+   assert.equal(days[0].date,'2026-03-08');
+   assert.equal(days[0].schema_profile,'apple-v11');
+   assert.equal(days[0].sleep.totalDuration,93600.5);
+   assert.equal(days[0].sleep.deepSleep,undefined);
+   assert.equal(days[0].activity.steps,42);
+   assert.ok(!report.warnings.some(w=>w.includes('conflicting')));
+  }
+ }
+ }
 });

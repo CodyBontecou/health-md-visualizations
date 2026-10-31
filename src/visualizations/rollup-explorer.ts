@@ -198,6 +198,11 @@ function renderRollupCard(
 	const metadata = appendElement(card, "dl", undefined, "health-md-rollup-period-details");
 	addDefinition(metadata, "Date span", `${start} – ${end}`);
 	addDefinition(metadata, "Coverage", coverageText(rollup));
+	const timeContext = rollup.timeContext ?? rollup.time_context;
+	if (timeContext?.sleep_day_attribution === "morning_ends" || timeContext?.sleep_day_attribution === "night_begins") {
+		addDefinition(metadata, "Sleep day attribution", timeContext.sleep_day_attribution === "morning_ends" ? "Morning ends" : "Night begins");
+		if (timeContext.calendar_timezone) addDefinition(metadata, "Calendar timezone", timeContext.calendar_timezone);
+	}
 	addDefinition(
 		metadata,
 		"Period days",
